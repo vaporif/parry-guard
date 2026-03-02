@@ -112,7 +112,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             hf_token: None,
-            threshold: 0.5,
+            threshold: 0.7,
             ignore_paths: Vec::new(),
             scan_mode: ScanMode::default(),
         }

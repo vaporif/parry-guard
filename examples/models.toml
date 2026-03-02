@@ -8,4 +8,4 @@ repo = "ProtectAI/deberta-v3-small-prompt-injection-v2"
 
 [[models]]
 repo = "meta-llama/Llama-Prompt-Guard-2-86M"
-threshold = 0.5
+threshold = 0.7

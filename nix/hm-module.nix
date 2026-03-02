@@ -134,7 +134,7 @@ in {
     threshold = mkOption {
       type = types.nullOr types.float;
       default = null;
-      description = "ML detection threshold (0.0–1.0). Null uses the default (0.5).";
+      description = "ML detection threshold (0.0–1.0). Null uses the default (0.7).";
     };
 
     logLevel = mkOption {
