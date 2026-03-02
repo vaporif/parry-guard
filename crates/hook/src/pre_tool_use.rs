@@ -5,6 +5,10 @@ use tracing::{debug, warn};
 
 use crate::{HookInput, PreToolUseOutput};
 
+/// Minimum string length for MCP input values to be included in ML scanning.
+/// Shorter values (e.g. "json", "asc") are structural noise that degrades ML accuracy.
+const MCP_MIN_STRING_LEN: usize = 10;
+
 /// Process a `PreToolUse` hook event. Returns `Some(PreToolUseOutput)` to block/ask, `None` to allow.
 #[must_use]
 pub fn process(input: &HookInput, config: &Config) -> Option<PreToolUseOutput> {
@@ -46,7 +50,7 @@ pub fn process(input: &HookInput, config: &Config) -> Option<PreToolUseOutput> {
     }
 
     // Scan tool input content for injection (Write, Edit, NotebookEdit, Bash, MCP tools)
-    if let Some(content) = extract_scannable_content(tool, &input.tool_input) {
+    for content in extract_scannable_content(tool, &input.tool_input) {
         if let Some(output) = scan_input_content(tool, &content, config) {
             return Some(output);
         }
@@ -75,36 +79,33 @@ fn check_sensitive_path(tool: &str, input: &serde_json::Value) -> Option<PreTool
 }
 
 /// Extract content to scan from tool inputs.
-fn extract_scannable_content(tool: &str, input: &serde_json::Value) -> Option<String> {
+///
+/// Returns individual strings to scan. MCP tools return each string separately
+/// so ML sees clean per-value context instead of a concatenated blob.
+fn extract_scannable_content(tool: &str, input: &serde_json::Value) -> Vec<String> {
     match tool {
-        "Write" => input
-            .get("content")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        "Edit" => input
-            .get("new_string")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        "NotebookEdit" => input
-            .get("new_source")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        "Bash" => input
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        // MCP tools: extract all string values from input
+        "Write" => json_str_to_vec(input, "content"),
+        "Edit" => json_str_to_vec(input, "new_string"),
+        "NotebookEdit" => json_str_to_vec(input, "new_source"),
+        "Bash" => json_str_to_vec(input, "command"),
+        // MCP tools: each string value scanned individually, filtering short
+        // structural noise ("json", "asc") that degrades ML accuracy.
         t if t.starts_with("mcp__") => {
             let mut strings = Vec::new();
             collect_strings(input, &mut strings);
-            if strings.is_empty() {
-                None
-            } else {
-                Some(strings.join("\n"))
-            }
+            strings.retain(|s| s.len() >= MCP_MIN_STRING_LEN);
+            strings
         }
-        _ => None,
+        _ => Vec::new(),
     }
+}
+
+fn json_str_to_vec(input: &serde_json::Value, key: &str) -> Vec<String> {
+    input
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| vec![s.to_owned()])
+        .unwrap_or_default()
 }
 
 /// Recursively collect all string values from a JSON value.
@@ -127,14 +128,21 @@ fn collect_strings(value: &serde_json::Value, out: &mut Vec<String>) {
 
 /// Scan input content for injection. Returns `Some(PreToolUseOutput)` to block.
 fn scan_input_content(tool: &str, content: &str, config: &Config) -> Option<PreToolUseOutput> {
-    let result = match crate::scan_text(content, config) {
-        Ok(r) => r,
-        Err(e) => {
-            // Fail-closed: if scan fails, block the operation
-            warn!(%e, tool, "PreToolUse scan failed, blocking");
-            return Some(PreToolUseOutput::ask(&format!(
-                "parry: scan failed ({e}), blocking {tool} for safety"
-            )));
+    let result = if tool == "Bash" {
+        // Fast scan only — DeBERTa was trained on natural language and
+        // produces false positives on shell syntax. Layer 4 (exfil detection)
+        // already covers structural threats.
+        parry_core::scan_text_fast(content)
+    } else {
+        match crate::scan_text(content, config) {
+            Ok(r) => r,
+            Err(e) => {
+                // Fail-closed: if scan fails, block the operation
+                warn!(%e, tool, "PreToolUse scan failed, blocking");
+                return Some(PreToolUseOutput::ask(&format!(
+                    "parry: scan failed ({e}), blocking {tool} for safety"
+                )));
+            }
         }
     };
 
@@ -185,18 +193,8 @@ mod tests {
         let _guard = EnvGuard::new(dir.path());
         let input = make_bash_input("cargo build --release");
         let result = process(&input, &test_config());
-        // Without daemon, scan_text fails and we fail-closed (deny).
-        // With daemon running, this would return None.
-        // Test verifies it doesn't trigger fast-scan injection patterns.
-        if let Some(ref output) = result {
-            assert!(
-                !output
-                    .hook_specific_output
-                    .permission_decision_reason
-                    .contains("injection"),
-                "normal command should not trigger injection detection"
-            );
-        }
+        // Fast-scan-only for Bash: clean commands pass without daemon
+        assert!(result.is_none(), "clean Bash should pass without daemon");
     }
 
     #[test]
@@ -446,6 +444,27 @@ mod tests {
                 "normal MCP query should not trigger injection detection"
             );
         }
+    }
+
+    #[test]
+    fn mcp_short_strings_only_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = EnvGuard::new(dir.path());
+        let input = HookInput {
+            tool_name: Some("mcp__custom__tool".to_string()),
+            tool_input: serde_json::json!({
+                "format": "json",
+                "sort": "asc",
+                "limit": 10
+            }),
+            tool_response: None,
+            session_id: None,
+            hook_event_name: None,
+            cwd: None,
+        };
+        let result = process(&input, &test_config());
+        // All strings are < 10 chars, so no scannable content is extracted
+        assert!(result.is_none(), "MCP with only short strings should pass");
     }
 
     #[test]
