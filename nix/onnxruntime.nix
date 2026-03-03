@@ -40,6 +40,7 @@ in
     sourceRoot = "onnxruntime-${platform.name}-${version}";
 
     nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [autoPatchelfHook];
+    buildInputs = lib.optionals stdenv.hostPlatform.isLinux [stdenv.cc.cc.lib];
 
     installPhase = ''
       runHook preInstall
