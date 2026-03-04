@@ -404,10 +404,10 @@ fn is_ip_url(text: &str) -> bool {
 
     // IPv6 in URLs: http://[::1]:8080/path
     if let Some(bracketed) = authority.strip_prefix('[') {
-        return bracketed
-            .split(']')
-            .next()
-            .is_some_and(|h| h.parse::<std::net::Ipv6Addr>().is_ok());
+        return bracketed.split(']').next().is_some_and(|h| {
+            h.parse::<std::net::Ipv6Addr>()
+                .is_ok_and(|ip| !crate::util::is_private_ipv6(ip))
+        });
     }
 
     // IPv4: strip port
@@ -416,7 +416,7 @@ fn is_ip_url(text: &str) -> bool {
         .next()
         .unwrap_or(authority)
         .parse::<std::net::Ipv4Addr>()
-        .is_ok()
+        .is_ok_and(|ip| !crate::util::is_private_ipv4(ip))
 }
 
 /// busybox sh -c "..." -- detect the shell applet and then delegate to shell re-parsing.

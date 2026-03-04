@@ -118,11 +118,9 @@ pub fn scan(dir: &Path) -> Vec<AuditWarning> {
     check_settings_permissions(&state, &mut warnings);
     check_project_hooks(&state, &mut warnings);
 
-    if warnings.is_empty() {
-        if let Some(ref c) = cache {
-            c.mark_clean(&cache_key, hash);
-            debug!("audit state cached as clean");
-        }
+    if let Some(ref c) = cache {
+        c.mark_clean(&cache_key, hash);
+        debug!(warning_count = warnings.len(), "audit state cached");
     }
 
     warnings
@@ -338,6 +336,23 @@ mod tests {
         assert!(w1.is_empty());
         let w2 = scan(dir.path());
         assert!(w2.is_empty());
+    }
+
+    #[test]
+    fn cache_suppresses_repeated_warnings() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(
+            claude_dir.join("settings.json"),
+            r#"{"permissions":{"allow":["Bash(cargo build)"],"deny":[]}}"#,
+        )
+        .unwrap();
+        let _guard = EnvGuard::new(dir.path());
+        let w1 = scan(dir.path());
+        assert!(!w1.is_empty(), "first scan should produce warnings");
+        let w2 = scan(dir.path());
+        assert!(w2.is_empty(), "second scan should be cached (no warnings)");
     }
 
     #[test]

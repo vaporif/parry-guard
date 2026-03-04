@@ -91,7 +91,6 @@ pub fn check(config: &Config) -> CheckResult {
                 debug!(path = %path.display(), "CLAUDE.md clean, cached");
             }
             Err(e) => {
-                // Don't cache ML errors — retry on next invocation
                 warn!(path = %path.display(), %e, "ML scan failed");
                 return CheckResult::Ask(format!(
                     "Cannot verify {} — ML unavailable: {e}",
@@ -161,6 +160,13 @@ mod tests {
             matches!(result, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
             "ML unavailable should ask"
         );
+
+        // ML errors are not cached — retries on next call so daemon recovery works
+        let result2 = check(&test_config());
+        assert!(
+            matches!(result2, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
+            "should retry ML when not cached"
+        );
     }
 
     #[test]
@@ -229,17 +235,14 @@ mod tests {
         let _guard = EnvGuard::new(dir.path());
 
         let result = check(&test_config());
-        assert!(!result.is_clean(), "should ask without daemon");
+        assert!(!result.is_clean(), "first check should ask without daemon");
 
-        // ML error should not be cached — retry next time
+        // ML error should NOT be cached — retry when daemon comes back
         let cache = HashCache::open(TABLE).unwrap();
         let hash = hash_content("# Clean content");
         let canonical_path = std::env::current_dir().unwrap().join("CLAUDE.md");
         let key = canonical_path.to_string_lossy();
-        assert!(
-            !cache.is_cached(&key, hash),
-            "should not cache when ML unavailable"
-        );
+        assert!(!cache.is_cached(&key, hash), "should not cache ML errors");
     }
 
     #[test]

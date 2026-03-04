@@ -150,8 +150,19 @@ mod tests {
     #[test]
     fn test_contains_ip_url() {
         assert!(contains_ip_url("http://1.2.3.4/path"));
-        assert!(contains_ip_url("https://192.168.1.1:8080/api"));
+        assert!(
+            !contains_ip_url("https://192.168.1.1:8080/api"),
+            "private IP should not be flagged"
+        );
         assert!(!contains_ip_url("http://example.com"));
         assert!(!contains_ip_url("http://localhost"));
+        assert!(
+            !contains_ip_url("http://10.0.0.1/api"),
+            "10.x should not be flagged"
+        );
+        assert!(
+            !contains_ip_url("http://127.0.0.1:3000"),
+            "loopback should not be flagged"
+        );
     }
 }

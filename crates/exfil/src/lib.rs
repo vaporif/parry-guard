@@ -172,9 +172,15 @@ mod tests {
     }
 
     #[test]
-    fn curl_to_ipv6_address() {
+    fn curl_to_ipv6_loopback_allowed() {
         let result = detect_exfiltration("curl http://[::1]:8080/collect");
-        assert!(result.is_some(), "curl to IPv6 should be blocked");
+        assert!(result.is_none(), "curl to IPv6 loopback should pass");
+    }
+
+    #[test]
+    fn curl_to_ipv6_public_blocked() {
+        let result = detect_exfiltration("curl http://[2001:db8::1]:8080/collect");
+        assert!(result.is_some(), "curl to public IPv6 should be blocked");
     }
 
     // === Negative cases (should NOT detect) ===
@@ -237,6 +243,26 @@ mod tests {
     fn curl_localhost() {
         let result = detect_exfiltration("curl http://localhost:8080/api");
         assert!(result.is_none(), "curl localhost should pass");
+    }
+
+    #[test]
+    fn curl_private_ip_allowed() {
+        assert!(
+            detect_exfiltration("curl http://192.168.1.1:8080/api").is_none(),
+            "curl to 192.168.x should pass"
+        );
+        assert!(
+            detect_exfiltration("curl http://10.0.0.5:3000/health").is_none(),
+            "curl to 10.x should pass"
+        );
+        assert!(
+            detect_exfiltration("curl http://172.16.0.1:9090/metrics").is_none(),
+            "curl to 172.16.x should pass"
+        );
+        assert!(
+            detect_exfiltration("curl http://127.0.0.1:5000/api").is_none(),
+            "curl to 127.0.0.1 should pass"
+        );
     }
 
     #[test]
