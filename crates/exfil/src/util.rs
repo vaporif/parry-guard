@@ -56,11 +56,24 @@ pub fn contains_ip_url(text: &str) -> bool {
             let after = &search[idx + prefix.len()..];
             let authority = after.split('/').next().unwrap_or(after);
             let host = authority.split(':').next().unwrap_or(authority);
-            if host.parse::<std::net::Ipv4Addr>().is_ok() {
+            if host
+                .parse::<std::net::Ipv4Addr>()
+                .is_ok_and(|ip| !is_private_ipv4(ip))
+            {
                 return true;
             }
             search = &search[idx + prefix.len()..];
         }
     }
     false
+}
+
+/// Returns true if the IPv4 address is private/loopback (RFC 1918 + loopback).
+pub fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    ip.is_loopback() || ip.is_private() || ip.is_link_local()
+}
+
+/// Returns true if the IPv6 address is loopback or link-local.
+pub fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
+    ip.is_loopback()
 }
