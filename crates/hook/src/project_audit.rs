@@ -118,8 +118,6 @@ pub fn scan(dir: &Path) -> Vec<AuditWarning> {
     check_settings_permissions(&state, &mut warnings);
     check_project_hooks(&state, &mut warnings);
 
-    // Always cache the state hash so we don't re-scan unchanged directories.
-    // Warnings are shown once per unique state, not on every invocation.
     if let Some(ref c) = cache {
         c.mark_clean(&cache_key, hash);
         debug!(warning_count = warnings.len(), "audit state cached");
