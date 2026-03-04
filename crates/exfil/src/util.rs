@@ -75,5 +75,5 @@ pub const fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
 
 /// Returns true if the IPv6 address is loopback or link-local.
 pub const fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
-    ip.is_loopback()
+    ip.is_loopback() || ip.is_unicast_link_local()
 }

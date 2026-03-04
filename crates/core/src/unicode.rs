@@ -57,7 +57,7 @@ static HOMOGLYPHS: LazyLock<HashMap<char, char>> = LazyLock::new(|| {
     ])
 });
 
-/// Returns true if text contains homoglyph characters mixed with Latin text.
+/// Returns true if text contains homoglyph characters mixed with ASCII Latin letters.
 ///
 /// Only flags when both Latin and homoglyph characters are present — the actual
 /// attack pattern (e.g. "іgnore" with Cyrillic і among Latin chars).

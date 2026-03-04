@@ -91,10 +91,7 @@ pub fn check(config: &Config) -> CheckResult {
                 debug!(path = %path.display(), "CLAUDE.md clean, cached");
             }
             Err(e) => {
-                // Cache ML errors so users are only asked once per content,
-                // not on every single invocation while daemon is down.
                 warn!(path = %path.display(), %e, "ML scan failed");
-                cache_hash(cache.as_ref(), &key, hash);
                 return CheckResult::Ask(format!(
                     "Cannot verify {} — ML unavailable: {e}",
                     path.display()
@@ -164,9 +161,12 @@ mod tests {
             "ML unavailable should ask"
         );
 
-        // But second call should be cached — not asked again
+        // ML errors are not cached — retries on next call so daemon recovery works
         let result2 = check(&test_config());
-        assert!(result2.is_clean(), "second check should be clean (cached)");
+        assert!(
+            matches!(result2, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
+            "should retry ML when not cached"
+        );
     }
 
     #[test]
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_after_ml_unavailable() {
+    fn not_cached_when_ml_unavailable() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("CLAUDE.md"), "# Clean content").unwrap();
         let _guard = EnvGuard::new(dir.path());
@@ -237,15 +237,12 @@ mod tests {
         let result = check(&test_config());
         assert!(!result.is_clean(), "first check should ask without daemon");
 
-        // ML error is now cached — second call returns clean
+        // ML error should NOT be cached — retry when daemon comes back
         let cache = HashCache::open(TABLE).unwrap();
         let hash = hash_content("# Clean content");
         let canonical_path = std::env::current_dir().unwrap().join("CLAUDE.md");
         let key = canonical_path.to_string_lossy();
-        assert!(
-            cache.is_cached(&key, hash),
-            "should cache after ML unavailable"
-        );
+        assert!(!cache.is_cached(&key, hash), "should not cache ML errors");
     }
 
     #[test]

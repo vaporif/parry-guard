@@ -30,7 +30,7 @@ pub fn process(input: &HookInput, config: &Config) -> Option<HookOutput> {
     // Fast scan alone has false positives (e.g. "you are now connected"),
     // and taint is a nuclear option — blocks ALL tools until manual removal.
     if fast_result.is_injection() {
-        match crate::scan_text(&response, config) {
+        match parry_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {
                 debug!("ML confirmed injection, tainting");
                 crate::taint::mark(&crate::taint::TaintContext {
