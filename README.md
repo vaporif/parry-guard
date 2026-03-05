@@ -106,97 +106,32 @@ The daemon auto-starts on first scan, downloads the model on first run, and idle
 - **PostToolUse**: Scans tool output for injection/secrets, auto-taints project on detection
 - **UserPromptSubmit**: Audits `.claude/` directory for dangerous permissions, injected commands, hook scripts
 
-### Daemon Mode
+### Daemon & Cache
 
-Keep ML model loaded in memory for faster scans:
+The daemon keeps ML models in memory and can be run standalone with `parry serve --idle-timeout 1800`. Hook calls auto-start it if not running.
 
-```bash
-parry serve --idle-timeout 1800  # exits after 30min idle
-```
-
-Hook calls auto-start the daemon if not running (exponential backoff).
-
-### Scan Cache
-
-The daemon caches ML scan results in `~/.parry/scan-cache.redb` (redb). Texts are hashed (u64) and results stored with a 30-day TTL. Cache hits return in ~8ms (vs ~70ms+ for ML inference). Expired entries are pruned hourly. The cache is shared across all projects — identical text always returns the same cached result regardless of which project triggered the scan.
+Scan results are cached in `~/.parry/scan-cache.redb` (30-day TTL, ~8ms cache hits vs ~70ms+ inference). Cache is shared across projects and pruned hourly.
 
 ## Detection Layers
 
-### 1. Unicode
+Multi-stage, fail-closed (if unsure, treat as unsafe):
 
-Flags invisible characters that can hide malicious instructions:
-- Private Use Area (U+E000–U+F8FF)
-- Unassigned codepoints
-- 3+ format characters (single BOM allowed)
+1. **Unicode** — invisible characters (PUA, unassigned codepoints), homoglyphs, RTL overrides
+2. **Substring** — Aho-Corasick matching for known injection phrases
+3. **Secrets** — 40+ regex patterns for credentials (AWS, GitHub/GitLab, cloud providers, database URIs, private keys, etc.)
+4. **ML Classification** — DeBERTa v3 transformer with text chunking (256 chars, 25 overlap) and head+tail strategy for long texts. Configurable threshold (default 0.7).
+5. **Bash Exfiltration** — tree-sitter AST analysis for data exfil: network sinks, command substitution, obfuscation (base64, hex, ROT13), DNS tunneling, cloud storage, 60+ sensitive paths, 40+ exfil domains
+6. **Script Exfiltration** — same source→sink analysis for script files across 16 languages
 
-### 2. Substring
+### Scan modes
 
-Aho-Corasick matching for known patterns:
+| Mode | Models | Latency/chunk |
+|------|--------|---------------|
+| `fast` (default) | DeBERTa v3 | ~50-70ms |
+| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s |
+| `custom` | User-defined (`~/.config/parry/models.toml`) | varies |
 
-```
-ignore all previous instructions
-you are now
-disregard above
-<system>
-override safety
-reveal your system prompt
-reverse shell
-code injection
-...
-```
-
-### 3. Secrets
-
-40+ regex patterns for credentials:
-- AWS keys (`AKIA...`, secret access keys)
-- GitHub/GitLab tokens (`ghp_`, `glpat-`)
-- Cloud providers (GCP, Azure, DigitalOcean, Heroku)
-- AI services (OpenAI, Anthropic)
-- Database URIs (MongoDB, PostgreSQL, MySQL, Redis)
-- CI/CD (Doppler, Pulumi, HashiCorp Vault)
-- Private keys (`-----BEGIN ... PRIVATE KEY-----`)
-
-### 4. ML Classification
-
-DeBERTa v3 transformer for semantic detection. Supports multi-model ensemble via `--scan-mode`:
-
-| Mode | Models | Latency per chunk | Description |
-|------|--------|-------------------|-------------|
-| `fast` (default) | DeBERTa v3 | ~50-70ms | Single model, good baseline coverage |
-| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | OR ensemble — catches more attacks, higher latency |
-| `custom` | User-defined (`~/.config/parry/models.toml`) | varies | See `examples/models.toml` |
-
-**When to use `full` mode:** The two models are trained on different datasets and catch different attack patterns. DeBERTa v3 excels at common injection phrases and structural patterns. Llama Prompt Guard 2 is better at subtle, context-dependent attacks (e.g. role-play jailbreaks, indirect prompt injections). Running both as an OR ensemble reduces the chance of an attack slipping through either model's blind spots — at the cost of ~20x higher latency per chunk. Use `fast` for interactive workflows where latency matters; use `full` for high-security environments or when scanning untrusted content in batch (e.g. `parry diff --full`).
-
-- Chunks long text (256 chars, 25 overlap)
-- Head+tail strategy for texts >1024 chars
-- Configurable threshold (default 0.7, per-model override in custom mode)
-
-### 5. Bash Exfiltration
-
-Tree-sitter AST analysis detects data exfiltration patterns: piping sensitive data to network sinks (`curl`, `nc`, `wget`), command substitution, file arguments (`curl -d @.env`), inline interpreter code, obfuscation (base64, hex escapes, ROT13, IFS manipulation), DNS tunneling, `/dev/tcp` pseudo-devices, cloud storage exfil (`aws s3`, `gsutil`, `rclone`), and clipboard staging.
-
-**Sensitive paths** (60+): `.env`, `.ssh/`, `.aws/`, `.kube/config`, `.docker/config.json`, `.git-credentials`, `.bash_history`, etc.
-
-**Exfil domains** (40+): `webhook.site`, `ngrok.io`, `pastebin.com`, `transfer.sh`, `interact.sh`, etc.
-
-### 6. Script Exfiltration
-
-Same source→sink analysis for script files read via `Read` tool. Supports 16 languages: Shell, Python, JavaScript, TypeScript, Ruby, PHP, Perl, PowerShell, Lua, R, Elixir, Julia, Groovy, Scala, Kotlin, Nix.
-
-## Architecture
-
-```
-crates/
-├── cli/       # Entry point
-├── core/      # Unicode, substring, secrets, config (no ML)
-├── ml/        # Multi-model ML scanning (DeBERTa, Llama, custom)
-├── exfil/     # Tree-sitter AST analysis
-├── hook/      # Claude Code integration
-└── daemon/    # Persistent ML server
-```
-
-Fail-closed: panics exit 1, ML errors → suspicious, bad input → failure.
+Use `fast` for interactive workflows; `full` for high-security or batch scanning (`parry diff --full`). The two models cover different blind spots — DeBERTa v3 catches common injection patterns while Llama Prompt Guard 2 is better at subtle, context-dependent attacks (role-play jailbreaks, indirect injections). Running both as an OR ensemble reduces missed attacks at ~20x higher latency per chunk.
 
 ## Config
 
@@ -246,37 +181,18 @@ cargo build --no-default-features --features onnx-fetch
 
 ## Performance
 
-Benchmarked on Apple Silicon (M-series, release build, CPU inference). The daemon keeps models loaded in memory and caches scan results.
+Apple Silicon, release build, `fast` mode (DeBERTa v3 only). ONNX is **5-7x faster** than Candle. Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
 
-### Backend comparison
-
-ONNX is **5-7x faster** than Candle for ML inference. Benchmarks use [criterion](https://github.com/bheisler/criterion.rs) — run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`). HTML reports in `target/criterion/`.
-
-| Text | Candle | ONNX | Speedup |
-|---|---|---|---|
-| Short (147 chars, 1 chunk) | ~61ms | ~10ms | **6.3x** |
-| Medium (460 chars, 2 chunks) | ~160ms | ~32ms | **5.0x** |
-| Long (1288 chars, 6 chunks) | ~683ms | ~136ms | **5.0x** |
-| Model load | ~1s | ~580ms | **1.8x** |
-
-> Measured with `fast` mode (DeBERTa v3 only). Llama Prompt Guard 2 does not ship an ONNX export, so `full` mode currently uses Candle for PG2 regardless of backend choice.
-
-### Daemon latency
-
-| Scenario | `fast` mode (DeBERTa only) | `full` mode (DeBERTa + Llama PG2) |
+| Scenario | Candle | ONNX |
 |---|---|---|
-| Cold start (daemon spawn + model load) | ~370ms | ~2.3s |
-| Warm scan, short text (~120 chars) | ~70ms | ~1.6s |
-| Warm scan, medium text (~280 chars, 2 chunks) | ~130ms | ~3.1s |
-| Fast-scan short-circuit (regex/substring match) | ~7ms | ~7ms |
-| Cached result (repeated text) | ~8ms | ~8ms |
+| Short text (1 chunk) | ~61ms | ~10ms |
+| Medium text (2 chunks) | ~160ms | ~32ms |
+| Long text (6 chunks) | ~683ms | ~136ms |
+| Cold start (daemon + model load) | ~1s | ~580ms |
+| Fast-scan short-circuit | ~7ms | ~7ms |
+| Cached result | ~8ms | ~8ms |
 
-### Per-model inference per chunk
-
-| Model | Candle | ONNX |
-|---|---|---|
-| DeBERTa v3 | ~60ms | ~10ms |
-| Llama Prompt Guard 2 | ~1,500ms | N/A (no ONNX export) |
+> Llama Prompt Guard 2 (~1.5s/chunk) does not ship an ONNX export, so `full` mode uses Candle for PG2 regardless of backend.
 
 
 ## Development
@@ -288,7 +204,7 @@ just check               # run all checks (clippy, test, fmt, lint, typos, audit
 just build               # build workspace (candle)
 just build-onnx          # build workspace (onnx-fetch)
 just test                # run tests
-just test-e2e            # run ML e2e tests (requires HF_TOKEN, see below)
+just e2e            # run ML e2e tests (requires HF_TOKEN, see below)
 just bench-candle        # benchmark ML inference, candle backend (requires HF_TOKEN)
 just bench-onnx          # benchmark ML inference, ONNX backend (requires HF_TOKEN)
 just clippy              # lint
@@ -301,7 +217,7 @@ just setup-hooks         # configure git hooks
 The ML e2e tests are `#[ignore]`d by default since they require a HuggingFace token and model downloads. To run them:
 
 ```bash
-HF_TOKEN=hf_... just test-e2e
+HF_TOKEN=hf_... just e2e
 ```
 
 This tests both `fast` (DeBERTa only) and `full` (DeBERTa + Llama PG2) modes with semantic injection prompts and clean text. First run downloads models (~100MB each).

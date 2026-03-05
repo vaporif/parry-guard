@@ -33,13 +33,17 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -84,6 +88,25 @@ jobs:
 
       - name: Nix flake check
         run: nix flake check
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: ML e2e tests
+        run: cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   audit:
     name: Audit

@@ -110,6 +110,7 @@
             pkgs.taplo
             pkgs.typos
             pkgs.actionlint
+            pkgs.cargo-nextest
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15

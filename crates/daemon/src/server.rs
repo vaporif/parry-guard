@@ -125,7 +125,10 @@ async fn handle_connection(
             info!("loading ML model");
             *ml_state = load_ml_scanner(config).map_or_else(
                 || {
-                    info!(ml = "unavailable", "ML model ready");
+                    warn!(
+                        ml = "unavailable",
+                        "ML model failed to load, scans will fail-close"
+                    );
                     MlState::Failed
                 },
                 |scanner| {
