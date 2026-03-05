@@ -135,7 +135,6 @@ Aho-Corasick matching for known patterns:
 
 ```
 ignore all previous instructions
-you are now
 disregard above
 <system>
 override safety
@@ -183,20 +182,6 @@ Tree-sitter AST analysis detects data exfiltration patterns: piping sensitive da
 ### 6. Script Exfiltration
 
 Same source→sink analysis for script files read via `Read` tool. Supports 16 languages: Shell, Python, JavaScript, TypeScript, Ruby, PHP, Perl, PowerShell, Lua, R, Elixir, Julia, Groovy, Scala, Kotlin, Nix.
-
-## Architecture
-
-```
-crates/
-├── cli/       # Entry point
-├── core/      # Unicode, substring, secrets, config (no ML)
-├── ml/        # Multi-model ML scanning (DeBERTa, Llama, custom)
-├── exfil/     # Tree-sitter AST analysis
-├── hook/      # Claude Code integration
-└── daemon/    # Persistent ML server
-```
-
-Fail-closed: panics exit 1, ML errors → suspicious, bad input → failure.
 
 ## Config
 
