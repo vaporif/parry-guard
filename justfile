@@ -22,7 +22,7 @@ clippy:
 
 # Run tests
 test:
-    cargo test --workspace
+    cargo nextest run --workspace
 
 # Check Rust formatting
 check-fmt:
@@ -57,8 +57,8 @@ lint-actions:
     actionlint
 
 # Run ML e2e tests (requires HF_TOKEN)
-test-e2e:
-    cargo test -p parry-daemon --test e2e -- --ignored
+e2e:
+    cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
 
 # Benchmark ML inference with candle backend (requires HF_TOKEN)
 bench-candle:
@@ -75,6 +75,18 @@ scan:
 # Start daemon
 serve:
     cargo run -- serve
+
+# Bump last version number (0.1.0-alpha.8 → 0.1.0-alpha.9)
+bump:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+    prefix="${current%.*}"
+    last="${current##*.}"
+    new="${prefix}.$((last + 1))"
+    sed "s/^version = \".*\"/version = \"${new}\"/" Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+    sed "s/\(parry-[a-z]* = { path = \"[^\"]*\", version = \)\"[^\"]*\"/\1\"${new}\"/" Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+    echo "Bumped ${current} → ${new}"
 
 # Set up git hooks
 setup-hooks:

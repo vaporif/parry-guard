@@ -30,7 +30,8 @@ pub fn chunks(text: &str) -> Vec<&str> {
     result
 }
 
-/// Returns a head+tail slice pair for texts longer than 1024 chars.
+/// Returns the head and tail concatenated (space-separated) for texts longer than 1024 chars.
+/// Returns `None` when input is shorter than `HEAD_TAIL_THRESHOLD`.
 /// Catches injection appended at the very end.
 #[must_use]
 pub fn head_tail(text: &str) -> Option<String> {
