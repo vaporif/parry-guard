@@ -112,14 +112,10 @@ fn collect_dir_files(dir: &Path, ext_filter: Option<&str>) -> Vec<(PathBuf, Stri
 fn hash_state(state: &AuditState) -> u64 {
     let mut hasher = blake3::Hasher::new();
 
-    for (path, content) in &state.commands {
-        if let Some(name) = path.file_name() {
-            hasher.update(name.as_encoded_bytes());
-        }
-        hasher.update(b"\0");
-        hasher.update(content.as_bytes());
-        hasher.update(b"\0");
-    }
+    hash_path_entries(&mut hasher, &state.commands);
+    hash_path_entries(&mut hasher, &state.agents);
+    hash_path_entries(&mut hasher, &state.memory);
+    hash_path_entries(&mut hasher, &state.claude_mds);
 
     for (name, content) in &state.settings {
         hasher.update(name.as_bytes());
@@ -137,6 +133,17 @@ fn hash_state(state: &AuditState) -> u64 {
 
     let hash = hasher.finalize();
     u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
+}
+
+fn hash_path_entries(hasher: &mut blake3::Hasher, entries: &[(PathBuf, String)]) {
+    for (path, content) in entries {
+        if let Some(name) = path.file_name() {
+            hasher.update(name.as_encoded_bytes());
+        }
+        hasher.update(b"\0");
+        hasher.update(content.as_bytes());
+        hasher.update(b"\0");
+    }
 }
 
 /// Run project audit on the given directory.
