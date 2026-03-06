@@ -106,7 +106,10 @@ fn run_hook(config: &Config) -> ExitCode {
     match hook_input.hook_event_name.as_deref() {
         Some("UserPromptSubmit") => {
             debug!("detected UserPromptSubmit hook");
-            run_audit(&hook_input);
+            let code = run_audit(&hook_input, config);
+            if code != ExitCode::SUCCESS {
+                return code;
+            }
         }
         Some("PostToolUse") => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
@@ -140,7 +143,7 @@ fn run_hook(config: &Config) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run_audit(hook_input: &parry_hook::HookInput) {
+fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
     let dir = hook_input
         .cwd
         .as_ref()
@@ -149,22 +152,36 @@ fn run_audit(hook_input: &parry_hook::HookInput) {
 
     let Some(dir) = dir else {
         warn!("no cwd available for audit");
-        return;
+        return ExitCode::SUCCESS;
     };
 
-    let warnings = parry_hook::project_audit::scan(&dir);
-    if warnings.is_empty() {
-        debug!("audit clean");
-        return;
+    let result = match parry_hook::project_audit::scan(&dir, config) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(%e, "audit ML scan failed (fail-closed)");
+            eprintln!("parry: project audit failed — ML scanner unavailable: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if result.manifest.is_empty() && result.warnings.is_empty() {
+        debug!("audit clean (cached)");
+        return ExitCode::SUCCESS;
     }
 
-    let message = parry_hook::project_audit::format_warnings(&warnings);
-    info!(count = warnings.len(), "audit warnings");
+    let message = parry_hook::project_audit::format_output(&result);
+    info!(
+        warnings = result.warnings.len(),
+        manifest_entries = result.manifest.len(),
+        "audit complete"
+    );
     let output = parry_hook::HookOutput::user_prompt_warning(&message);
     match serde_json::to_string(&output) {
         Ok(json) => println!("{json}"),
         Err(e) => warn!(%e, "failed to serialize audit output"),
     }
+
+    ExitCode::SUCCESS
 }
 
 fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool) -> ExitCode {
