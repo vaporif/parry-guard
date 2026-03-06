@@ -21,46 +21,55 @@ pub struct AuditWarning {
 
 /// Collected state from `.claude/` directory — read once, used for both hashing and checking.
 struct AuditState {
-    /// (path, content) for `.claude/commands/*.md` files.
+    /// (path, content) for `.claude/commands/*` files (all types, not just .md).
     commands: Vec<(PathBuf, String)>,
     /// (filename, content) for settings files.
     settings: Vec<(&'static str, String)>,
-    /// Hook file names in `.claude/hooks/`.
-    hook_files: Vec<String>,
+    /// (filename, content) for `.claude/hooks/*` files.
+    hooks: Vec<(String, String)>,
+    /// (path, content) for `.claude/agents/*.md` files.
+    agents: Vec<(PathBuf, String)>,
+    /// (path, content) for `.claude/memory/*` files.
+    memory: Vec<(PathBuf, String)>,
+    /// (path, content) for CLAUDE.md and .claude/CLAUDE.md at project root.
+    claude_mds: Vec<(PathBuf, String)>,
 }
 
 /// Read all auditable state from `.claude/` once.
 fn collect_state(dir: &Path) -> AuditState {
-    let mut commands = Vec::new();
-    let commands_dir = dir.join(".claude").join("commands");
-    if let Ok(entries) = std::fs::read_dir(&commands_dir) {
-        let mut files: Vec<_> = entries.filter_map(Result::ok).collect();
-        files.sort_by_key(std::fs::DirEntry::file_name);
-        for entry in files {
-            if entry.path().extension().is_some_and(|ext| ext == "md") {
-                if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                    commands.push((entry.path(), content));
-                }
-            }
-        }
-    }
+    let claude_dir = dir.join(".claude");
+
+    let commands = collect_dir_files(&claude_dir.join("commands"), None);
+    let agents = collect_dir_files(&claude_dir.join("agents"), Some("md"));
+    let memory = collect_dir_files(&claude_dir.join("memory"), None);
 
     let mut settings = Vec::new();
     for name in &["settings.json", "settings.local.json"] {
-        let path = dir.join(".claude").join(name);
+        let path = claude_dir.join(name);
         if let Ok(content) = std::fs::read_to_string(&path) {
             settings.push((*name, content));
         }
     }
 
-    let mut hook_files = Vec::new();
-    let hooks_dir = dir.join(".claude").join("hooks");
+    let mut hooks = Vec::new();
+    let hooks_dir = claude_dir.join("hooks");
     if let Ok(entries) = std::fs::read_dir(&hooks_dir) {
         let mut files: Vec<_> = entries.filter_map(Result::ok).collect();
         files.sort_by_key(std::fs::DirEntry::file_name);
         for entry in files {
             if entry.path().is_file() {
-                hook_files.push(entry.file_name().to_string_lossy().into_owned());
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let content = std::fs::read_to_string(entry.path()).unwrap_or_default();
+                hooks.push((name, content));
+            }
+        }
+    }
+
+    let mut claude_mds = Vec::new();
+    for candidate in [dir.join("CLAUDE.md"), claude_dir.join("CLAUDE.md")] {
+        if candidate.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                claude_mds.push((candidate, content));
             }
         }
     }
@@ -68,8 +77,35 @@ fn collect_state(dir: &Path) -> AuditState {
     AuditState {
         commands,
         settings,
-        hook_files,
+        hooks,
+        agents,
+        memory,
+        claude_mds,
     }
+}
+
+/// Collect files from a directory. If `ext_filter` is Some, only include files with that extension.
+fn collect_dir_files(dir: &Path, ext_filter: Option<&str>) -> Vec<(PathBuf, String)> {
+    let mut result = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return result;
+    };
+    let mut files: Vec<_> = entries.filter_map(Result::ok).collect();
+    files.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in files {
+        if !entry.path().is_file() {
+            continue;
+        }
+        if let Some(ext) = ext_filter {
+            if !entry.path().extension().is_some_and(|e| e == ext) {
+                continue;
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+            result.push((entry.path(), content));
+        }
+    }
+    result
 }
 
 /// Hash collected state for cache comparison.
@@ -92,8 +128,10 @@ fn hash_state(state: &AuditState) -> u64 {
         hasher.update(b"\0");
     }
 
-    for name in &state.hook_files {
+    for (name, content) in &state.hooks {
         hasher.update(name.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(content.as_bytes());
         hasher.update(b"\0");
     }
 
@@ -206,12 +244,13 @@ fn check_settings_permissions(state: &AuditState, warnings: &mut Vec<AuditWarnin
 
 /// Warn about any hook scripts in `.claude/hooks/`.
 fn check_project_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
-    if !state.hook_files.is_empty() {
+    if !state.hooks.is_empty() {
+        let names: Vec<&str> = state.hooks.iter().map(|(name, _)| name.as_str()).collect();
         warnings.push(AuditWarning {
             category: "HOOKS",
             message: format!(
                 ".claude/hooks/ contains executable scripts: {}",
-                state.hook_files.join(", ")
+                names.join(", ")
             ),
         });
     }
@@ -221,6 +260,60 @@ fn check_project_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
 mod tests {
     use super::*;
     use crate::test_util::EnvGuard;
+
+    #[test]
+    fn agents_collected_in_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let agents = dir.path().join(".claude").join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(agents.join("researcher.md"), "# Research agent").unwrap();
+        let state = collect_state(dir.path());
+        assert_eq!(state.agents.len(), 1);
+        assert!(state.agents[0].0.ends_with("researcher.md"));
+    }
+
+    #[test]
+    fn hooks_content_collected() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks = dir.path().join(".claude").join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        std::fs::write(hooks.join("setup.sh"), "#!/bin/bash\necho hello").unwrap();
+        let state = collect_state(dir.path());
+        assert_eq!(state.hooks.len(), 1);
+        assert_eq!(state.hooks[0].0, "setup.sh");
+        assert!(state.hooks[0].1.contains("echo hello"));
+    }
+
+    #[test]
+    fn memory_files_collected() {
+        let dir = tempfile::tempdir().unwrap();
+        let memory = dir.path().join(".claude").join("memory");
+        std::fs::create_dir_all(&memory).unwrap();
+        std::fs::write(memory.join("context.md"), "# Memory").unwrap();
+        let state = collect_state(dir.path());
+        assert_eq!(state.memory.len(), 1);
+    }
+
+    #[test]
+    fn claude_mds_collected() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".claude")).unwrap();
+        std::fs::write(dir.path().join("CLAUDE.md"), "# Root").unwrap();
+        std::fs::write(dir.path().join(".claude").join("CLAUDE.md"), "# Nested").unwrap();
+        let state = collect_state(dir.path());
+        assert_eq!(state.claude_mds.len(), 2);
+    }
+
+    #[test]
+    fn commands_all_file_types_collected() {
+        let dir = tempfile::tempdir().unwrap();
+        let commands = dir.path().join(".claude").join("commands");
+        std::fs::create_dir_all(&commands).unwrap();
+        std::fs::write(commands.join("help.md"), "# Help").unwrap();
+        std::fs::write(commands.join("evil.txt"), "evil text").unwrap();
+        let state = collect_state(dir.path());
+        assert_eq!(state.commands.len(), 2, "should collect all file types");
+    }
 
     #[test]
     fn no_claude_dir_returns_empty() {
