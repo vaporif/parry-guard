@@ -24,8 +24,12 @@ env:
 
 jobs:
   check:
-    name: Check
+    name: Check (${{ matrix.feature }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [candle, onnx, onnx-fetch]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,14 +42,24 @@ jobs:
           tool: cargo-nextest
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.feature }}
+
+      - name: Download ONNX Runtime
+        if: matrix.feature == 'onnx'
+        run: |
+          curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz -o ort.tgz
+          tar xzf ort.tgz
+          echo "ORT_DYLIB_PATH=$PWD/onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so" >> "$GITHUB_ENV"
 
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --no-default-features --features ${{ matrix.feature }} -- -D warnings
 
       - name: Test
-        run: cargo nextest run --workspace
+        run: cargo nextest run --workspace --no-default-features --features ${{ matrix.feature }}
 
       - name: Format
+        if: matrix.feature == 'candle'
         run: cargo fmt --all -- --check
 
   lint:
@@ -90,8 +104,12 @@ jobs:
         run: nix flake check
 
   e2e:
-    name: E2E
+    name: E2E (${{ matrix.feature }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [candle, onnx, onnx-fetch]
     steps:
       - uses: actions/checkout@v4
 
@@ -102,9 +120,18 @@ jobs:
           tool: cargo-nextest
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-${{ matrix.feature }}
+
+      - name: Download ONNX Runtime
+        if: matrix.feature == 'onnx'
+        run: |
+          curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz -o ort.tgz
+          tar xzf ort.tgz
+          echo "ORT_DYLIB_PATH=$PWD/onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so" >> "$GITHUB_ENV"
 
       - name: ML e2e tests
-        run: cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
+        run: cargo nextest run -p parry-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
