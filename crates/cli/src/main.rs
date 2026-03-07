@@ -166,7 +166,7 @@ fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
     };
 
     if warnings.is_empty() {
-        debug!("audit clean (cached)");
+        debug!("audit clean");
         return ExitCode::SUCCESS;
     }
 
