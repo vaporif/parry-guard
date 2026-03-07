@@ -65,7 +65,8 @@ hf-hub = { version = "0.5", default-features = false, features = [
 ] }
 
 # ONNX backend (optional)
-ort = { version = "2.0.0-rc.11", default-features = false, features = [
+# TODO: unpin once ort 2.0.0-rc.13+ is released with VitisAI gating fix (pykeio/ort#546)
+ort = { version = "=2.0.0-rc.11", default-features = false, features = [
   "std",
   "ndarray",
 ] }
