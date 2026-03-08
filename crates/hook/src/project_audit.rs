@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use parry_core::{Config, ScanError};
+use parry_core::{Config, ScanError, ScanResult};
 use tracing::{debug, instrument};
 
 use crate::cache::HashCache;
@@ -205,12 +205,17 @@ fn check_text_content(
             continue;
         }
         let result = crate::scan_text(content, config)?;
-        if !result.is_clean() {
-            let name = path.strip_prefix(dir).unwrap_or(path);
-            warnings.push(AuditWarning {
+        let name = path.strip_prefix(dir).unwrap_or(path);
+        match result {
+            ScanResult::Injection => warnings.push(AuditWarning {
                 category: "INJECTION",
                 message: format!("{} may contain prompt injection", name.display()),
-            });
+            }),
+            ScanResult::Secret => warnings.push(AuditWarning {
+                category: "SECRET",
+                message: format!("{} may contain embedded secrets", name.display()),
+            }),
+            ScanResult::Clean => {}
         }
     }
     Ok(())
