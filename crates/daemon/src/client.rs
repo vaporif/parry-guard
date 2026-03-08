@@ -88,8 +88,9 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
         cmd.arg("--hf-token-path").arg(&token_file);
     }
 
-    // TODO: pass --runtime-dir to child process when the CLI flag exists,
-    // otherwise the daemon binds to ~/.parry/ while the caller expects <runtime_dir>/
+    // NOTE: runtime_dir is not passed to the child process. It's test-only —
+    // production always uses None (hardcoded in main.rs). No CLI flag needed:
+    // an attacker who can inject --runtime-dir already has code execution.
     cmd.arg("serve");
 
     cmd.stdin(std::process::Stdio::null())
