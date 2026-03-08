@@ -162,28 +162,27 @@ pub fn scan_text(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
     parry_daemon::scan_full(text, config)
 }
 
-/// Shared test utilities for tests that manipulate global state (cwd, env vars).
+/// Shared test utilities for tests that manipulate cwd.
 #[cfg(test)]
 pub(crate) mod test_util {
     use std::path::{Path, PathBuf};
     use std::sync::MutexGuard;
 
-    /// Single mutex shared across all test modules that touch cwd/env.
-    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// Single mutex shared across all test modules that touch cwd.
+    static CWD_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    /// RAII guard that serializes env access and restores cwd on drop.
-    pub struct EnvGuard<'a> {
+    /// RAII guard that serializes cwd access and restores it on drop.
+    pub struct CwdGuard<'a> {
         prev_cwd: PathBuf,
         _lock: MutexGuard<'a, ()>,
     }
 
-    impl EnvGuard<'_> {
+    impl CwdGuard<'_> {
         pub(crate) fn new(dir: &Path) -> Self {
-            let lock = ENV_MUTEX
+            let lock = CWD_MUTEX
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let prev_cwd = std::env::current_dir().unwrap();
-            unsafe { std::env::set_var("PARRY_RUNTIME_DIR", dir) };
             std::env::set_current_dir(dir).unwrap();
             Self {
                 prev_cwd,
@@ -192,10 +191,9 @@ pub(crate) mod test_util {
         }
     }
 
-    impl Drop for EnvGuard<'_> {
+    impl Drop for CwdGuard<'_> {
         fn drop(&mut self) {
             let _ = std::env::set_current_dir(&self.prev_cwd);
-            unsafe { std::env::remove_var("PARRY_RUNTIME_DIR") };
         }
     }
 }
@@ -247,8 +245,10 @@ mod tests {
     #[test]
     fn clean_text_returns_error_without_daemon() {
         let dir = tempfile::tempdir().unwrap();
-        let _guard = test_util::EnvGuard::new(dir.path());
-        let config = test_config();
+        let config = Config {
+            runtime_dir: Some(dir.path().to_path_buf()),
+            ..Config::default()
+        };
         let result = scan_text("Normal markdown content", &config);
         assert!(result.is_err(), "clean text should error without daemon");
     }

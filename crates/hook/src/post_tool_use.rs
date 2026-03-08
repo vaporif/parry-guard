@@ -33,12 +33,15 @@ pub fn process(input: &HookInput, config: &Config) -> Option<HookOutput> {
         match parry_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {
                 debug!("ML confirmed injection, tainting");
-                crate::taint::mark(&crate::taint::TaintContext {
-                    tool_name: input.tool_name.as_deref().unwrap_or("unknown"),
-                    session_id: input.session_id.as_deref(),
-                    tool_input: &input.tool_input,
-                    content: Some(&response),
-                });
+                crate::taint::mark(
+                    &crate::taint::TaintContext {
+                        tool_name: input.tool_name.as_deref().unwrap_or("unknown"),
+                        session_id: input.session_id.as_deref(),
+                        tool_input: &input.tool_input,
+                        content: Some(&response),
+                    },
+                    config.runtime_dir.as_deref(),
+                );
             }
             Ok(_) => debug!("ML overrode fast-scan detection, skipping taint"),
             Err(e) => debug!(%e, "ML unavailable, skipping taint"),

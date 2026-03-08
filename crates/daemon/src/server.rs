@@ -33,21 +33,22 @@ pub struct DaemonConfig {
 /// Returns an error if another daemon is running or the socket cannot be bound.
 #[instrument(skip(config, daemon_config), fields(idle_timeout = ?daemon_config.idle_timeout))]
 pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<()> {
-    if crate::client::is_daemon_running() {
+    let rd = config.runtime_dir.as_deref();
+    if crate::client::is_daemon_running(rd) {
         warn!("another daemon is already running");
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
     // Socket exists but nobody responded to ping — stale, clean up
-    crate::transport::cleanup_stale_state();
-    let listener = transport::bind_async()?;
+    crate::transport::cleanup_stale_state(rd);
+    let listener = transport::bind_async(rd)?;
 
-    let pid_path = transport::pid_file_path()?;
+    let pid_path = transport::pid_file_path(rd)?;
     std::fs::write(&pid_path, std::process::id().to_string())?;
 
     // ML model loads lazily on first scan request so Pings work immediately
     let mut ml_state = MlState::NotLoaded;
-    let cache = ScanCache::open().map(Arc::new);
+    let cache = ScanCache::open(rd).map(Arc::new);
 
     let cache_status = if cache.is_some() { "loaded" } else { "off" };
     info!(
@@ -87,7 +88,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
 
     drop(listener);
     let _ = std::fs::remove_file(&pid_path);
-    crate::transport::cleanup_stale_state();
+    crate::transport::cleanup_stale_state(rd);
 
     Ok(())
 }

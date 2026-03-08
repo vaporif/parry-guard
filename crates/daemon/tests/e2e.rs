@@ -6,24 +6,25 @@ use parry_core::{Config, ScanResult};
 use parry_daemon::DaemonConfig;
 use tokio::task::JoinHandle;
 
-fn fast_config() -> Config {
+fn fast_config(dir: &Path) -> Config {
     Config {
         hf_token: std::env::var("HF_TOKEN").ok(),
+        runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }
 }
 
-fn full_config() -> Config {
+fn full_config(dir: &Path) -> Config {
     Config {
         scan_mode: ScanMode::Full,
         hf_token: std::env::var("HF_TOKEN").ok(),
+        runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }
 }
 
 async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -> JoinHandle<()> {
     std::fs::create_dir_all(dir).unwrap();
-    unsafe { std::env::set_var("PARRY_RUNTIME_DIR", dir) };
 
     let daemon_config = DaemonConfig { idle_timeout };
 
@@ -31,11 +32,14 @@ async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -
         let _ = parry_daemon::run(&config, &daemon_config).await;
     });
 
+    let rd = dir.to_path_buf();
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let ready = tokio::task::spawn_blocking(parry_daemon::is_daemon_running)
-            .await
-            .unwrap();
+        let rd2 = rd.clone();
+        let ready =
+            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd2)))
+                .await
+                .unwrap();
         if ready {
             // Settle time so daemon re-enters accept loop after our ping
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -74,22 +78,23 @@ async fn scan_with_retry(
     unreachable!()
 }
 
-/// All cases run in a single test to avoid env var races
-/// (`PARRY_RUNTIME_DIR` is process-global).
+/// All cases run in a single test to share daemon lifecycle.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn daemon_e2e() {
     let t = Instant::now();
-    let config = fast_config();
 
     // ── ping/pong ──
     eprintln!("[ping/pong] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
-        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(30)).await;
+        let config = fast_config(dir.path());
+        let handle = start_daemon_with(dir.path(), config, Duration::from_secs(30)).await;
 
-        let running = tokio::task::spawn_blocking(parry_daemon::is_daemon_running)
-            .await
-            .unwrap();
+        let rd = dir.path().to_path_buf();
+        let running =
+            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+                .await
+                .unwrap();
         assert!(running);
         eprintln!("[ping/pong] ok ({:?})", t.elapsed());
 
@@ -100,6 +105,7 @@ async fn daemon_e2e() {
     eprintln!("[scan] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
+        let config = fast_config(dir.path());
         let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(30)).await;
 
         eprintln!("[scan] clean text...");
@@ -127,30 +133,31 @@ async fn daemon_e2e() {
     eprintln!("[idle] starting daemon (1s timeout)...");
     {
         let dir = tempfile::tempdir().unwrap();
-        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(1)).await;
+        let config = fast_config(dir.path());
+        let _handle = start_daemon_with(dir.path(), config, Duration::from_secs(1)).await;
 
-        let running = tokio::task::spawn_blocking(parry_daemon::is_daemon_running)
-            .await
-            .unwrap();
+        let rd = dir.path().to_path_buf();
+        let running =
+            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+                .await
+                .unwrap();
         assert!(running);
 
         eprintln!("[idle] waiting for timeout...");
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        let running = tokio::task::spawn_blocking(parry_daemon::is_daemon_running)
-            .await
-            .unwrap();
+        let rd = dir.path().to_path_buf();
+        let running =
+            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+                .await
+                .unwrap();
         assert!(!running);
+        let _ = _handle.await; // ensure daemon cleanup completes before TempDir drop
         eprintln!("[idle] ok ({:?})", t.elapsed());
-
-        let _ = handle.await;
     }
-
-    unsafe { std::env::remove_var("PARRY_RUNTIME_DIR") };
 }
 
 /// Requires HF token + model downloads. Run with: `cargo test -- --ignored`
-/// Single test to avoid env var races (`PARRY_RUNTIME_DIR` is process-global).
 #[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ml_model_e2e() {
@@ -159,8 +166,8 @@ async fn ml_model_e2e() {
     // ── fast mode: DeBERTa v3 ──
     eprintln!("[fast] starting daemon (DeBERTa v3)...");
     {
-        let config = fast_config();
         let dir = tempfile::tempdir().unwrap();
+        let config = fast_config(dir.path());
         let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(60)).await;
         eprintln!("[fast] daemon ready ({:?})", t.elapsed());
 
@@ -194,8 +201,8 @@ async fn ml_model_e2e() {
     // ── full mode: DeBERTa v3 + Llama Prompt Guard 2 ──
     eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");
     {
-        let config = full_config();
         let dir = tempfile::tempdir().unwrap();
+        let config = full_config(dir.path());
         let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(120)).await;
         eprintln!("[full] daemon ready ({:?})", t.elapsed());
 
@@ -223,6 +230,4 @@ async fn ml_model_e2e() {
         stop_daemon(handle).await;
     }
     eprintln!("[done] total: {:?}", t.elapsed());
-
-    unsafe { std::env::remove_var("PARRY_RUNTIME_DIR") };
 }

@@ -54,8 +54,8 @@ impl ScanCache {
     ///
     /// Returns `None` if the DB path cannot be determined or the database
     /// cannot be opened.
-    pub fn open() -> Option<Self> {
-        let path = crate::transport::parry_dir().ok()?.join(DB_FILE);
+    pub fn open(runtime_dir: Option<&std::path::Path>) -> Option<Self> {
+        let path = crate::transport::parry_dir(runtime_dir).ok()?.join(DB_FILE);
 
         match redb::Database::create(&path) {
             Ok(db) => {

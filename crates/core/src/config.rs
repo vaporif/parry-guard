@@ -1,5 +1,7 @@
 //! Runtime configuration for parry scanning.
 
+use std::path::PathBuf;
+
 use serde::Deserialize;
 
 const DEFAULT_MODEL: &str = "ProtectAI/deberta-v3-small-prompt-injection-v2";
@@ -51,6 +53,10 @@ pub struct Config {
     pub threshold: f32,
     pub ignore_paths: Vec<String>,
     pub scan_mode: ScanMode,
+    /// Explicit runtime directory for daemon IPC, caches, and taint files.
+    /// `None` means use default paths (`~/.parry/` for daemon, cwd for hook files).
+    /// Set in tests to avoid process-global env var mutation.
+    pub runtime_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -115,6 +121,7 @@ impl Default for Config {
             threshold: 0.7,
             ignore_paths: Vec::new(),
             scan_mode: ScanMode::default(),
+            runtime_dir: None,
         }
     }
 }

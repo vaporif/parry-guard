@@ -1,5 +1,6 @@
 //! Daemon client for IPC communication.
 
+use std::path::Path;
 use std::time::Duration;
 
 use parry_core::{Config, ScanError, ScanResult};
@@ -26,14 +27,14 @@ pub fn scan_full(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
         threshold: config.threshold,
         text: text.to_string(),
     };
-    send_request(&req)
+    send_request(&req, config.runtime_dir.as_deref())
 }
 
 /// Check if a daemon is running by sending a ping.
 #[must_use]
-pub fn is_daemon_running() -> bool {
+pub fn is_daemon_running(runtime_dir: Option<&Path>) -> bool {
     trace!("checking if daemon is running");
-    let Ok(mut stream) = Stream::connect(PING_TIMEOUT) else {
+    let Ok(mut stream) = Stream::connect(PING_TIMEOUT, runtime_dir) else {
         trace!("daemon not running (connection failed)");
         return false;
     };
@@ -71,7 +72,7 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
     cmd.arg("--scan-mode").arg(config.scan_mode.as_str());
 
     if let Some(ref token) = config.hf_token {
-        let token_file = crate::transport::parry_dir()
+        let token_file = crate::transport::parry_dir(config.runtime_dir.as_deref())
             .map_err(|e| ScanError::DaemonStart(format!("failed to resolve parry dir: {e}")))?
             .join(".hf-token");
         std::fs::write(&token_file, token)
@@ -87,6 +88,9 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
         cmd.arg("--hf-token-path").arg(&token_file);
     }
 
+    // NOTE: runtime_dir is not passed to the child process. It's test-only —
+    // production always uses None (hardcoded in main.rs). No CLI flag needed:
+    // an attacker who can inject --runtime-dir already has code execution.
     cmd.arg("serve");
 
     cmd.stdin(std::process::Stdio::null())
@@ -104,23 +108,24 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
 ///
 /// Returns `ScanError::DaemonStart` if the daemon fails to start within the timeout.
 pub fn ensure_running(config: &Config) -> Result<(), ScanError> {
-    if is_daemon_running() {
+    let rd = config.runtime_dir.as_deref();
+    if is_daemon_running(rd) {
         return Ok(());
     }
-    crate::transport::cleanup_stale_state();
+    crate::transport::cleanup_stale_state(rd);
     info!("daemon not running, starting...");
     spawn_daemon(config)?;
 
-    if wait_for_ready() {
+    if wait_for_ready(rd) {
         info!("daemon ready");
         return Ok(());
     }
 
     warn!("daemon did not come up after first spawn, retrying...");
-    crate::transport::cleanup_stale_state();
+    crate::transport::cleanup_stale_state(rd);
     spawn_daemon(config)?;
 
-    if wait_for_ready() {
+    if wait_for_ready(rd) {
         info!("daemon ready after retry");
         return Ok(());
     }
@@ -132,23 +137,23 @@ pub fn ensure_running(config: &Config) -> Result<(), ScanError> {
 
 const BACKOFF_MS: [u64; 6] = [100, 200, 500, 1000, 2000, 3000];
 
-fn wait_for_ready() -> bool {
+fn wait_for_ready(runtime_dir: Option<&Path>) -> bool {
     for delay_ms in BACKOFF_MS {
         std::thread::sleep(Duration::from_millis(delay_ms));
         // Bail early if socket doesn't exist — daemon clearly not spawning
-        if !crate::transport::socket_exists() {
+        if !crate::transport::socket_exists(runtime_dir) {
             trace!("socket file missing, daemon not starting");
             return false;
         }
-        if is_daemon_running() {
+        if is_daemon_running(runtime_dir) {
             return true;
         }
     }
     false
 }
 
-fn send_request(req: &ScanRequest) -> Result<ScanResult, ScanError> {
-    let mut stream = Stream::connect(SCAN_TIMEOUT)?;
+fn send_request(req: &ScanRequest, runtime_dir: Option<&Path>) -> Result<ScanResult, ScanError> {
+    let mut stream = Stream::connect(SCAN_TIMEOUT, runtime_dir)?;
     protocol::write_request(&mut stream, req)?;
     let resp = protocol::read_response(&mut stream)?;
     match resp {
@@ -196,8 +201,7 @@ mod tests {
     #[test]
     fn is_daemon_running_returns_false_without_daemon() {
         let dir = tempfile::tempdir().unwrap();
-        let _guard = crate::transport::test_util::EnvGuard::new(dir.path());
-        assert!(!is_daemon_running());
+        assert!(!is_daemon_running(Some(dir.path())));
     }
 
     #[test]
@@ -206,10 +210,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();
-        let _guard = crate::transport::test_util::EnvGuard::new(dir.path());
 
         let config = Config {
             hf_token: Some("test-token".to_string()),
+            runtime_dir: Some(dir.path().to_path_buf()),
             ..Config::default()
         };
 
