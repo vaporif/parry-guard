@@ -152,6 +152,7 @@ async fn daemon_e2e() {
                 .await
                 .unwrap();
         assert!(!running);
+        let _ = _handle.await; // ensure daemon cleanup completes before TempDir drop
         eprintln!("[idle] ok ({:?})", t.elapsed());
     }
 }
