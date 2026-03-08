@@ -160,7 +160,14 @@ fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
         Ok(w) => w,
         Err(e) => {
             warn!(%e, "audit ML scan failed (fail-closed)");
-            eprintln!("parry: project audit failed — ML scanner unavailable: {e}");
+            let message = format!(
+                "parry: project audit failed — ML scanner unavailable. \
+                 Run `parry serve` and retry. Error: {e}"
+            );
+            let output = parry_hook::HookOutput::user_prompt_warning(&message);
+            if let Ok(json) = serde_json::to_string(&output) {
+                println!("{json}");
+            }
             return ExitCode::FAILURE;
         }
     };
