@@ -75,8 +75,8 @@ pub fn check(config: &Config) -> CheckResult {
             ));
         }
 
-        // ML scan — ask on match, cache so user isn't asked again
-        match crate::scan_text(&content, config) {
+        // ML scan with higher threshold — CLAUDE.md is inherently instruction-like
+        match crate::scan_text_with_threshold(&content, config, config.claude_md_threshold) {
             Ok(result) if !result.is_clean() => {
                 debug!(path = %path.display(), "ML flagged CLAUDE.md");
                 cache_hash(cache.as_ref(), &key, hash);
@@ -289,6 +289,33 @@ mod tests {
 
         let result = check(&config);
         assert!(!result.is_clean(), "should scan CLAUDE.md at repo root");
+    }
+
+    #[test]
+    fn uses_claude_md_threshold_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("CLAUDE.md"), "# Normal project docs").unwrap();
+        let _guard = CwdGuard::new(dir.path());
+
+        // Custom claude_md_threshold should be passed through (verified structurally;
+        // full ML threshold behavior is tested in ml::tests::request_threshold_used_when_no_per_model)
+        let config = Config {
+            claude_md_threshold: 0.95,
+            runtime_dir: Some(dir.path().to_path_buf()),
+            ..Config::default()
+        };
+        assert_eq!(
+            config.claude_md_threshold.to_bits(),
+            0.95f32.to_bits(),
+            "custom claude_md_threshold should be preserved in config"
+        );
+
+        // Without daemon, ML fails — but the threshold config is accepted
+        let result = check(&config);
+        assert!(
+            matches!(result, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
+            "should attempt ML scan with custom threshold"
+        );
     }
 
     #[test]

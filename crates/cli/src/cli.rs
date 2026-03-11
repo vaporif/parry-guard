@@ -40,6 +40,11 @@ pub struct Cli {
           value_parser = threshold_in_range)]
     pub threshold: f32,
 
+    /// ML threshold for CLAUDE.md scanning (0.0–1.0, default 0.9)
+    #[arg(long, env = "PARRY_CLAUDE_MD_THRESHOLD", default_value = "0.9",
+          value_parser = threshold_in_range)]
+    pub claude_md_threshold: f32,
+
     /// ML scan mode: fast (1 model), full (2-model ensemble), custom (models.toml)
     #[arg(long, env = "PARRY_SCAN_MODE", default_value = "fast",
           value_parser = parse_scan_mode)]
