@@ -304,8 +304,9 @@ mod tests {
             runtime_dir: Some(dir.path().to_path_buf()),
             ..Config::default()
         };
-        assert!(
-            (config.claude_md_threshold - 0.95).abs() < f32::EPSILON,
+        assert_eq!(
+            config.claude_md_threshold.to_bits(),
+            0.95f32.to_bits(),
             "custom claude_md_threshold should be preserved in config"
         );
 

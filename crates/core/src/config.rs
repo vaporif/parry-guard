@@ -188,8 +188,9 @@ mod tests {
             config.claude_md_threshold,
             config.threshold,
         );
-        assert!(
-            (config.claude_md_threshold - 0.9).abs() < f32::EPSILON,
+        assert_eq!(
+            config.claude_md_threshold.to_bits(),
+            0.9f32.to_bits(),
             "default CLAUDE.md threshold should be 0.9"
         );
     }

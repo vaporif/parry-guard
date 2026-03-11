@@ -62,6 +62,14 @@ fn main() -> ExitCode {
 
     let cli = cli::Cli::parse();
 
+    if cli.claude_md_threshold < cli.threshold {
+        warn!(
+            claude_md_threshold = cli.claude_md_threshold,
+            threshold = cli.threshold,
+            "claude-md-threshold is lower than threshold — CLAUDE.md scanning will be more sensitive than normal content"
+        );
+    }
+
     let config = Config {
         hf_token: cli.resolve_hf_token(),
         threshold: cli.threshold,
