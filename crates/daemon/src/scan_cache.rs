@@ -222,6 +222,45 @@ mod tests {
     }
 
     #[test]
+    fn different_thresholds_produce_different_cache_keys() {
+        let text = "some CLAUDE.md content";
+        let hash_low = hash_content_with_threshold(text, 0.7);
+        let hash_high = hash_content_with_threshold(text, 0.9);
+        assert_ne!(
+            hash_low, hash_high,
+            "different thresholds must produce different hashes"
+        );
+
+        // Same threshold produces same hash
+        let hash_same = hash_content_with_threshold(text, 0.7);
+        assert_eq!(hash_low, hash_same);
+    }
+
+    #[test]
+    fn threshold_aware_cache_isolation() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = make_cache(dir.path());
+
+        let text = "instruction-like text";
+        let hash_low = hash_content_with_threshold(text, 0.7);
+        let hash_high = hash_content_with_threshold(text, 0.9);
+
+        // Cache injection at low threshold
+        cache.put(&hash_low, ScanResult::Injection);
+        // High threshold should be a miss (not poisoned by low threshold result)
+        assert!(
+            cache.get(&hash_high).is_none(),
+            "high threshold should not see low threshold cached result"
+        );
+
+        // Cache clean at high threshold
+        cache.put(&hash_high, ScanResult::Clean);
+        // Both should coexist independently
+        assert_eq!(cache.get(&hash_low), Some(ScanResult::Injection));
+        assert_eq!(cache.get(&hash_high), Some(ScanResult::Clean));
+    }
+
+    #[test]
     fn prune_removes_expired() {
         let dir = tempfile::tempdir().unwrap();
         let cache = make_cache(dir.path());

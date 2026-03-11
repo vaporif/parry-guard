@@ -180,6 +180,21 @@ mod tests {
     }
 
     #[test]
+    fn default_claude_md_threshold() {
+        let config = Config::default();
+        assert!(
+            config.claude_md_threshold > config.threshold,
+            "CLAUDE.md threshold ({}) should be higher than default threshold ({})",
+            config.claude_md_threshold,
+            config.threshold,
+        );
+        assert!(
+            (config.claude_md_threshold - 0.9).abs() < f32::EPSILON,
+            "default CLAUDE.md threshold should be 0.9"
+        );
+    }
+
+    #[test]
     fn is_ignored_prefix_match() {
         let config = Config {
             ignore_paths: vec!["/home/user/safe".to_string()],

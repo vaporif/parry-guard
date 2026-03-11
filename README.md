@@ -57,6 +57,7 @@ cargo install --path crates/cli --no-default-features --features onnx-fetch
     # package = inputs.parry.packages.${pkgs.system}.onnx;  # onnx backend (5-7x faster, see Performance)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignorePaths = [ "/home/user/repos/parry" ];
+    # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
 
     # scanMode = "full";  # fast (default) | full | custom
 
@@ -140,6 +141,7 @@ Use `fast` for interactive workflows; `full` for high-security or batch scanning
 | Flag | Env | Default | Description |
 |------|-----|---------|-------------|
 | `--threshold` | `PARRY_THRESHOLD` | 0.7 | ML detection threshold (0.0–1.0) |
+| `--claude-md-threshold` | `PARRY_CLAUDE_MD_THRESHOLD` | 0.9 | ML threshold for CLAUDE.md scanning (0.0–1.0) |
 | `--scan-mode` | `PARRY_SCAN_MODE` | fast | ML scan mode: `fast`, `full`, `custom` |
 | `--hf-token` | `HF_TOKEN` | — | HuggingFace token (direct value) |
 | `--hf-token-path` | `HF_TOKEN_PATH` | `/run/secrets/hf-token-scan-injection` | HuggingFace token file |
