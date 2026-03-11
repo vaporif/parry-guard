@@ -153,7 +153,11 @@ fn handle_request(
     ml_scanner: Option<&mut MlScanner>,
     cache: Option<&ScanCache>,
 ) -> ScanResponse {
-    debug!(text_len = req.text.len(), threshold = req.threshold, "handling full scan request");
+    debug!(
+        text_len = req.text.len(),
+        threshold = req.threshold,
+        "handling full scan request"
+    );
     if let Some(c) = cache {
         let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold);
 
