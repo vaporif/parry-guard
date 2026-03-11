@@ -23,6 +23,22 @@ The ML models are gated on HuggingFace. Before installing:
 cargo binstall parry-ai
 ```
 
+### [rvx](https://github.com/vaporif/rvx?tab=readme-ov-file#install)
+
+No Rust toolchain needed. Install rvx, then use it directly in hooks — it downloads the pre-built binary on first run and caches it:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 2000 }]
+  }
+}
+```
+
+Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as normal.
+
 ### From source
 
 ```bash
