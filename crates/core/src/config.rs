@@ -46,11 +46,19 @@ struct ModelsConfig {
     models: Vec<ModelDef>,
 }
 
+/// Default ML threshold for CLAUDE.md scanning (higher to reduce false positives).
+const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
+
 /// Runtime configuration for parry scanning.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub hf_token: Option<String>,
     pub threshold: f32,
+    /// ML threshold for CLAUDE.md scanning (default 0.9).
+    ///
+    /// Higher than `threshold` because CLAUDE.md files are instructions
+    /// by design and `DeBERTa` scores them higher than normal text.
+    pub claude_md_threshold: f32,
     pub ignore_paths: Vec<String>,
     pub scan_mode: ScanMode,
     /// Explicit runtime directory for daemon IPC, caches, and taint files.
@@ -119,6 +127,7 @@ impl Default for Config {
         Self {
             hf_token: None,
             threshold: 0.7,
+            claude_md_threshold: DEFAULT_CLAUDE_MD_THRESHOLD,
             ignore_paths: Vec::new(),
             scan_mode: ScanMode::default(),
             runtime_dir: None,

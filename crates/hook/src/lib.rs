@@ -153,13 +153,27 @@ impl PreToolUseOutput {
 /// Returns `ScanError::DaemonStart` or `ScanError::DaemonIo` if the daemon is unavailable.
 #[instrument(skip(text, config), fields(text_len = text.len()))]
 pub fn scan_text(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
+    scan_text_with_threshold(text, config, config.threshold)
+}
+
+/// Like `scan_text` but with a custom ML threshold (e.g. higher for CLAUDE.md).
+///
+/// # Errors
+///
+/// Returns `ScanError::DaemonStart` or `ScanError::DaemonIo` if the daemon is unavailable.
+#[instrument(skip(text, config), fields(text_len = text.len(), threshold))]
+pub fn scan_text_with_threshold(
+    text: &str,
+    config: &Config,
+    threshold: f32,
+) -> Result<ScanResult, ScanError> {
     let fast = parry_core::scan_text_fast(text);
     if !fast.is_clean() {
         return Ok(fast);
     }
 
     parry_daemon::ensure_running(config)?;
-    parry_daemon::scan_full(text, config)
+    parry_daemon::scan_full_with_threshold(text, config, threshold)
 }
 
 /// Shared test utilities for tests that manipulate cwd.

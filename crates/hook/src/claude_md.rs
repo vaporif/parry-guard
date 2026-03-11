@@ -75,8 +75,8 @@ pub fn check(config: &Config) -> CheckResult {
             ));
         }
 
-        // ML scan — ask on match, cache so user isn't asked again
-        match crate::scan_text(&content, config) {
+        // ML scan with higher threshold — CLAUDE.md is inherently instruction-like
+        match crate::scan_text_with_threshold(&content, config, config.claude_md_threshold) {
             Ok(result) if !result.is_clean() => {
                 debug!(path = %path.display(), "ML flagged CLAUDE.md");
                 cache_hash(cache.as_ref(), &key, hash);

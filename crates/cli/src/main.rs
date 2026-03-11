@@ -65,6 +65,7 @@ fn main() -> ExitCode {
     let config = Config {
         hf_token: cli.resolve_hf_token(),
         threshold: cli.threshold,
+        claude_md_threshold: cli.claude_md_threshold,
         ignore_paths: cli.ignore_path,
         scan_mode: cli.scan_mode,
         runtime_dir: None,

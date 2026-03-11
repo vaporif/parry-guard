@@ -21,6 +21,19 @@ pub fn hash_content(text: &str) -> [u8; 32] {
     blake3::hash(text.as_bytes()).into()
 }
 
+/// Hash text content with threshold included in the digest.
+///
+/// Different thresholds produce different cache keys to avoid
+/// returning stale results when scanning the same content at
+/// different confidence levels (e.g. CLAUDE.md vs content injection).
+#[must_use]
+pub fn hash_content_with_threshold(text: &str, threshold: f32) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(text.as_bytes());
+    hasher.update(&threshold.to_le_bytes());
+    hasher.finalize().into()
+}
+
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
