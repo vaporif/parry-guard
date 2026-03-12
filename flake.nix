@@ -30,8 +30,17 @@
   in {
     formatter = nixpkgs.lib.genAttrs systems (system: nixpkgs.legacyPackages.${system}.alejandra);
 
-    overlays.default = final: _prev: {
-      parry = self.packages.${final.stdenv.hostPlatform.system}.default;
+    overlays.default = final: _prev: let
+      sys = final.stdenv.hostPlatform.system;
+    in {
+      parry =
+        self.packages.${
+          sys
+        }.${
+          if builtins.hasAttr "default" self.packages.${sys}
+          then "default"
+          else "candle"
+        };
     };
 
     homeManagerModules.default = import ./nix/hm-module.nix;
