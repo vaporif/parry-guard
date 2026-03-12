@@ -47,10 +47,17 @@
         inherit src;
         pname = "parry";
         strictDeps = true;
-        buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.libiconv
-          pkgs.apple-sdk_15
+        nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+          pkgs.pkg-config
         ];
+        buildInputs =
+          pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.openssl
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.libiconv
+            pkgs.apple-sdk_15
+          ];
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       meta = {
