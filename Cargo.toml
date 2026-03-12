@@ -79,7 +79,7 @@ candle-nn = "0.9"
 candle-transformers = "0.9"
 
 libc = "0.2"
-fork = "0.6"
+fork = "0.7"
 
 # Daemon/async
 bytes = "1"
