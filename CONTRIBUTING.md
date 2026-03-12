@@ -22,8 +22,8 @@ Open an issue describing the use case and why it would be valuable. Discussion b
 1. Create an issue first for non-trivial changes
 2. Branch from `main`
 3. Write tests for your changes
-4. Run `just check` (runs clippy, tests, formatting, lints, typos)
-5. Run `just fmt` to auto-format before committing
+4. Run `just fmt` to auto-format before committing
+5. Run `just check` (runs clippy, tests, formatting, lints, typos)
 6. Submit a PR to `main` — use the PR template checklist
 
 For minor fixes (typos, small bug fixes), a PR without an issue is fine.
