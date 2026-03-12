@@ -1931,6 +1931,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "parry-destructive"
+version = "0.1.0-alpha.10"
+dependencies = [
+ "dirs",
+ "regex",
+ "serde",
+ "tempfile",
+ "toml",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-bash",
+]
+
+[[package]]
 name = "parry-exfil"
 version = "0.1.0-alpha.10"
 dependencies = [
@@ -1964,6 +1978,7 @@ dependencies = [
  "blake3",
  "parry-core",
  "parry-daemon",
+ "parry-destructive",
  "parry-exfil",
  "redb",
  "serde",
