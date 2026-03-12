@@ -13,12 +13,12 @@ categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 # Internal crates
-parry-core = { path = "crates/core" }
-parry-ml = { path = "crates/ml" }
+parry-core = { path = "crates/core", default-features = false }
+parry-ml = { path = "crates/ml", default-features = false }
 parry-exfil = { path = "crates/exfil" }
-parry-daemon = { path = "crates/daemon" }
+parry-daemon = { path = "crates/daemon", default-features = false }
 parry-destructive = { path = "crates/destructive" }
-parry-hook = { path = "crates/hook" }
+parry-hook = { path = "crates/hook", default-features = false }
 
 # Core dependencies
 eyre = "0.6"
