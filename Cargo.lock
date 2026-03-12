@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "parry-ai"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "clap",
  "fork",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "parry-core"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "parry-daemon"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "blake3",
  "bytes",
@@ -1931,8 +1931,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "parry-destructive"
+version = "0.2.0-alpha.1"
+dependencies = [
+ "dirs",
+ "regex",
+ "serde",
+ "tempfile",
+ "toml",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-bash",
+]
+
+[[package]]
 name = "parry-exfil"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "dirs",
  "regex",
@@ -1959,11 +1973,12 @@ dependencies = [
 
 [[package]]
 name = "parry-hook"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "blake3",
  "parry-core",
  "parry-daemon",
+ "parry-destructive",
  "parry-exfil",
  "redb",
  "serde",
@@ -1975,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "parry-ml"
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 dependencies = [
  "candle-core",
  "candle-nn",
