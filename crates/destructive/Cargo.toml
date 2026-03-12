@@ -1,0 +1,25 @@
+[package]
+name = "parry-destructive"
+description = "AST-based destructive operation detection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+dirs.workspace = true
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
+tracing.workspace = true
+tree-sitter.workspace = true
+tree-sitter-bash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

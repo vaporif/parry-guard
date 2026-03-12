@@ -45,6 +45,12 @@ pub fn process(input: &HookInput, config: &Config) -> Option<PreToolUseOutput> {
         }
     }
 
+    // Check for destructive operations (Bash commands + Write/Edit protected paths)
+    if let Some(output) = check_destructive_operation(tool, &input.tool_input, input.cwd.as_deref())
+    {
+        return Some(output);
+    }
+
     // Check sensitive path access (Read, Write, Edit, Glob, Grep)
     if let Some(output) = check_sensitive_path(tool, &input.tool_input) {
         return Some(output);
@@ -55,6 +61,60 @@ pub fn process(input: &HookInput, config: &Config) -> Option<PreToolUseOutput> {
         if let Some(output) = scan_input_content(tool, content, config) {
             return Some(output);
         }
+    }
+
+    None
+}
+
+/// Resolve CWD from hook input, falling back to `current_dir`.
+fn resolve_cwd(hook_cwd: Option<&str>) -> String {
+    hook_cwd
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
+        })
+        .unwrap_or_default()
+}
+
+/// Check for destructive operations in Bash commands or protected path writes.
+fn check_destructive_operation(
+    tool: &str,
+    input: &serde_json::Value,
+    hook_cwd: Option<&str>,
+) -> Option<PreToolUseOutput> {
+    let cwd = resolve_cwd(hook_cwd);
+
+    match tool {
+        "Bash" => {
+            let command = input.get("command").and_then(|v| v.as_str())?;
+            if let Some(reason) = parry_destructive::detect_destructive(command, &cwd) {
+                return Some(PreToolUseOutput::ask(&format!(
+                    "Destructive operation detected: {reason}"
+                )));
+            }
+        }
+        "Write" | "Edit" => {
+            let path = input.get("file_path").and_then(|v| v.as_str())?;
+            if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
+                debug!(tool, path, %reason, "write to protected path blocked");
+                return Some(PreToolUseOutput::ask(&format!(
+                    "Write to protected path: {reason}"
+                )));
+            }
+        }
+        "NotebookEdit" => {
+            let path = input.get("notebook_path").and_then(|v| v.as_str())?;
+            if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
+                debug!(tool, path, %reason, "write to protected path blocked");
+                return Some(PreToolUseOutput::ask(&format!(
+                    "Write to protected path: {reason}"
+                )));
+            }
+        }
+        _ => {}
     }
 
     None
@@ -485,6 +545,136 @@ mod tests {
         let result = process(&input, &config);
         // All strings are < 10 chars, so no scannable content is extracted
         assert!(result.is_none(), "MCP with only short strings should pass");
+    }
+
+    // === Destructive operations (Layer 5) ===
+
+    #[test]
+    fn bash_rm_rf_root_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let input = make_bash_input("rm -rf /");
+        let result = process(&input, &config);
+        assert!(result.is_some(), "rm -rf / should be blocked");
+        assert_eq!(
+            result.unwrap().hook_specific_output.permission_decision,
+            "ask"
+        );
+    }
+
+    #[test]
+    fn bash_rm_rf_target_allowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        std::fs::create_dir(dir.path().join("target")).unwrap();
+        let input = make_bash_input("rm -rf ./target");
+        let result = process(&input, &config);
+        assert!(result.is_none(), "rm -rf ./target within CWD should pass");
+    }
+
+    #[test]
+    fn bash_git_force_push_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let input = make_bash_input("git push --force");
+        let result = process(&input, &config);
+        assert!(result.is_some(), "git push --force should be blocked");
+        assert_eq!(
+            result.unwrap().hook_specific_output.permission_decision,
+            "ask"
+        );
+    }
+
+    #[test]
+    fn bash_git_push_normal_allowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let input = make_bash_input("git push origin main");
+        let result = process(&input, &config);
+        // Should not be blocked by destructive layer (may fail-closed from ML layer)
+        if let Some(ref output) = result {
+            assert!(
+                !output
+                    .hook_specific_output
+                    .permission_decision_reason
+                    .contains("Destructive"),
+                "normal git push should not trigger destructive detection"
+            );
+        }
+    }
+
+    #[test]
+    fn bash_sudo_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let input = make_bash_input("sudo apt update");
+        let result = process(&input, &config);
+        assert!(result.is_some(), "sudo should be blocked");
+        assert_eq!(
+            result.unwrap().hook_specific_output.permission_decision,
+            "ask"
+        );
+    }
+
+    #[test]
+    fn write_to_etc_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let input = HookInput {
+            tool_name: Some("Write".to_string()),
+            tool_input: serde_json::json!({
+                "file_path": "/etc/hosts",
+                "content": "127.0.0.1 evil.com"
+            }),
+            tool_response: None,
+            session_id: None,
+            hook_event_name: None,
+            cwd: Some(dir.path().to_str().unwrap().to_string()),
+        };
+        let result = process(&input, &config);
+        assert!(result.is_some(), "Write to /etc/hosts should be blocked");
+        assert_eq!(
+            result.unwrap().hook_specific_output.permission_decision,
+            "ask"
+        );
+    }
+
+    #[test]
+    fn write_to_cwd_subdir_allowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = CwdGuard::new(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let src = dir.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        let file_path = src.join("main.rs");
+        let input = HookInput {
+            tool_name: Some("Write".to_string()),
+            tool_input: serde_json::json!({
+                "file_path": file_path.to_str().unwrap(),
+                "content": "fn main() {}"
+            }),
+            tool_response: None,
+            session_id: None,
+            hook_event_name: None,
+            cwd: Some(dir.path().to_str().unwrap().to_string()),
+        };
+        let result = process(&input, &config);
+        // Should not be blocked by destructive layer
+        if let Some(ref output) = result {
+            assert!(
+                !output
+                    .hook_specific_output
+                    .permission_decision_reason
+                    .contains("protected path"),
+                "Write to CWD subdir should not trigger protected path detection"
+            );
+        }
     }
 
     #[test]
