@@ -326,9 +326,9 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
             }
         }
         "checkout" => {
-            // git checkout -- .
-            if args.contains(&"--") && args.contains(&".") {
-                Some("'git checkout -- .' discards all unstaged changes".into())
+            // git checkout . or git checkout -- .
+            if args.contains(&".") {
+                Some("'git checkout .' discards all unstaged changes".into())
             } else {
                 None
             }
@@ -442,7 +442,8 @@ fn check_sql_client(cmd_name: &str, args: &[&str]) -> Option<String> {
             "'{cmd_name}' executing destructive SQL: 'ALTER TABLE ... DROP'"
         ));
     }
-    if joined.contains("delete from") && !joined.contains("where") {
+    if joined.contains("delete from") && !joined.contains(" where ") && !joined.ends_with(" where")
+    {
         return Some(format!(
             "'{cmd_name}' executing 'DELETE FROM' without WHERE clause"
         ));

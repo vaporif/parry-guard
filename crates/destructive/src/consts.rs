@@ -60,7 +60,7 @@ pub const MONGO_DESTRUCTIVE: &[&str] = &[
 
 pub const REDIS_CLI: &str = "redis-cli";
 
-pub const REDIS_DESTRUCTIVE: &[&str] = &["flushall", "flushdb", "--pipe"];
+pub const REDIS_DESTRUCTIVE: &[&str] = &["flushall", "flushdb"];
 
 pub const MONGORESTORE_DESTRUCTIVE: &[&str] = &["--drop"];
 

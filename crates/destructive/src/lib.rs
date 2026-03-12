@@ -390,6 +390,7 @@ mod tests {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("git checkout -- .", cwd).is_some());
+        assert!(detect_destructive("git checkout .", cwd).is_some());
     }
 
     #[test]

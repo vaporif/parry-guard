@@ -96,8 +96,17 @@ fn check_destructive_operation(
                 )));
             }
         }
-        "Write" | "Edit" | "NotebookEdit" => {
+        "Write" | "Edit" => {
             let path = input.get("file_path").and_then(|v| v.as_str())?;
+            if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
+                debug!(tool, path, %reason, "write to protected path blocked");
+                return Some(PreToolUseOutput::ask(&format!(
+                    "Write to protected path: {reason}"
+                )));
+            }
+        }
+        "NotebookEdit" => {
+            let path = input.get("notebook_path").and_then(|v| v.as_str())?;
             if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
                 debug!(tool, path, %reason, "write to protected path blocked");
                 return Some(PreToolUseOutput::ask(&format!(
