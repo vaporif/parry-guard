@@ -27,7 +27,7 @@ default = ["onnx-fetch"]
 onnx = ["parry-ml/onnx"]
 onnx-fetch = ["parry-ml/onnx-fetch"]
 onnx-coreml = ["parry-ml/onnx-coreml"]
-candle = ["parry-ml/candle"]
+candle = ["parry-ml/candle", "parry-core/candle"]
 
 [package.metadata.docs.rs]
 features = ["onnx-fetch"]

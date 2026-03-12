@@ -14,6 +14,7 @@ fn fast_config(dir: &Path) -> Config {
     }
 }
 
+#[cfg(feature = "candle")]
 fn full_config(dir: &Path) -> Config {
     Config {
         scan_mode: ScanMode::Full,
@@ -198,9 +199,10 @@ async fn ml_model_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── full mode: DeBERTa v3 + Llama Prompt Guard 2 ──
-    eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");
+    // ── full mode: DeBERTa v3 + Llama Prompt Guard 2 (candle only) ──
+    #[cfg(feature = "candle")]
     {
+        eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");
         let dir = tempfile::tempdir().unwrap();
         let config = full_config(dir.path());
         let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(120)).await;

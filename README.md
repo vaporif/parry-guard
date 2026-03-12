@@ -142,13 +142,15 @@ Multi-stage, fail-closed (if unsure, treat as unsafe):
 
 ### Scan modes
 
-| Mode | Models | Latency/chunk |
-|------|--------|---------------|
-| `fast` (default) | DeBERTa v3 | ~50-70ms |
-| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s |
-| `custom` | User-defined (`~/.config/parry/models.toml`) | varies |
+| Mode | Models | Latency/chunk | Backend |
+|------|--------|---------------|---------|
+| `fast` (default) | DeBERTa v3 | ~50-70ms | any |
+| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | candle only |
+| `custom` | User-defined (`~/.config/parry/models.toml`) | varies | any |
 
 Use `fast` for interactive workflows; `full` for high-security or batch scanning (`parry diff --full`). The two models cover different blind spots — DeBERTa v3 catches common injection patterns while Llama Prompt Guard 2 is better at subtle, context-dependent attacks (role-play jailbreaks, indirect injections). Running both as an OR ensemble reduces missed attacks at ~20x higher latency per chunk.
+
+> **Note:** `full` mode requires the `candle` backend — Llama Prompt Guard 2 does not ship an ONNX export. Build with `--features candle --no-default-features` to use `full` mode.
 
 ## Config
 
@@ -187,7 +189,7 @@ One backend is always required (enforced at compile time). Nix builds candle by 
 
 | Feature | Description |
 |---------|-------------|
-| `onnx-fetch` | ONNX with auto-download. 5-7x faster. Default. |
+| `onnx-fetch` | ONNX with auto-download. 5-7x faster than candle. Default. |
 | `candle` | Pure Rust ML. Portable, no native deps. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
@@ -210,7 +212,7 @@ Apple Silicon, release build, `fast` mode (DeBERTa v3 only). ONNX is **5-7x fast
 | Fast-scan short-circuit | ~7ms | ~7ms |
 | Cached result | ~8ms | ~8ms |
 
-> Llama Prompt Guard 2 (~1.5s/chunk) does not ship an ONNX export, so `full` mode uses Candle for PG2 regardless of backend.
+> Llama Prompt Guard 2 does not ship an ONNX export, so `full` mode requires the `candle` backend.
 
 
 ## Contributing
