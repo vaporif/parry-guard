@@ -2,6 +2,8 @@
 
 Thanks for your interest in contributing to Parry! This guide will help you get started.
 
+> **Note:** Parry is in alpha. False positives are expected — if you encounter one, please open an issue so we can improve detection.
+
 ## How to Contribute
 
 ### Reporting Bugs
