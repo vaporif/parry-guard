@@ -42,11 +42,11 @@ Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as 
 ### From source
 
 ```bash
-# Default (Candle backend - pure Rust, no native deps)
+# Default (ONNX backend - auto-downloads runtime, 5-7x faster than Candle)
 cargo install --path crates/cli
 
-# ONNX backend (faster inference, needs native libs)
-cargo install --path crates/cli --no-default-features --features onnx-fetch
+# Candle backend (pure Rust, no native deps, portable)
+cargo install --path crates/cli --no-default-features --features candle
 ```
 
 ### Nix (home-manager)
@@ -187,14 +187,14 @@ One backend is always required (enforced at compile time). Nix builds candle by 
 
 | Feature | Description |
 |---------|-------------|
-| `candle` | Pure Rust ML. Portable. Default. |
-| `onnx-fetch` | ONNX with auto-download. Works pretty much everywhere. |
+| `onnx-fetch` | ONNX with auto-download. 5-7x faster. Default. |
+| `candle` | Pure Rust ML. Portable, no native deps. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
 
 ```bash
-# Build with ONNX instead of candle
-cargo build --no-default-features --features onnx-fetch
+# Build with Candle instead of ONNX
+cargo build --no-default-features --features candle
 ```
 
 ## Performance

@@ -27,7 +27,7 @@ candle-transformers = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [features]
-default = ["candle"]
+default = ["onnx-fetch"]
 # ONNX with runtime dylib loading (user provides ORT_DYLIB_PATH)
 onnx = ["dep:ort", "dep:ndarray", "ort/load-dynamic"]
 # ONNX with auto-download of runtime (self-contained, larger binary)
@@ -47,7 +47,7 @@ candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
 criterion.workspace = true
 
 [package.metadata.docs.rs]
-features = ["candle"]
+features = ["onnx-fetch"]
 
 [[bench]]
 name = "inference"

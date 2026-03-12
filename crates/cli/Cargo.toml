@@ -12,7 +12,7 @@ categories.workspace = true
 readme = "../../README.md"
 
 [package.metadata.docs.rs]
-features = ["candle"]
+features = ["onnx-fetch"]
 
 [[bin]]
 name = "parry"
@@ -31,7 +31,7 @@ tracing-subscriber.workspace = true
 fork.workspace = true
 
 [features]
-default = ["candle"]
+default = ["onnx-fetch"]
 onnx = ["parry-ml/onnx", "parry-daemon/onnx", "parry-hook/onnx"]
 onnx-fetch = [
   "parry-ml/onnx-fetch",
