@@ -21,10 +21,26 @@ const SCAN_TIMEOUT: Duration = Duration::from_secs(120);
 ///
 /// Returns `ScanError::DaemonIo` if the daemon is unreachable.
 pub fn scan_full(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
-    debug!(text_len = text.len(), "attempting full scan via daemon");
+    scan_full_with_threshold(text, config, config.threshold)
+}
+
+/// Run a full scan with a custom ML threshold.
+///
+/// # Errors
+///
+/// Returns `ScanError::DaemonIo` if the daemon is unreachable.
+pub fn scan_full_with_threshold(
+    text: &str,
+    config: &Config,
+    threshold: f32,
+) -> Result<ScanResult, ScanError> {
+    debug!(
+        text_len = text.len(),
+        threshold, "attempting full scan via daemon"
+    );
     let req = ScanRequest {
         scan_type: ScanType::Full,
-        threshold: config.threshold,
+        threshold,
         text: text.to_string(),
     };
     send_request(&req, config.runtime_dir.as_deref())

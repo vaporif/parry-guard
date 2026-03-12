@@ -153,27 +153,31 @@ fn handle_request(
     ml_scanner: Option<&mut MlScanner>,
     cache: Option<&ScanCache>,
 ) -> ScanResponse {
-    debug!(text_len = req.text.len(), "handling full scan request");
+    debug!(
+        text_len = req.text.len(),
+        threshold = req.threshold,
+        "handling full scan request"
+    );
     if let Some(c) = cache {
-        let hash = scan_cache::hash_content(&req.text);
+        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold);
 
         if let Some(cached) = c.get(&hash) {
             debug!(?cached, "cache hit");
             return scan_result_to_response(cached);
         }
 
-        let result = run_full_scan(&req.text, ml_scanner);
+        let result = run_full_scan(&req.text, req.threshold, ml_scanner);
         // Don't cache errors — model may load on next daemon restart
         if result != ScanResponse::Error {
             c.put(&hash, response_to_result(result));
         }
         result
     } else {
-        run_full_scan(&req.text, ml_scanner)
+        run_full_scan(&req.text, req.threshold, ml_scanner)
     }
 }
 
-fn run_full_scan(text: &str, ml_scanner: Option<&mut MlScanner>) -> ScanResponse {
+fn run_full_scan(text: &str, threshold: f32, ml_scanner: Option<&mut MlScanner>) -> ScanResponse {
     let fast = parry_core::scan_text_fast(text);
     if !fast.is_clean() {
         debug!(?fast, "fast scan detected issue");
@@ -186,7 +190,7 @@ fn run_full_scan(text: &str, ml_scanner: Option<&mut MlScanner>) -> ScanResponse
     };
 
     let stripped = parry_core::unicode::strip_invisible(text);
-    match scanner.scan_chunked(&stripped) {
+    match scanner.scan_chunked(&stripped, threshold) {
         Ok(false) => {
             debug!("ML scan clean");
             ScanResponse::Clean

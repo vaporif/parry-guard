@@ -105,6 +105,7 @@
     ++ lib.optional (cfg.logLevel != null) ''--set PARRY_LOG "${cfg.logLevel}"''
     ++ lib.optional (cfg.hfTokenFile != null) ''--set HF_TOKEN_PATH "${cfg.hfTokenFile}"''
     ++ lib.optional (cfg.idleTimeout != null) ''--set PARRY_IDLE_TIMEOUT "${toString cfg.idleTimeout}"''
+    ++ lib.optional (cfg.claudeMdThreshold != null) ''--set PARRY_CLAUDE_MD_THRESHOLD "${toString cfg.claudeMdThreshold}"''
     ++ lib.optional (cfg.ignorePaths != []) ''--set PARRY_IGNORE_PATHS "${lib.concatStringsSep "," cfg.ignorePaths}"''
     ++ lib.optional (cfg.models != []) ''--set PARRY_SCAN_MODE "custom"''
     ++ lib.optional (cfg.scanMode != null && cfg.models == []) ''--set PARRY_SCAN_MODE "${cfg.scanMode}"''
@@ -135,6 +136,12 @@ in {
       type = types.nullOr types.float;
       default = null;
       description = "ML detection threshold (0.0–1.0). Null uses the default (0.7).";
+    };
+
+    claudeMdThreshold = mkOption {
+      type = types.nullOr types.float;
+      default = null;
+      description = "ML threshold for CLAUDE.md scanning (0.0–1.0). Higher reduces false positives on instruction-like text. Null uses the default (0.9).";
     };
 
     logLevel = mkOption {

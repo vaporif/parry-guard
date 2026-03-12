@@ -21,6 +21,19 @@ pub fn hash_content(text: &str) -> [u8; 32] {
     blake3::hash(text.as_bytes()).into()
 }
 
+/// Hash text content with threshold included in the digest.
+///
+/// Different thresholds produce different cache keys to avoid
+/// returning stale results when scanning the same content at
+/// different confidence levels (e.g. CLAUDE.md vs content injection).
+#[must_use]
+pub fn hash_content_with_threshold(text: &str, threshold: f32) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(text.as_bytes());
+    hasher.update(&threshold.to_le_bytes());
+    hasher.finalize().into()
+}
+
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -206,6 +219,45 @@ mod tests {
         txn.commit().unwrap();
 
         assert!(cache.get(&hash).is_none(), "expired entry should be a miss");
+    }
+
+    #[test]
+    fn different_thresholds_produce_different_cache_keys() {
+        let text = "some CLAUDE.md content";
+        let hash_low = hash_content_with_threshold(text, 0.7);
+        let hash_high = hash_content_with_threshold(text, 0.9);
+        assert_ne!(
+            hash_low, hash_high,
+            "different thresholds must produce different hashes"
+        );
+
+        // Same threshold produces same hash
+        let hash_same = hash_content_with_threshold(text, 0.7);
+        assert_eq!(hash_low, hash_same);
+    }
+
+    #[test]
+    fn threshold_aware_cache_isolation() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = make_cache(dir.path());
+
+        let text = "instruction-like text";
+        let hash_low = hash_content_with_threshold(text, 0.7);
+        let hash_high = hash_content_with_threshold(text, 0.9);
+
+        // Cache injection at low threshold
+        cache.put(&hash_low, ScanResult::Injection);
+        // High threshold should be a miss (not poisoned by low threshold result)
+        assert!(
+            cache.get(&hash_high).is_none(),
+            "high threshold should not see low threshold cached result"
+        );
+
+        // Cache clean at high threshold
+        cache.put(&hash_high, ScanResult::Clean);
+        // Both should coexist independently
+        assert_eq!(cache.get(&hash_low), Some(ScanResult::Injection));
+        assert_eq!(cache.get(&hash_high), Some(ScanResult::Clean));
     }
 
     #[test]

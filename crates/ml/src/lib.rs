@@ -33,7 +33,8 @@ pub type MlScanner = Scanner<Backend>;
 struct ModelInstance<B: MlBackend> {
     backend: B,
     tokenizer: Tokenizer,
-    threshold: f32,
+    /// Per-model threshold override. `None` means use the request threshold.
+    threshold: Option<f32>,
     repo: String,
 }
 
@@ -63,8 +64,8 @@ impl MlScanner {
             debug!(model = %def.repo, "tokenizer loaded");
 
             let backend = load_backend(&repo)?;
-            let threshold = def.threshold.unwrap_or(config.threshold);
-            info!(model = %def.repo, threshold, "ML backend initialized");
+            let threshold = def.threshold;
+            info!(model = %def.repo, ?threshold, "ML backend initialized");
 
             instances.push(ModelInstance {
                 backend,
@@ -94,25 +95,27 @@ impl<B: MlBackend> Scanner<B> {
 
     /// Scan text using chunked strategy. Returns true if injection detected.
     /// Uses OR ensemble: any model detecting injection returns true.
+    /// Per-model threshold overrides `request_threshold` when set.
     ///
     /// # Errors
     ///
     /// Returns an error if scoring any chunk fails.
     #[instrument(skip(self, text), fields(text_len = text.len(), models = self.instances.len()))]
-    pub fn scan_chunked(&mut self, text: &str) -> Result<bool> {
+    pub fn scan_chunked(&mut self, text: &str, request_threshold: f32) -> Result<bool> {
         for instance in &mut self.instances {
+            let threshold = instance.threshold.unwrap_or(request_threshold);
             for chunk in chunker::chunks(text) {
                 let score = Self::score_with(instance, chunk)?;
-                if score >= instance.threshold {
-                    debug!(score, model = %instance.repo, "injection detected in chunk");
+                if score >= threshold {
+                    debug!(score, threshold, model = %instance.repo, "injection detected in chunk");
                     return Ok(true);
                 }
             }
 
             if let Some(head_tail) = chunker::head_tail(text) {
                 let score = Self::score_with(instance, &head_tail)?;
-                if score >= instance.threshold {
-                    debug!(score, model = %instance.repo, "injection detected in head+tail");
+                if score >= threshold {
+                    debug!(score, threshold, model = %instance.repo, "injection detected in head+tail");
                     return Ok(true);
                 }
             }
@@ -171,7 +174,7 @@ mod tests {
         }
     }
 
-    fn mock_instance(score: f32, threshold: f32, repo: &str) -> ModelInstance<MockBackend> {
+    fn mock_instance(score: f32, threshold: Option<f32>, repo: &str) -> ModelInstance<MockBackend> {
         let tokenizer = Tokenizer::from_bytes(
             br###"{
             "version": "1.0",
@@ -197,54 +200,64 @@ mod tests {
     fn ensemble_or_both_clean() {
         let mut scanner = Scanner {
             instances: vec![
-                mock_instance(0.1, 0.5, "model-a"),
-                mock_instance(0.2, 0.5, "model-b"),
+                mock_instance(0.1, None, "model-a"),
+                mock_instance(0.2, None, "model-b"),
             ],
         };
-        assert!(!scanner.scan_chunked("hello").unwrap());
+        assert!(!scanner.scan_chunked("hello", 0.5).unwrap());
     }
 
     #[test]
     fn ensemble_or_first_detects() {
         let mut scanner = Scanner {
             instances: vec![
-                mock_instance(0.9, 0.5, "model-a"),
-                mock_instance(0.1, 0.5, "model-b"),
+                mock_instance(0.9, None, "model-a"),
+                mock_instance(0.1, None, "model-b"),
             ],
         };
-        assert!(scanner.scan_chunked("hello").unwrap());
+        assert!(scanner.scan_chunked("hello", 0.5).unwrap());
     }
 
     #[test]
     fn ensemble_or_second_detects() {
         let mut scanner = Scanner {
             instances: vec![
-                mock_instance(0.1, 0.5, "model-a"),
-                mock_instance(0.9, 0.5, "model-b"),
+                mock_instance(0.1, None, "model-a"),
+                mock_instance(0.9, None, "model-b"),
             ],
         };
-        assert!(scanner.scan_chunked("hello").unwrap());
+        assert!(scanner.scan_chunked("hello", 0.5).unwrap());
     }
 
     #[test]
     fn ensemble_per_model_threshold() {
+        // Per-model threshold overrides request threshold
         let mut scanner = Scanner {
-            instances: vec![mock_instance(0.6, 0.5, "model-a")],
+            instances: vec![mock_instance(0.6, Some(0.5), "model-a")],
         };
-        assert!(scanner.scan_chunked("hello").unwrap());
+        assert!(scanner.scan_chunked("hello", 0.9).unwrap());
 
         let mut scanner = Scanner {
-            instances: vec![mock_instance(0.6, 0.7, "model-b")],
+            instances: vec![mock_instance(0.6, Some(0.7), "model-b")],
         };
-        assert!(!scanner.scan_chunked("hello").unwrap());
+        assert!(!scanner.scan_chunked("hello", 0.3).unwrap());
+    }
+
+    #[test]
+    fn request_threshold_used_when_no_per_model() {
+        let mut scanner = Scanner {
+            instances: vec![mock_instance(0.6, None, "model-a")],
+        };
+        assert!(scanner.scan_chunked("hello", 0.5).unwrap());
+        assert!(!scanner.scan_chunked("hello", 0.7).unwrap());
     }
 
     #[test]
     fn ensemble_single_model() {
         let mut scanner = Scanner {
-            instances: vec![mock_instance(0.1, 0.5, "only-model")],
+            instances: vec![mock_instance(0.1, None, "only-model")],
         };
-        assert!(!scanner.scan_chunked("hello").unwrap());
+        assert!(!scanner.scan_chunked("hello", 0.5).unwrap());
     }
 
     #[test]
