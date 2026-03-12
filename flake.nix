@@ -59,7 +59,6 @@
             pkgs.apple-sdk_15
           ];
       };
-      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       meta = {
         description = "Prompt injection scanner for Claude Code";
         license = pkgs.lib.licenses.mit;
@@ -70,12 +69,29 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
+      candleArgs =
+        commonArgs
+        // {
+          cargoExtraArgs = "--no-default-features --features candle";
+        };
+      candleArtifacts = craneLib.buildDepsOnly candleArgs;
+      candlePkg = craneLib.buildPackage (candleArgs
+        // {
+          cargoArtifacts = candleArtifacts;
+          inherit meta;
+        });
+      onnxArgs =
+        commonArgs
+        // {
+          cargoExtraArgs = "--no-default-features --features onnx";
+          ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+        };
+      onnxArtifacts = craneLib.buildDepsOnly onnxArgs;
       onnxPkg = let
-        unwrapped = craneLib.buildPackage (commonArgs
+        unwrapped = craneLib.buildPackage (onnxArgs
           // {
-            inherit cargoArtifacts meta;
-            cargoExtraArgs = "--no-default-features --features onnx";
-            ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+            cargoArtifacts = onnxArtifacts;
+            inherit meta;
           });
       in
         pkgs.symlinkJoin {
@@ -88,11 +104,6 @@
           '';
           inherit meta;
         };
-      candlePkg = craneLib.buildPackage (commonArgs
-        // {
-          inherit cargoArtifacts meta;
-          cargoExtraArgs = "--no-default-features --features candle";
-        });
     in
       {
         candle = candlePkg;
