@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "candle")]
 use parry_core::config::ScanMode;
 use parry_core::{Config, ScanResult};
 use parry_daemon::DaemonConfig;
