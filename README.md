@@ -42,7 +42,7 @@ Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as 
 ### From source
 
 ```bash
-# Default (ONNX backend - auto-downloads runtime, 5-7x faster than Candle)
+# Default (ONNX backend - statically linked, 5-6x faster than Candle)
 cargo install --path crates/cli
 
 # Candle backend (pure Rust, no native deps, portable)
@@ -69,8 +69,8 @@ cargo install --path crates/cli --no-default-features --features candle
 
   programs.parry = {
     enable = true;
-    package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default, 5-7x faster)
-    # package = inputs.parry.packages.${pkgs.system}.candle;  # candle backend (pure Rust, portable)
+    package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default)
+    # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignorePaths = [ "/home/user/repos/parry" ];
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
@@ -189,8 +189,8 @@ One backend is always required (enforced at compile time). Nix default is ONNX (
 
 | Feature | Description |
 |---------|-------------|
-| `onnx-fetch` | ONNX with auto-download. 5-7x faster than candle. Default. |
-| `candle` | Pure Rust ML. Portable, no native deps. |
+| `onnx-fetch` | ONNX, statically linked (downloads ORT at build time). Default. |
+| `candle` | Pure Rust ML. Portable, no native deps. ~5-6x slower. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
 
@@ -201,14 +201,14 @@ cargo build --no-default-features --features candle
 
 ## Performance
 
-Apple Silicon, release build, `fast` mode (DeBERTa v3 only). ONNX is **5-7x faster** than Candle. Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
+Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is **5-6x slower** than ONNX (default). Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
 
-| Scenario | Candle | ONNX |
+| Scenario | ONNX (default) | Candle |
 |---|---|---|
-| Short text (1 chunk) | ~61ms | ~10ms |
-| Medium text (2 chunks) | ~160ms | ~32ms |
-| Long text (6 chunks) | ~683ms | ~136ms |
-| Cold start (daemon + model load) | ~1s | ~580ms |
+| Short text (1 chunk) | ~10ms | ~61ms |
+| Medium text (2 chunks) | ~32ms | ~160ms |
+| Long text (6 chunks) | ~136ms | ~683ms |
+| Cold start (daemon + model load) | ~580ms | ~1s |
 | Fast-scan short-circuit | ~7ms | ~7ms |
 | Cached result | ~8ms | ~8ms |
 
