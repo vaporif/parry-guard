@@ -30,7 +30,7 @@ onnx-coreml = ["parry-ml/onnx-coreml"]
 candle = ["parry-ml/candle", "parry-core/candle"]
 
 [package.metadata.docs.rs]
-features = ["onnx-fetch"]
+features = ["candle"]
 
 [dev-dependencies]
 tempfile.workspace = true

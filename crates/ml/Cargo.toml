@@ -52,7 +52,7 @@ candle = [
 criterion.workspace = true
 
 [package.metadata.docs.rs]
-features = ["onnx-fetch"]
+features = ["candle"]
 
 [[bench]]
 name = "inference"

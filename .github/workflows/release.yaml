@@ -33,6 +33,11 @@ jobs:
             suffix: ""
           - backend: candle
             suffix: "candle-"
+        exclude:
+          - target: x86_64-unknown-linux-musl
+            backend: onnx-fetch
+          - target: aarch64-unknown-linux-musl
+            backend: onnx-fetch
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/upload-rust-binary-action@v1
