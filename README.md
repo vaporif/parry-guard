@@ -213,32 +213,9 @@ Apple Silicon, release build, `fast` mode (DeBERTa v3 only). ONNX is **5-7x fast
 > Llama Prompt Guard 2 (~1.5s/chunk) does not ship an ONNX export, so `full` mode uses Candle for PG2 regardless of backend.
 
 
-## Development
+## Contributing
 
-```bash
-nix develop              # enter dev shell with all tools (rust, just, taplo, typos, actionlint)
-
-just check               # run all checks (clippy, test, fmt, lint, typos, audit)
-just build               # build workspace (candle)
-just build-onnx          # build workspace (onnx-fetch)
-just test                # run tests
-just e2e            # run ML e2e tests (requires HF_TOKEN, see below)
-just bench-candle        # benchmark ML inference, candle backend (requires HF_TOKEN)
-just bench-onnx          # benchmark ML inference, ONNX backend (requires HF_TOKEN)
-just clippy              # lint
-just fmt                 # format all (rust + toml)
-just setup-hooks         # configure git hooks
-```
-
-### ML end-to-end tests
-
-The ML e2e tests are `#[ignore]`d by default since they require a HuggingFace token and model downloads. To run them:
-
-```bash
-HF_TOKEN=hf_... just e2e
-```
-
-This tests both `fast` (DeBERTa only) and `full` (DeBERTa + Llama PG2) modes with semantic injection prompts and clean text. First run downloads models (~100MB each).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commands, and contribution guidelines.
 
 ## Credits
 
