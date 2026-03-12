@@ -63,29 +63,36 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
+      onnxPkg = let
+        unwrapped = craneLib.buildPackage (commonArgs
+          // {
+            inherit cargoArtifacts meta;
+            cargoExtraArgs = "--no-default-features --features onnx";
+            ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+          });
+      in
+        pkgs.symlinkJoin {
+          name = "parry-onnx";
+          paths = [unwrapped];
+          nativeBuildInputs = [pkgs.makeWrapper];
+          postBuild = ''
+            wrapProgram $out/bin/parry \
+              --set ORT_DYLIB_PATH "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
+          '';
+          inherit meta;
+        };
+      candlePkg = craneLib.buildPackage (commonArgs
+        // {
+          inherit cargoArtifacts meta;
+          cargoExtraArgs = "--no-default-features --features candle";
+        });
     in
       {
-        default = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts meta;});
+        candle = candlePkg;
       }
       // pkgs.lib.optionalAttrs onnxSupported {
-        onnx = let
-          unwrapped = craneLib.buildPackage (commonArgs
-            // {
-              inherit cargoArtifacts meta;
-              cargoExtraArgs = "--no-default-features --features onnx";
-              ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
-            });
-        in
-          pkgs.symlinkJoin {
-            name = "parry-onnx";
-            paths = [unwrapped];
-            nativeBuildInputs = [pkgs.makeWrapper];
-            postBuild = ''
-              wrapProgram $out/bin/parry \
-                --set ORT_DYLIB_PATH "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
-            '';
-            inherit meta;
-          };
+        default = onnxPkg;
+        onnx = onnxPkg;
       });
 
     devShells = forAllSystems ({

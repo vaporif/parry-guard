@@ -69,8 +69,8 @@ cargo install --path crates/cli --no-default-features --features candle
 
   programs.parry = {
     enable = true;
-    package = inputs.parry.packages.${pkgs.system}.default;  # candle (default)
-    # package = inputs.parry.packages.${pkgs.system}.onnx;  # onnx backend (5-7x faster, see Performance)
+    package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default, 5-7x faster)
+    # package = inputs.parry.packages.${pkgs.system}.candle;  # candle backend (pure Rust, portable)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignorePaths = [ "/home/user/repos/parry" ];
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
@@ -185,7 +185,7 @@ Custom models: `~/.config/parry/models.toml` (used with `--scan-mode custom`, se
 
 ## ML Backends
 
-One backend is always required (enforced at compile time). Nix builds candle by default.
+One backend is always required (enforced at compile time). Nix default is ONNX (x86_64-linux, aarch64-linux, aarch64-darwin). Use `candle` package on other platforms.
 
 | Feature | Description |
 |---------|-------------|
