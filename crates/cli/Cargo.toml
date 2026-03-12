@@ -43,7 +43,12 @@ onnx-coreml = [
   "parry-daemon/onnx-coreml",
   "parry-hook/onnx-coreml",
 ]
-candle = ["parry-ml/candle", "parry-daemon/candle", "parry-hook/candle", "parry-core/candle"]
+candle = [
+  "parry-ml/candle",
+  "parry-daemon/candle",
+  "parry-hook/candle",
+  "parry-core/candle",
+]
 
 [lints]
 workspace = true
