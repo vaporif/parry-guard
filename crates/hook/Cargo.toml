@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 parry-core.workspace = true
+parry-destructive.workspace = true
 parry-exfil.workspace = true
 parry-daemon.workspace = true
 blake3.workspace = true

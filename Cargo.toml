@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0-alpha.10"
+version = "0.2.0-alpha.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/vaporif/parry"
@@ -13,11 +13,12 @@ categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 # Internal crates
-parry-core = { path = "crates/core", version = "0.1.0-alpha.10" }
-parry-ml = { path = "crates/ml", version = "0.1.0-alpha.10" }
-parry-exfil = { path = "crates/exfil", version = "0.1.0-alpha.10" }
-parry-daemon = { path = "crates/daemon", version = "0.1.0-alpha.10" }
-parry-hook = { path = "crates/hook", version = "0.1.0-alpha.10" }
+parry-core = { path = "crates/core" }
+parry-ml = { path = "crates/ml" }
+parry-exfil = { path = "crates/exfil" }
+parry-daemon = { path = "crates/daemon" }
+parry-destructive = { path = "crates/destructive" }
+parry-hook = { path = "crates/hook" }
 
 # Core dependencies
 eyre = "0.6"
