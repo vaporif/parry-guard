@@ -228,6 +228,14 @@ pub fn check_protected(path: &str, cwd: &str) -> Option<String> {
     None
 }
 
+/// Check if a path resolves to CWD itself (not a subdirectory).
+#[must_use]
+pub fn is_cwd_itself(path: &str, cwd: &str) -> bool {
+    let resolved = resolve_path(path, cwd);
+    let cwd_path = lexical_normalize(Path::new(cwd));
+    resolved == cwd_path
+}
+
 /// Check if a path resolves to somewhere outside CWD.
 #[must_use]
 pub fn is_outside_cwd(path: &str, cwd: &str) -> bool {
@@ -332,6 +340,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_str().unwrap();
         assert!(!is_outside_cwd(".", cwd));
+    }
+
+    #[test]
+    fn cwd_itself_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(is_cwd_itself(".", cwd));
+        assert!(is_cwd_itself("./", cwd));
+        assert!(!is_cwd_itself("./subdir", cwd));
     }
 
     #[test]

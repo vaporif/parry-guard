@@ -169,9 +169,18 @@ fn has_flag(args: &[&str], flag: &str) -> bool {
             return true;
         }
         // Handle combined short flags: -rf contains both -r and -f
+        // Only match short combined flags (2-4 chars after '-'), not single-dash long options
+        // like -forward or -format which some tools use
         if let Some(fc) = flag_char {
-            if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 && arg.contains(fc) {
-                return true;
+            if let Some(rest) = arg.strip_prefix('-') {
+                let len = rest.len();
+                if !rest.starts_with('-')
+                    && (2..=4).contains(&len)
+                    && rest.chars().all(|c| c.is_ascii_alphabetic())
+                    && rest.contains(fc)
+                {
+                    return true;
+                }
             }
         }
     }
@@ -202,10 +211,16 @@ fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<Stri
     let args = get_args(node, source);
     let path_args = get_path_args(&args);
 
-    // Check if any path arg targets outside CWD
     for path in &path_args {
         // Strip quotes
         let clean = path.trim_matches(|c| c == '\'' || c == '"');
+
+        // Block rm that targets CWD itself (e.g. `rm -rf .` or `rm -rf ./`)
+        if paths::is_cwd_itself(clean, cwd) {
+            return Some(format!("'{cmd_name}' targets project directory itself"));
+        }
+
+        // Check if any path arg targets outside CWD
         if paths::is_outside_cwd(clean, cwd) {
             return Some(format!(
                 "'{cmd_name}' targets '{clean}' outside project directory"
@@ -614,6 +629,18 @@ mod tests {
     #[test]
     fn has_flag_combined_does_not_match_long() {
         assert!(!has_flag(&["-rf"], "--recursive"));
+    }
+
+    #[test]
+    fn has_flag_rejects_single_dash_long_option() {
+        // -forward should NOT match -f (it's not a combined short flag)
+        assert!(!has_flag(&["-forward"], "-f"));
+        assert!(!has_flag(&["-format"], "-f"));
+    }
+
+    #[test]
+    fn has_flag_rejects_non_alpha_combined() {
+        assert!(!has_flag(&["-f=value"], "-f"));
     }
 
     #[test]

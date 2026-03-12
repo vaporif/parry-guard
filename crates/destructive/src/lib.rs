@@ -16,20 +16,32 @@ mod paths;
 /// Mutex to serialize tree-sitter parser creation (C runtime is not thread-safe during init).
 static PARSER_LOCK: Mutex<()> = Mutex::new(());
 
-/// Parse a bash command into a tree-sitter AST. Fail-open: returns `None` on errors.
-fn parse_bash(command: &str) -> Option<tree_sitter::Tree> {
+/// Parse a bash command into a tree-sitter AST.
+///
+/// Returns `Err` if the parser mutex is poisoned (fail-closed).
+/// Returns `Ok(None)` if parsing fails or the AST contains errors (fail-open for unparseable input).
+fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     let tree = {
-        let _guard = PARSER_LOCK.lock().ok()?;
+        let _guard = PARSER_LOCK.lock().map_err(|e| {
+            tracing::warn!("tree-sitter parser mutex poisoned: {e}");
+            "destructive operation detection unavailable (parser mutex poisoned)".to_string()
+        })?;
         let mut parser = Parser::new();
-        parser
+        if parser
             .set_language(&tree_sitter_bash::LANGUAGE.into())
-            .ok()?;
-        parser.parse(command, None)?
+            .is_err()
+        {
+            return Ok(None);
+        }
+        match parser.parse(command, None) {
+            Some(t) => t,
+            None => return Ok(None),
+        }
     };
     if tree.root_node().has_error() {
-        None
+        Ok(None)
     } else {
-        Some(tree)
+        Ok(Some(tree))
     }
 }
 
@@ -40,7 +52,11 @@ fn parse_bash(command: &str) -> Option<tree_sitter::Tree> {
 #[must_use]
 #[instrument(skip(command), fields(command_len = command.len()))]
 pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
-    let tree = parse_bash(command)?;
+    let tree = match parse_bash(command) {
+        Ok(Some(tree)) => tree,
+        Ok(None) => return None,
+        Err(reason) => return Some(reason),
+    };
     let result = bash::check_node(tree.root_node(), command.as_bytes(), cwd);
     if let Some(ref reason) = result {
         debug!(%reason, "destructive operation detected");
@@ -117,6 +133,22 @@ mod tests {
             detect_destructive("rm -rf node_modules", cwd).is_none(),
             "rm -rf node_modules within CWD should pass"
         );
+    }
+
+    #[test]
+    fn rm_rf_dot_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        let result = detect_destructive("rm -rf .", cwd);
+        assert!(result.is_some(), "rm -rf . should be blocked");
+    }
+
+    #[test]
+    fn rm_rf_dot_slash_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        let result = detect_destructive("rm -rf ./", cwd);
+        assert!(result.is_some(), "rm -rf ./ should be blocked");
     }
 
     #[test]
