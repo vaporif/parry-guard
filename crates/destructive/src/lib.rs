@@ -19,7 +19,7 @@ static PARSER_LOCK: Mutex<()> = Mutex::new(());
 /// Parse a bash command into a tree-sitter AST.
 ///
 /// Returns `Err` if the parser mutex is poisoned (fail-closed).
-/// Returns `Ok(None)` if parsing fails or the AST contains errors (fail-open for unparseable input).
+/// Returns `Ok(None)` if parsing fails or the AST contains errors (fail-open for unparsable input).
 fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     let tree = {
         let _guard = PARSER_LOCK.lock().map_err(|e| {
