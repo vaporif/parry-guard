@@ -143,7 +143,7 @@ async fn handle_connection(
         } else {
             None
         };
-        handle_request(&req, scanner, cache)
+        handle_request(&req, scanner, cache, config.scan_mode.as_str())
     };
     let _ = framed.send(resp).await;
 }
@@ -152,6 +152,7 @@ fn handle_request(
     req: &ScanRequest,
     ml_scanner: Option<&mut MlScanner>,
     cache: Option<&ScanCache>,
+    scan_mode: &str,
 ) -> ScanResponse {
     debug!(
         text_len = req.text.len(),
@@ -159,7 +160,7 @@ fn handle_request(
         "handling full scan request"
     );
     if let Some(c) = cache {
-        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold);
+        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold, scan_mode);
 
         if let Some(cached) = c.get(&hash) {
             debug!(?cached, "cache hit");

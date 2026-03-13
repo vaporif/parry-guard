@@ -37,6 +37,26 @@ impl CandleBackend {
             .id2label
             .clone()
             .or_else(|| Some(HashMap::from([(0, "SAFE".into()), (1, "INJECTION".into())])));
+
+        // Validate label 0 is a safe/benign class — softmax_injection_prob
+        // assumes index 0 is safe and computes 1 - P(label_0). A model with
+        // inverted labels would silently invert all scores.
+        if let Some(ref labels) = id2label {
+            if let Some(label_0) = labels.get(&0) {
+                let lower = label_0.to_lowercase();
+                if lower.contains("injection")
+                    || lower.contains("malicious")
+                    || lower.contains("attack")
+                    || lower.contains("jailbreak")
+                {
+                    return Err(eyre::eyre!(
+                        "model has label 0 = '{label_0}' (unsafe class). \
+                         Parry assumes label 0 is the safe/benign class for scoring"
+                    ));
+                }
+            }
+        }
+
         let model = DebertaV2SeqClassificationModel::load(vb, &config, id2label)?;
 
         Ok(Self { model, device })
