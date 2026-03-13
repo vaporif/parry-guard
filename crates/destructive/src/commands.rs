@@ -33,7 +33,7 @@ impl DestructiveConfig {
     }
 
     fn default_path() -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|p| p.join(".config").join("parry").join("patterns.toml"))
+        dirs::home_dir().map(|p| p.join(".config").join("parry-guard").join("patterns.toml"))
     }
 
     fn load_from_path(path: Option<std::path::PathBuf>) -> Self {

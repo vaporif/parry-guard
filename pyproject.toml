@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "parry-ai"
+name = "parry-guard"
 dynamic = ["version"]
 description = "Prompt injection scanner CLI - substring, unicode, secrets, and ML detection"
 readme = "README.md"

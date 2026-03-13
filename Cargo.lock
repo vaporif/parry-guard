@@ -1876,15 +1876,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-ai"
+name = "parry-guard"
 version = "0.2.0"
 dependencies = [
  "clap",
  "fork",
- "parry-core",
- "parry-daemon",
- "parry-hook",
- "parry-ml",
+ "parry-guard-core",
+ "parry-guard-daemon",
+ "parry-guard-hook",
+ "parry-guard-ml",
  "serde_json",
  "tokio",
  "tracing",
@@ -1892,7 +1892,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-core"
+name = "parry-guard-core"
 version = "0.2.0"
 dependencies = [
  "aho-corasick",
@@ -1913,7 +1913,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-daemon"
+name = "parry-guard-daemon"
 version = "0.2.0"
 dependencies = [
  "blake3",
@@ -1921,8 +1921,8 @@ dependencies = [
  "eyre",
  "futures-util",
  "interprocess",
- "parry-core",
- "parry-ml",
+ "parry-guard-core",
+ "parry-guard-ml",
  "redb",
  "tempfile",
  "tokio",
@@ -1931,7 +1931,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-destructive"
+name = "parry-guard-destructive"
 version = "0.2.0"
 dependencies = [
  "dirs",
@@ -1945,7 +1945,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-exfil"
+name = "parry-guard-exfil"
 version = "0.2.0"
 dependencies = [
  "dirs",
@@ -1972,14 +1972,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-hook"
+name = "parry-guard-hook"
 version = "0.2.0"
 dependencies = [
  "blake3",
- "parry-core",
- "parry-daemon",
- "parry-destructive",
- "parry-exfil",
+ "parry-guard-core",
+ "parry-guard-daemon",
+ "parry-guard-destructive",
+ "parry-guard-exfil",
  "redb",
  "serde",
  "serde_json",
@@ -1989,7 +1989,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-ml"
+name = "parry-guard-ml"
 version = "0.2.0"
 dependencies = [
  "candle-core",
@@ -2000,7 +2000,7 @@ dependencies = [
  "hf-hub",
  "ndarray",
  "ort",
- "parry-core",
+ "parry-guard-core",
  "serde_json",
  "tokenizers",
  "tracing",

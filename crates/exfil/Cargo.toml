@@ -1,5 +1,5 @@
 [package]
-name = "parry-exfil"
+name = "parry-guard-exfil"
 description = "AST-based code exfiltration detection using tree-sitter"
 version.workspace = true
 edition.workspace = true

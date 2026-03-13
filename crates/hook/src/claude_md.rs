@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use parry_core::Config;
+use parry_guard_core::Config;
 use tracing::{debug, instrument, warn};
 
 use crate::cache::HashCache;
@@ -65,7 +65,7 @@ pub fn check(config: &Config) -> CheckResult {
         }
 
         // Fast scan — ask on match, cache so user isn't asked again
-        let fast = parry_core::scan_text_fast(&content);
+        let fast = parry_guard_core::scan_text_fast(&content);
         if !fast.is_clean() {
             debug!(path = %path.display(), "fast scan detected injection in CLAUDE.md");
             cache_hash(cache.as_ref(), &key, hash);

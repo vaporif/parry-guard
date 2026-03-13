@@ -1,6 +1,6 @@
 //! ML backend trait.
 
-use parry_core::Result;
+use parry_guard_core::Result;
 
 pub trait MlBackend: Send {
     /// Score the given token IDs for injection probability.

@@ -113,7 +113,8 @@ struct PatternConfig {
 
 impl PatternConfig {
     fn load() -> Self {
-        let Some(path) = dirs::config_dir().map(|p| p.join("parry").join("patterns.toml")) else {
+        let Some(path) = dirs::config_dir().map(|p| p.join("parry-guard").join("patterns.toml"))
+        else {
             return Self::default();
         };
         if !path.exists() {

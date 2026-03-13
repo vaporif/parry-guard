@@ -63,7 +63,7 @@ pub struct Config {
     pub ignore_paths: Vec<String>,
     pub scan_mode: ScanMode,
     /// Explicit runtime directory for daemon IPC, caches, and taint files.
-    /// `None` means use default paths (`~/.parry/` for daemon, cwd for hook files).
+    /// `None` means use default paths (`~/.parry-guard/` for daemon, cwd for hook files).
     /// Set in tests to avoid process-global env var mutation.
     pub runtime_dir: Option<PathBuf>,
 }
@@ -110,7 +110,7 @@ impl Config {
 }
 
 fn custom_models_path() -> Option<std::path::PathBuf> {
-    dirs::home_dir().map(|p| p.join(".config").join("parry").join("models.toml"))
+    dirs::home_dir().map(|p| p.join(".config").join("parry-guard").join("models.toml"))
 }
 
 fn load_custom_models() -> crate::Result<Vec<ModelDef>> {

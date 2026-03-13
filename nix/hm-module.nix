@@ -119,7 +119,7 @@
         paths = [cfg.package];
         nativeBuildInputs = [pkgs.makeWrapper];
         postBuild = ''
-          wrapProgram $out/bin/parry ${lib.concatStringsSep " " envVars}
+          wrapProgram $out/bin/parry-guard ${lib.concatStringsSep " " envVars}
         '';
       }
     else cfg.package;
@@ -189,19 +189,19 @@ in {
         };
       });
       default = [];
-      description = "Custom model list. When non-empty, generates ~/.config/parry/models.toml and sets scanMode to custom.";
+      description = "Custom model list. When non-empty, generates ~/.config/parry-guard/models.toml and sets scanMode to custom.";
     };
 
     logFile = mkOption {
       type = types.nullOr types.str;
       default = null;
-      description = "Override log file path. Null uses the default (~/.parry/parry.log).";
+      description = "Override log file path. Null uses the default (~/.parry-guard/parry-guard.log).";
     };
 
     patterns = mkOption {
       type = types.nullOr patternsType;
       default = null;
-      description = "Custom patterns config. When set, generates ~/.config/parry/patterns.toml.";
+      description = "Custom patterns config. When set, generates ~/.config/parry-guard/patterns.toml.";
     };
   };
 
@@ -230,15 +230,15 @@ in {
         if pkgs.stdenv.isDarwin
         then "/usr/bin/pkill"
         else "${pkgs.procps}/bin/pkill"
-      } -x parry 2>/dev/null || true
-      rm -f "$HOME/.parry/parry.sock" "$HOME/.parry/daemon.pid" 2>/dev/null || true
+      } -x parry-guard 2>/dev/null || true
+      rm -f "$HOME/.parry-guard/parry-guard.sock" "$HOME/.parry-guard/daemon.pid" 2>/dev/null || true
     '';
 
-    xdg.configFile."parry/models.toml" = mkIf (cfg.models != []) {
+    xdg.configFile."parry-guard/models.toml" = mkIf (cfg.models != []) {
       source = modelsToml;
     };
 
-    xdg.configFile."parry/patterns.toml" = mkIf (cfg.patterns != null) {
+    xdg.configFile."parry-guard/patterns.toml" = mkIf (cfg.patterns != null) {
       source = patternsToml;
     };
   };

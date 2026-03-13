@@ -8,7 +8,7 @@ use candle_transformers::models::debertav2::{
 
 use std::collections::HashMap;
 
-use parry_core::Result;
+use parry_guard_core::Result;
 
 pub struct CandleBackend {
     model: DebertaV2SeqClassificationModel,
