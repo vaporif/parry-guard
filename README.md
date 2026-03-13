@@ -42,11 +42,11 @@ Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as 
 ### From source
 
 ```bash
-# Default (Candle backend - pure Rust, no native deps)
+# Default (ONNX backend - statically linked, 5-6x faster than Candle)
 cargo install --path crates/cli
 
-# ONNX backend (faster inference, needs native libs)
-cargo install --path crates/cli --no-default-features --features onnx-fetch
+# Candle backend (pure Rust, no native deps, portable)
+cargo install --path crates/cli --no-default-features --features candle
 ```
 
 ### Nix (home-manager)
@@ -69,8 +69,8 @@ cargo install --path crates/cli --no-default-features --features onnx-fetch
 
   programs.parry = {
     enable = true;
-    package = inputs.parry.packages.${pkgs.system}.default;  # candle (default)
-    # package = inputs.parry.packages.${pkgs.system}.onnx;  # onnx backend (5-7x faster, see Performance)
+    package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default)
+    # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignorePaths = [ "/home/user/repos/parry" ];
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
@@ -142,13 +142,15 @@ Multi-stage, fail-closed (if unsure, treat as unsafe):
 
 ### Scan modes
 
-| Mode | Models | Latency/chunk |
-|------|--------|---------------|
-| `fast` (default) | DeBERTa v3 | ~50-70ms |
-| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s |
-| `custom` | User-defined (`~/.config/parry/models.toml`) | varies |
+| Mode | Models | Latency/chunk | Backend |
+|------|--------|---------------|---------|
+| `fast` (default) | DeBERTa v3 | ~50-70ms | any |
+| `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | candle only |
+| `custom` | User-defined (`~/.config/parry/models.toml`) | varies | any |
 
 Use `fast` for interactive workflows; `full` for high-security or batch scanning (`parry diff --full`). The two models cover different blind spots — DeBERTa v3 catches common injection patterns while Llama Prompt Guard 2 is better at subtle, context-dependent attacks (role-play jailbreaks, indirect injections). Running both as an OR ensemble reduces missed attacks at ~20x higher latency per chunk.
+
+> **Note:** `full` mode requires the `candle` backend — Llama Prompt Guard 2 does not ship an ONNX export. Build with `--features candle --no-default-features` to use `full` mode.
 
 ## Config
 
@@ -183,34 +185,34 @@ Custom models: `~/.config/parry/models.toml` (used with `--scan-mode custom`, se
 
 ## ML Backends
 
-One backend is always required (enforced at compile time). Nix builds candle by default.
+One backend is always required (enforced at compile time). Nix default is ONNX (x86_64-linux, aarch64-linux, aarch64-darwin). Use `candle` package on other platforms.
 
 | Feature | Description |
 |---------|-------------|
-| `candle` | Pure Rust ML. Portable. Default. |
-| `onnx-fetch` | ONNX with auto-download. Works pretty much everywhere. |
+| `onnx-fetch` | ONNX, statically linked (downloads ORT at build time). Default. |
+| `candle` | Pure Rust ML. Portable, no native deps. ~5-6x slower. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
 
 ```bash
-# Build with ONNX instead of candle
-cargo build --no-default-features --features onnx-fetch
+# Build with Candle instead of ONNX
+cargo build --no-default-features --features candle
 ```
 
 ## Performance
 
-Apple Silicon, release build, `fast` mode (DeBERTa v3 only). ONNX is **5-7x faster** than Candle. Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
+Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is **5-6x slower** than ONNX (default). Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
 
-| Scenario | Candle | ONNX |
+| Scenario | ONNX (default) | Candle |
 |---|---|---|
-| Short text (1 chunk) | ~61ms | ~10ms |
-| Medium text (2 chunks) | ~160ms | ~32ms |
-| Long text (6 chunks) | ~683ms | ~136ms |
-| Cold start (daemon + model load) | ~1s | ~580ms |
+| Short text (1 chunk) | ~10ms | ~61ms |
+| Medium text (2 chunks) | ~32ms | ~160ms |
+| Long text (6 chunks) | ~136ms | ~683ms |
+| Cold start (daemon + model load) | ~580ms | ~1s |
 | Fast-scan short-circuit | ~7ms | ~7ms |
 | Cached result | ~8ms | ~8ms |
 
-> Llama Prompt Guard 2 (~1.5s/chunk) does not ship an ONNX export, so `full` mode uses Candle for PG2 regardless of backend.
+> Llama Prompt Guard 2 does not ship an ONNX export, so `full` mode requires the `candle` backend.
 
 
 ## Contributing

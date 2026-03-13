@@ -27,7 +27,7 @@ candle-transformers = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [features]
-default = ["candle"]
+default = ["onnx-fetch"]
 # ONNX with runtime dylib loading (user provides ORT_DYLIB_PATH)
 onnx = ["dep:ort", "dep:ndarray", "ort/load-dynamic"]
 # ONNX with auto-download of runtime (self-contained, larger binary)
@@ -41,7 +41,12 @@ onnx-fetch = [
 # ONNX with CoreML acceleration (Apple Silicon)
 onnx-coreml = ["onnx-fetch", "ort/coreml"]
 # Pure Rust ML backend (no native deps)
-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
+candle = [
+  "dep:candle-core",
+  "dep:candle-nn",
+  "dep:candle-transformers",
+  "parry-core/candle",
+]
 
 [dev-dependencies]
 criterion.workspace = true

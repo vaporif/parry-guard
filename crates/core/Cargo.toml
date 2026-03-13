@@ -25,6 +25,9 @@ serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 dirs.workspace = true
 
+[features]
+candle = []
+
 [package.metadata.docs.rs]
 all-features = true
 

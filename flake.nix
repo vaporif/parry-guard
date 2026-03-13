@@ -30,8 +30,17 @@
   in {
     formatter = nixpkgs.lib.genAttrs systems (system: nixpkgs.legacyPackages.${system}.alejandra);
 
-    overlays.default = final: _prev: {
-      parry = self.packages.${final.stdenv.hostPlatform.system}.default;
+    overlays.default = final: _prev: let
+      sys = final.stdenv.hostPlatform.system;
+    in {
+      parry =
+        self.packages.${
+          sys
+        }.${
+          if builtins.hasAttr "default" self.packages.${sys}
+          then "default"
+          else "candle"
+        };
     };
 
     homeManagerModules.default = import ./nix/hm-module.nix;
@@ -47,12 +56,19 @@
         inherit src;
         pname = "parry";
         strictDeps = true;
-        buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.libiconv
-          pkgs.apple-sdk_15
+        nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+          pkgs.pkg-config
+          pkgs.openssl
         ];
+        buildInputs =
+          pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.openssl
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.libiconv
+            pkgs.apple-sdk_15
+          ];
       };
-      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       meta = {
         description = "Prompt injection scanner for Claude Code";
         license = pkgs.lib.licenses.mit;
@@ -63,29 +79,48 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
+      candleArgs =
+        commonArgs
+        // {
+          cargoExtraArgs = "--no-default-features --features candle";
+        };
+      candleArtifacts = craneLib.buildDepsOnly candleArgs;
+      candlePkg = craneLib.buildPackage (candleArgs
+        // {
+          cargoArtifacts = candleArtifacts;
+          inherit meta;
+        });
+      onnxArgs =
+        commonArgs
+        // {
+          cargoExtraArgs = "--no-default-features --features onnx";
+          ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+        };
+      onnxArtifacts = craneLib.buildDepsOnly onnxArgs;
+      onnxPkg = let
+        unwrapped = craneLib.buildPackage (onnxArgs
+          // {
+            cargoArtifacts = onnxArtifacts;
+            inherit meta;
+          });
+      in
+        pkgs.symlinkJoin {
+          name = "parry-onnx";
+          paths = [unwrapped];
+          nativeBuildInputs = [pkgs.makeWrapper];
+          postBuild = ''
+            wrapProgram $out/bin/parry \
+              --set ORT_DYLIB_PATH "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
+          '';
+          inherit meta;
+        };
     in
       {
-        default = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts meta;});
+        candle = candlePkg;
       }
       // pkgs.lib.optionalAttrs onnxSupported {
-        onnx = let
-          unwrapped = craneLib.buildPackage (commonArgs
-            // {
-              inherit cargoArtifacts meta;
-              cargoExtraArgs = "--no-default-features --features onnx";
-              ORT_DYLIB_PATH = "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
-            });
-        in
-          pkgs.symlinkJoin {
-            name = "parry-onnx";
-            paths = [unwrapped];
-            nativeBuildInputs = [pkgs.makeWrapper];
-            postBuild = ''
-              wrapProgram $out/bin/parry \
-                --set ORT_DYLIB_PATH "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
-            '';
-            inherit meta;
-          };
+        default = onnxPkg;
+        onnx = onnxPkg;
       });
 
     devShells = forAllSystems ({

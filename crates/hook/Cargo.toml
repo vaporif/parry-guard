@@ -21,11 +21,11 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [features]
-default = ["candle"]
+default = ["onnx-fetch"]
 onnx = ["parry-daemon/onnx"]
 onnx-fetch = ["parry-daemon/onnx-fetch"]
 onnx-coreml = ["parry-daemon/onnx-coreml"]
-candle = ["parry-daemon/candle"]
+candle = ["parry-daemon/candle", "parry-core/candle"]
 
 [package.metadata.docs.rs]
 features = ["candle"]

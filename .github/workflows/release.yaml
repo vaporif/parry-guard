@@ -5,13 +5,21 @@ on:
 
 jobs:
   release:
-    name: release ${{ matrix.target }}
+    name: release ${{ matrix.target }} (${{ matrix.backend }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+        backend:
+          - candle
+          - onnx-fetch
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
@@ -21,13 +29,25 @@ jobs:
             os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
+          - backend: onnx-fetch
+            suffix: ""
+          - backend: candle
+            suffix: "candle-"
+        exclude:
+          - target: x86_64-unknown-linux-musl
+            backend: onnx-fetch
+          - target: aarch64-unknown-linux-musl
+            backend: onnx-fetch
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: parry
           target: ${{ matrix.target }}
-          archive: $bin-$target-$tag
+          build-tool: cargo
+          features: ${{ matrix.backend }}
+          no-default-features: true
+          archive: $bin-${{ matrix.suffix }}$target-$tag
           checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}
           include: README.md,LICENSE

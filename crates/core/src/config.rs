@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 const DEFAULT_MODEL: &str = "ProtectAI/deberta-v3-small-prompt-injection-v2";
+#[cfg(feature = "candle")]
 const FULL_MODELS: &[&str] = &[DEFAULT_MODEL, "meta-llama/Llama-Prompt-Guard-2-86M"];
 
 /// Scan mode controlling which ML models are used.
@@ -87,13 +88,22 @@ impl Config {
                 repo: DEFAULT_MODEL.to_string(),
                 threshold: None,
             }]),
-            ScanMode::Full => Ok(FULL_MODELS
-                .iter()
-                .map(|repo| ModelDef {
-                    repo: repo.to_string(),
-                    threshold: None,
-                })
-                .collect()),
+            ScanMode::Full => {
+                #[cfg(not(feature = "candle"))]
+                return Err(eyre::eyre!(
+                    "scan-mode 'full' requires the candle backend (Llama Prompt Guard 2 has no ONNX export). \
+                     Build with --features candle or use --scan-mode fast"
+                ));
+
+                #[cfg(feature = "candle")]
+                Ok(FULL_MODELS
+                    .iter()
+                    .map(|repo| ModelDef {
+                        repo: repo.to_string(),
+                        threshold: None,
+                    })
+                    .collect())
+            }
             ScanMode::Custom => load_custom_models(),
         }
     }
@@ -155,6 +165,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "candle")]
     fn resolve_models_full() {
         let config = Config {
             scan_mode: ScanMode::Full,
@@ -164,6 +175,16 @@ mod tests {
         assert_eq!(models.len(), 2);
         assert_eq!(models[0].repo, DEFAULT_MODEL);
         assert_eq!(models[1].repo, "meta-llama/Llama-Prompt-Guard-2-86M");
+    }
+
+    #[test]
+    #[cfg(not(feature = "candle"))]
+    fn resolve_models_full_errors_without_candle() {
+        let config = Config {
+            scan_mode: ScanMode::Full,
+            ..Config::default()
+        };
+        assert!(config.resolve_models().is_err());
     }
 
     #[test]
