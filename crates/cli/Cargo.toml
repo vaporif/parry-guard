@@ -32,7 +32,11 @@ fork.workspace = true
 
 [features]
 default = ["onnx-fetch"]
-onnx = ["parry-guard-ml/onnx", "parry-guard-daemon/onnx", "parry-guard-hook/onnx"]
+onnx = [
+  "parry-guard-ml/onnx",
+  "parry-guard-daemon/onnx",
+  "parry-guard-hook/onnx",
+]
 onnx-fetch = [
   "parry-guard-ml/onnx-fetch",
   "parry-guard-daemon/onnx-fetch",
