@@ -155,7 +155,7 @@ jobs:
           echo "ORT_DYLIB_PATH=$PWD/onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so" >> "$GITHUB_ENV"
 
       - name: ML e2e tests
-        run: cargo nextest run -p parry-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
+        run: cargo nextest run -p parry-guard-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
