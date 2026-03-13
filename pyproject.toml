@@ -1,0 +1,27 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "parry-ai"
+dynamic = ["version"]
+description = "Prompt injection scanner CLI - substring, unicode, secrets, and ML detection"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["prompt-injection", "security", "scanner", "llm", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Topic :: Security",
+]
+
+[project.urls]
+Repository = "https://github.com/vaporif/parry"
+
+[tool.maturin]
+manifest-path = "crates/cli/Cargo.toml"
+bindings = "bin"
+features = ["candle"]
+no-default-features = true

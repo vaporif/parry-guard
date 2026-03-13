@@ -15,17 +15,23 @@ The ML models are gated on HuggingFace. Before installing:
 3. For `full` mode: also accept the [Llama Prompt Guard 2 license](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M) (Meta approval required)
 4. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
-## Install
+## Usage
 
-### cargo-binstall
+Add to `~/.claude/settings.json`:
 
-```bash
-cargo binstall parry-ai
+**With [uvx](https://docs.astral.sh/uv/):**
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "uvx parry-ai hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "uvx parry-ai hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "uvx parry-ai hook", "timeout": 2000 }]
+  }
+}
 ```
 
-### [rvx](https://github.com/vaporif/rvx?tab=readme-ov-file#install)
-
-No Rust toolchain needed. Install rvx, then use it directly in hooks — it downloads the pre-built binary on first run and caches it:
+**With [rvx](https://github.com/vaporif/rvx):**
 
 ```json
 {
@@ -37,9 +43,16 @@ No Rust toolchain needed. Install rvx, then use it directly in hooks — it down
 }
 ```
 
-Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as normal.
+<details>
+<summary>Other installation methods</summary>
 
-### From source
+**With cargo-binstall:**
+
+```bash
+cargo binstall parry-ai
+```
+
+**From source:**
 
 ```bash
 # Default (ONNX backend - statically linked, 5-6x faster than Candle)
@@ -49,7 +62,11 @@ cargo install --path crates/cli
 cargo install --path crates/cli --no-default-features --features candle
 ```
 
-### Nix (home-manager)
+**From releases:**
+
+Download a prebuilt binary from [GitHub Releases](https://github.com/vaporif/parry/releases).
+
+**Nix (home-manager):**
 
 ```nix
 # flake.nix
@@ -86,7 +103,19 @@ cargo install --path crates/cli --no-default-features --features candle
 }
 ```
 
-You still need to configure the Claude Code hook separately (see below).
+With parry on PATH:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "parry hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "parry hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "parry hook", "timeout": 2000 }]
+  }
+}
+```
+
+</details>
 
 ## Setup
 
@@ -97,20 +126,6 @@ One of (first match wins):
 export HF_TOKEN="hf_..."                          # direct value
 export HF_TOKEN_PATH="/path/to/token"              # file path
 # or place token at /run/secrets/hf-token-scan-injection
-```
-
-### 2. Add Claude Code hook
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [{ "command": "parry hook", "timeout": 1000 }],
-    "PostToolUse": [{ "command": "parry hook", "timeout": 5000 }],
-    "UserPromptSubmit": [{ "command": "parry hook", "timeout": 2000 }]
-  }
-}
 ```
 
 The daemon auto-starts on first scan, downloads the model on first run, and idles out after 30 minutes.
