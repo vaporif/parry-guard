@@ -1876,15 +1876,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-ai"
-version = "0.2.0-alpha.1"
+name = "parry-guard"
+version = "0.1.0-alpha.1"
 dependencies = [
  "clap",
  "fork",
- "parry-core",
- "parry-daemon",
- "parry-hook",
- "parry-ml",
+ "parry-guard-core",
+ "parry-guard-daemon",
+ "parry-guard-hook",
+ "parry-guard-ml",
  "serde_json",
  "tokio",
  "tracing",
@@ -1892,8 +1892,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-core"
-version = "0.2.0-alpha.1"
+name = "parry-guard-core"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1913,16 +1913,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-daemon"
-version = "0.2.0-alpha.1"
+name = "parry-guard-daemon"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "bytes",
  "eyre",
  "futures-util",
  "interprocess",
- "parry-core",
- "parry-ml",
+ "parry-guard-core",
+ "parry-guard-ml",
  "redb",
  "tempfile",
  "tokio",
@@ -1931,8 +1931,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-destructive"
-version = "0.2.0-alpha.1"
+name = "parry-guard-destructive"
+version = "0.1.0-alpha.1"
 dependencies = [
  "dirs",
  "regex",
@@ -1945,8 +1945,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-exfil"
-version = "0.2.0-alpha.1"
+name = "parry-guard-exfil"
+version = "0.1.0-alpha.1"
 dependencies = [
  "dirs",
  "regex",
@@ -1972,14 +1972,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-hook"
-version = "0.2.0-alpha.1"
+name = "parry-guard-hook"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
- "parry-core",
- "parry-daemon",
- "parry-destructive",
- "parry-exfil",
+ "parry-guard-core",
+ "parry-guard-daemon",
+ "parry-guard-destructive",
+ "parry-guard-exfil",
  "redb",
  "serde",
  "serde_json",
@@ -1989,8 +1989,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "parry-ml"
-version = "0.2.0-alpha.1"
+name = "parry-guard-ml"
+version = "0.1.0-alpha.1"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -2000,7 +2000,7 @@ dependencies = [
  "hf-hub",
  "ndarray",
  "ort",
- "parry-core",
+ "parry-guard-core",
  "serde_json",
  "tokenizers",
  "tracing",

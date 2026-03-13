@@ -1,5 +1,5 @@
 [package]
-name = "parry-daemon"
+name = "parry-guard-daemon"
 description = "Async daemon for persistent ML model loading"
 version.workspace = true
 edition.workspace = true
@@ -10,8 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-parry-core.workspace = true
-parry-ml.workspace = true
+parry-guard-core.workspace = true
+parry-guard-ml.workspace = true
 eyre.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
@@ -24,10 +24,10 @@ blake3.workspace = true
 
 [features]
 default = ["onnx-fetch"]
-onnx = ["parry-ml/onnx"]
-onnx-fetch = ["parry-ml/onnx-fetch"]
-onnx-coreml = ["parry-ml/onnx-coreml"]
-candle = ["parry-ml/candle", "parry-core/candle"]
+onnx = ["parry-guard-ml/onnx"]
+onnx-fetch = ["parry-guard-ml/onnx-fetch"]
+onnx-coreml = ["parry-guard-ml/onnx-coreml"]
+candle = ["parry-guard-ml/candle", "parry-guard-core/candle"]
 
 [package.metadata.docs.rs]
 features = ["candle"]

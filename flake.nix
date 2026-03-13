@@ -54,7 +54,7 @@
       onnxruntime-bin = pkgs.callPackage ./nix/onnxruntime.nix {};
       commonArgs = {
         inherit src;
-        pname = "parry";
+        pname = "parry-guard";
         strictDeps = true;
         nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
           pkgs.pkg-config
@@ -72,7 +72,7 @@
       meta = {
         description = "Prompt injection scanner for Claude Code";
         license = pkgs.lib.licenses.mit;
-        mainProgram = "parry";
+        mainProgram = "parry-guard";
       };
       onnxSupported = builtins.elem pkgs.stdenv.hostPlatform.system [
         "x86_64-linux"
@@ -109,7 +109,7 @@
           paths = [unwrapped];
           nativeBuildInputs = [pkgs.makeWrapper];
           postBuild = ''
-            wrapProgram $out/bin/parry \
+            wrapProgram $out/bin/parry-guard \
               --set ORT_DYLIB_PATH "${onnxruntime-bin}/lib/libonnxruntime${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
           '';
           inherit meta;

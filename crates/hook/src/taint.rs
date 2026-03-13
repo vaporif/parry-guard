@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 const TAINT_FILE: &str = ".parry-tainted";
 
 fn taint_file(runtime_dir: Option<&Path>) -> Option<PathBuf> {
-    parry_core::runtime_path(runtime_dir, TAINT_FILE)
+    parry_guard_core::runtime_path(runtime_dir, TAINT_FILE)
 }
 
 /// Context about what triggered a taint event.

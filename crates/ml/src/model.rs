@@ -1,8 +1,8 @@
 //! `HuggingFace` model download/caching.
 
 use eyre::WrapErr;
-use parry_core::config::Config;
-use parry_core::Result;
+use parry_guard_core::config::Config;
+use parry_guard_core::Result;
 use tracing::debug;
 
 /// Get a `HuggingFace` Hub repo handle for an arbitrary model repo.

@@ -1,6 +1,6 @@
 //! `PreToolUse` hook processing.
 
-use parry_core::Config;
+use parry_guard_core::Config;
 use tracing::{debug, warn};
 
 use crate::{HookInput, PreToolUseOutput};
@@ -39,7 +39,7 @@ pub fn process(input: &HookInput, config: &Config) -> Option<PreToolUseOutput> {
     // Check Bash commands for exfiltration patterns first (deny - high confidence)
     if tool == "Bash" {
         if let Some(command) = input.tool_input.get("command").and_then(|v| v.as_str()) {
-            if let Some(reason) = parry_exfil::detect_exfiltration(command) {
+            if let Some(reason) = parry_guard_exfil::detect_exfiltration(command) {
                 return Some(PreToolUseOutput::deny(&reason));
             }
         }
@@ -90,7 +90,7 @@ fn check_destructive_operation(
     match tool {
         "Bash" => {
             let command = input.get("command").and_then(|v| v.as_str())?;
-            if let Some(reason) = parry_destructive::detect_destructive(command, &cwd) {
+            if let Some(reason) = parry_guard_destructive::detect_destructive(command, &cwd) {
                 return Some(PreToolUseOutput::ask(&format!(
                     "Destructive operation detected: {reason}"
                 )));
@@ -98,7 +98,7 @@ fn check_destructive_operation(
         }
         "Write" | "Edit" => {
             let path = input.get("file_path").and_then(|v| v.as_str())?;
-            if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
+            if let Some(reason) = parry_guard_destructive::is_protected_path(path, &cwd) {
                 debug!(tool, path, %reason, "write to protected path blocked");
                 return Some(PreToolUseOutput::ask(&format!(
                     "Write to protected path: {reason}"
@@ -107,7 +107,7 @@ fn check_destructive_operation(
         }
         "NotebookEdit" => {
             let path = input.get("notebook_path").and_then(|v| v.as_str())?;
-            if let Some(reason) = parry_destructive::is_protected_path(path, &cwd) {
+            if let Some(reason) = parry_guard_destructive::is_protected_path(path, &cwd) {
                 debug!(tool, path, %reason, "write to protected path blocked");
                 return Some(PreToolUseOutput::ask(&format!(
                     "Write to protected path: {reason}"
@@ -128,7 +128,7 @@ fn check_sensitive_path(tool: &str, input: &serde_json::Value) -> Option<PreTool
         _ => None,
     }?;
 
-    if parry_exfil::patterns::has_sensitive_path(path) {
+    if parry_guard_exfil::patterns::has_sensitive_path(path) {
         debug!(tool, path, "sensitive path access blocked");
         Some(PreToolUseOutput::ask(&format!(
             "Blocked: {tool} accessing sensitive path '{path}'. \
@@ -193,7 +193,7 @@ fn scan_input_content(tool: &str, content: &str, config: &Config) -> Option<PreT
         // Fast scan only — DeBERTa was trained on natural language and
         // produces false positives on shell syntax. Layer 4 (exfil detection)
         // already covers structural threats.
-        parry_core::scan_text_fast(content)
+        parry_guard_core::scan_text_fast(content)
     } else {
         match crate::scan_text(content, config) {
             Ok(r) => r,

@@ -2,7 +2,7 @@
 //!
 //! Fast scan only (no ML). `PreToolUse` handles action-level blocking.
 
-use parry_core::Config;
+use parry_guard_core::Config;
 use tracing::{debug, instrument};
 
 use crate::{HookInput, HookOutput};
@@ -24,13 +24,13 @@ pub fn process(input: &HookInput, config: &Config) -> Option<HookOutput> {
     let response = input.response_text()?;
     tracing::Span::current().record("response_len", response.len());
 
-    let fast_result = parry_core::scan_text_fast(&response);
+    let fast_result = parry_guard_core::scan_text_fast(&response);
 
     // Only taint if ML confirms the fast-scan detection.
     // Fast scan alone has false positives (e.g. "you are now connected"),
     // and taint is a nuclear option — blocks ALL tools until manual removal.
     if fast_result.is_injection() {
-        match parry_daemon::scan_full(&response, config) {
+        match parry_guard_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {
                 debug!("ML confirmed injection, tainting");
                 crate::taint::mark(
@@ -57,11 +57,11 @@ pub fn process(input: &HookInput, config: &Config) -> Option<HookOutput> {
     None
 }
 
-fn warning_for_result(result: parry_core::ScanResult) -> Option<HookOutput> {
+fn warning_for_result(result: parry_guard_core::ScanResult) -> Option<HookOutput> {
     match result {
-        parry_core::ScanResult::Injection => Some(HookOutput::warning(INJECTION_WARNING)),
-        parry_core::ScanResult::Secret => Some(HookOutput::warning(SECRET_WARNING)),
-        parry_core::ScanResult::Clean => None,
+        parry_guard_core::ScanResult::Injection => Some(HookOutput::warning(INJECTION_WARNING)),
+        parry_guard_core::ScanResult::Secret => Some(HookOutput::warning(SECRET_WARNING)),
+        parry_guard_core::ScanResult::Clean => None,
     }
 }
 

@@ -9,8 +9,8 @@ use tokio::time::Instant;
 use tokio_util::codec::Framed;
 use tracing::{debug, info, instrument, warn};
 
-use parry_core::{Config, ScanResult};
-use parry_ml::MlScanner;
+use parry_guard_core::{Config, ScanResult};
+use parry_guard_ml::MlScanner;
 
 enum MlState {
     NotLoaded,
@@ -178,7 +178,7 @@ fn handle_request(
 }
 
 fn run_full_scan(text: &str, threshold: f32, ml_scanner: Option<&mut MlScanner>) -> ScanResponse {
-    let fast = parry_core::scan_text_fast(text);
+    let fast = parry_guard_core::scan_text_fast(text);
     if !fast.is_clean() {
         debug!(?fast, "fast scan detected issue");
         return scan_result_to_response(fast);
@@ -189,7 +189,7 @@ fn run_full_scan(text: &str, threshold: f32, ml_scanner: Option<&mut MlScanner>)
         return ScanResponse::Error;
     };
 
-    let stripped = parry_core::unicode::strip_invisible(text);
+    let stripped = parry_guard_core::unicode::strip_invisible(text);
     match scanner.scan_chunked(&stripped, threshold) {
         Ok(false) => {
             debug!("ML scan clean");

@@ -1,5 +1,5 @@
 [package]
-name = "parry-hook"
+name = "parry-guard-hook"
 description = "Claude Code hook integration"
 version.workspace = true
 edition.workspace = true
@@ -10,10 +10,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-parry-core.workspace = true
-parry-destructive.workspace = true
-parry-exfil.workspace = true
-parry-daemon.workspace = true
+parry-guard-core.workspace = true
+parry-guard-destructive.workspace = true
+parry-guard-exfil.workspace = true
+parry-guard-daemon.workspace = true
 blake3.workspace = true
 redb.workspace = true
 serde.workspace = true
@@ -22,10 +22,10 @@ tracing.workspace = true
 
 [features]
 default = ["onnx-fetch"]
-onnx = ["parry-daemon/onnx"]
-onnx-fetch = ["parry-daemon/onnx-fetch"]
-onnx-coreml = ["parry-daemon/onnx-coreml"]
-candle = ["parry-daemon/candle", "parry-core/candle"]
+onnx = ["parry-guard-daemon/onnx"]
+onnx-fetch = ["parry-guard-daemon/onnx-fetch"]
+onnx-coreml = ["parry-guard-daemon/onnx-coreml"]
+candle = ["parry-guard-daemon/candle", "parry-guard-core/candle"]
 
 [package.metadata.docs.rs]
 features = ["candle"]

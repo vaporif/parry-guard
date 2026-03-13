@@ -15,7 +15,7 @@ impl HashCache {
         table: TableDefinition<'static, &'static str, u64>,
         runtime_dir: Option<&std::path::Path>,
     ) -> Option<Self> {
-        let path = parry_core::runtime_path(runtime_dir, DB_FILE)?;
+        let path = parry_guard_core::runtime_path(runtime_dir, DB_FILE)?;
         match redb::Database::create(&path) {
             Ok(db) => Some(Self { db, table }),
             Err(redb::DatabaseError::UpgradeRequired(_)) => {

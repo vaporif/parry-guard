@@ -16,8 +16,8 @@ pub mod candle;
 pub mod onnx;
 
 use backend::MlBackend;
-use parry_core::config::Config;
-use parry_core::Result;
+use parry_guard_core::config::Config;
+use parry_guard_core::Result;
 use tokenizers::Tokenizer;
 use tracing::{debug, info, instrument};
 
