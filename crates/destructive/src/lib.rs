@@ -281,6 +281,13 @@ mod tests {
     }
 
     #[test]
+    fn npm_uninstall_global_long_flag_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(detect_destructive("npm uninstall --global typescript", cwd).is_some());
+    }
+
+    #[test]
     fn npm_uninstall_local_allowed() {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -327,6 +334,20 @@ mod tests {
         assert!(
             detect_destructive("git push --force-with-lease", cwd).is_none(),
             "git push --force-with-lease should pass"
+        );
+    }
+
+    #[test]
+    fn git_push_force_overrides_force_with_lease() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive("git push --force --force-with-lease", cwd).is_some(),
+            "--force overrides --force-with-lease in git"
+        );
+        assert!(
+            detect_destructive("git push --force-with-lease --force", cwd).is_some(),
+            "--force overrides --force-with-lease regardless of order"
         );
     }
 

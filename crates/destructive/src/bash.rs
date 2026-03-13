@@ -281,10 +281,10 @@ fn check_package_manager(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
         }
     }
 
-    // npm: only flag with -g
+    // npm: only flag with -g / --global
     if cmd_name == "npm"
         && consts::NPM_GLOBAL_UNINSTALL.contains(&first_arg)
-        && has_flag(&args, "-g")
+        && (has_flag(&args, "-g") || has_flag(&args, "--global"))
     {
         return Some(format!("'npm {first_arg} -g' removes global packages"));
     }
@@ -365,11 +365,10 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
 }
 
 fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
-    // git push --force / -f (but NOT --force-with-lease)
+    // git push --force / -f (--force overrides --force-with-lease in git)
     let has_force = has_flag(args, "--force") || has_flag(args, "-f");
-    let has_force_with_lease = args.iter().any(|a| a.starts_with("--force-with-lease"));
 
-    if has_force && !has_force_with_lease {
+    if has_force {
         return Some("'git push --force' overwrites remote history".into());
     }
 
