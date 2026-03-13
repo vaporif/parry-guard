@@ -70,11 +70,13 @@ fn main() -> ExitCode {
         );
     }
 
+    let hf_token = cli.resolve_hf_token();
+    let deprecated_ignore_paths = cli.ignore_path;
+
     let config = Config {
-        hf_token: cli.resolve_hf_token(),
+        hf_token,
         threshold: cli.threshold,
         claude_md_threshold: cli.claude_md_threshold,
-        ignore_paths: cli.ignore_path,
         scan_mode: cli.scan_mode,
         runtime_dir: None,
     };
@@ -86,11 +88,20 @@ fn main() -> ExitCode {
             extensions,
             full,
         }) => run_diff(&config, &git_ref, extensions.as_deref(), full),
-        Some(cli::Command::Hook) | None => run_hook(&config),
+        Some(
+            cmd @ (cli::Command::Ignore { .. }
+            | cli::Command::Monitor { .. }
+            | cli::Command::Reset { .. }
+            | cli::Command::Status { .. }
+            | cli::Command::Repos),
+        ) => run_repo_command(cmd, config.runtime_dir.as_deref()),
+        Some(cli::Command::Hook) | None => run_hook(&config, &deprecated_ignore_paths),
     }
 }
 
-fn run_hook(config: &Config) -> ExitCode {
+fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
+    use parry_core::repo_db::{self, RepoDb, RepoState};
+
     debug!("starting hook mode");
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
@@ -112,11 +123,40 @@ fn run_hook(config: &Config) -> ExitCode {
         }
     };
 
+    let repo_path = hook_input
+        .cwd
+        .as_ref()
+        .and_then(|cwd| repo_db::canonicalize_repo_path(Some(std::path::Path::new(cwd))));
+    let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
+
+    // Migrate old --ignore-path values to central db (deprecation period)
+    if !deprecated_ignore_paths.is_empty() {
+        if let Some(ref db) = db {
+            for path in deprecated_ignore_paths {
+                let (state, _) = db.get_repo_state(path);
+                if state == RepoState::Unknown {
+                    db.set_repo_state(path, RepoState::Ignored, None);
+                }
+            }
+            warn!("--ignore-path is deprecated, use 'parry ignore <path>' instead");
+        }
+    }
+
+    // Remove obsolete per-project .parry-guard.redb if it exists
+    if let Some(ref rp) = repo_path {
+        RepoDb::cleanup_old_db(std::path::Path::new(rp.as_str()));
+    }
+
+    let repo_state = db
+        .as_ref()
+        .zip(repo_path.as_deref())
+        .map_or(RepoState::Unknown, |(db, rp)| db.get_repo_state(rp).0);
+
     // Dispatch by event type
     match hook_input.hook_event_name.as_deref() {
         Some("UserPromptSubmit") => {
             debug!("detected UserPromptSubmit hook");
-            let code = run_audit(&hook_input, config);
+            let code = run_audit(&hook_input, config, db.as_ref(), repo_path.as_deref());
             if code != ExitCode::SUCCESS {
                 return code;
             }
@@ -124,7 +164,9 @@ fn run_hook(config: &Config) -> ExitCode {
         Some("PostToolUse") => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
             debug!(tool, "detected PostToolUse hook");
-            if let Some(output) = parry_hook::post_tool_use::process(&hook_input, config) {
+            if let Some(output) =
+                parry_hook::post_tool_use::process(&hook_input, config, repo_state)
+            {
                 info!(tool, "threat detected in tool output");
                 match serde_json::to_string(&output) {
                     Ok(json) => println!("{json}"),
@@ -135,7 +177,13 @@ fn run_hook(config: &Config) -> ExitCode {
         _ => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
             debug!(tool, "detected PreToolUse hook");
-            if let Some(output) = parry_hook::pre_tool_use::process(&hook_input, config) {
+            if let Some(output) = parry_hook::pre_tool_use::process(
+                &hook_input,
+                config,
+                repo_state,
+                db.as_ref(),
+                repo_path.as_deref(),
+            ) {
                 if output.is_deny() {
                     info!(tool, "tool denied by PreToolUse");
                     eprintln!("{}", output.reason());
@@ -153,7 +201,23 @@ fn run_hook(config: &Config) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
+fn run_audit(
+    hook_input: &parry_hook::HookInput,
+    config: &Config,
+    db: Option<&parry_core::repo_db::RepoDb>,
+    repo_path: Option<&str>,
+) -> ExitCode {
+    use parry_core::repo_db::RepoState;
+
+    let repo_state = db
+        .zip(repo_path)
+        .map_or(RepoState::Unknown, |(db, rp)| db.get_repo_state(rp).0);
+
+    if repo_state == RepoState::Ignored {
+        debug!("repo ignored, skipping audit");
+        return ExitCode::SUCCESS;
+    }
+
     let dir = hook_input
         .cwd
         .as_ref()
@@ -165,7 +229,7 @@ fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
         return ExitCode::SUCCESS;
     };
 
-    let warnings = match parry_hook::project_audit::scan(&dir, config) {
+    let warnings = match parry_hook::project_audit::scan(&dir, config, db, repo_path) {
         Ok(w) => w,
         Err(e) => {
             warn!(%e, "audit ML scan failed (fail-closed)");
@@ -181,7 +245,27 @@ fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
         }
     };
 
+    let is_first_run = repo_state == RepoState::Unknown;
+
+    if is_first_run {
+        if let (Some(db), Some(rp)) = (db, repo_path) {
+            let remote = parry_core::repo_db::git_remote_url(&dir);
+            db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
+        }
+    }
+
     if warnings.is_empty() {
+        if is_first_run {
+            let rp_display = repo_path.unwrap_or("this repo");
+            let message = format!(
+                "Parry: first scan of {rp_display} — no issues found. Now monitoring. \
+                 Run 'parry ignore' to stop scanning, or 'parry monitor' to keep scanning."
+            );
+            let output = parry_hook::HookOutput::user_prompt_warning(&message);
+            if let Ok(json) = serde_json::to_string(&output) {
+                println!("{json}");
+            }
+        }
         debug!("audit clean");
         return ExitCode::SUCCESS;
     }
@@ -195,6 +279,82 @@ fn run_audit(hook_input: &parry_hook::HookInput, config: &Config) -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {
+    parry_core::repo_db::canonicalize_repo_path(path).ok_or_else(|| {
+        eprintln!("error: cannot resolve path");
+        ExitCode::FAILURE
+    })
+}
+
+fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Path>) -> ExitCode {
+    use parry_core::repo_db::{self, RepoDb, RepoState};
+
+    let db = match RepoDb::open(runtime_dir) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("error: cannot open repo database: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match subcommand {
+        cli::Command::Ignore { path } => {
+            let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
+                return ExitCode::FAILURE;
+            };
+            let remote = repo_db::git_remote_url(std::path::Path::new(&canonical));
+            db.set_repo_state(&canonical, RepoState::Ignored, remote.as_deref());
+            println!("Set {canonical} to ignored");
+            ExitCode::SUCCESS
+        }
+        cli::Command::Monitor { path } => {
+            let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
+                return ExitCode::FAILURE;
+            };
+            let remote = repo_db::git_remote_url(std::path::Path::new(&canonical));
+            db.set_repo_state(&canonical, RepoState::Monitored, remote.as_deref());
+            println!("Set {canonical} to monitored");
+            ExitCode::SUCCESS
+        }
+        cli::Command::Reset { path } => {
+            let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
+                return ExitCode::FAILURE;
+            };
+            db.reset_repo(&canonical);
+            println!("Reset {canonical} to unknown (caches cleared)");
+            ExitCode::SUCCESS
+        }
+        cli::Command::Status { path } => {
+            let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
+                return ExitCode::FAILURE;
+            };
+            let (state, remote) = db.get_repo_state(&canonical);
+            println!("Path:    {canonical}");
+            println!("State:   {}", state.as_str());
+            if let Some(url) = remote {
+                println!("Remote:  {url}");
+            }
+            ExitCode::SUCCESS
+        }
+        cli::Command::Repos => {
+            let repos = db.list_repos();
+            if repos.is_empty() {
+                println!("No known repos.");
+            } else {
+                for entry in &repos {
+                    let remote = entry
+                        .remote
+                        .as_deref()
+                        .map_or(String::new(), |r| format!("  ({r})"));
+                    println!("{:<40} {:<12}{remote}", entry.path, entry.state.as_str(),);
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool) -> ExitCode {

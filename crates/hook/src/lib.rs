@@ -2,7 +2,6 @@
 //!
 //! Provides pre-tool-use blocking and post-tool-use scanning for Claude Code hooks.
 
-mod cache;
 pub mod claude_md;
 pub mod post_tool_use;
 pub mod pre_tool_use;
@@ -26,18 +25,6 @@ pub struct HookInput {
 }
 
 impl HookInput {
-    /// Check if the current working directory is in the ignore list.
-    #[must_use]
-    pub fn is_ignored(&self, config: &Config) -> bool {
-        if let Some(ref cwd) = self.cwd {
-            return !cwd.is_empty() && config.is_ignored(cwd);
-        }
-        let Ok(cwd) = std::env::current_dir() else {
-            return false;
-        };
-        cwd.to_str().is_some_and(|p| config.is_ignored(p))
-    }
-
     /// Extract tool response as a string.
     ///
     /// If the value is a JSON string, returns it directly.
@@ -209,6 +196,17 @@ pub(crate) mod test_util {
         fn drop(&mut self) {
             let _ = std::env::set_current_dir(&self.prev_cwd);
         }
+    }
+
+    pub(crate) fn test_config_with_dir(dir: &Path) -> parry_core::Config {
+        parry_core::Config {
+            runtime_dir: Some(dir.to_path_buf()),
+            ..parry_core::Config::default()
+        }
+    }
+
+    pub(crate) fn test_db(dir: &Path) -> parry_core::repo_db::RepoDb {
+        parry_core::repo_db::RepoDb::open(Some(dir)).unwrap()
     }
 }
 

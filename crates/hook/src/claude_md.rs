@@ -2,12 +2,9 @@
 
 use std::path::PathBuf;
 
+use parry_core::repo_db::RepoDb;
 use parry_core::Config;
 use tracing::{debug, instrument, warn};
-
-use crate::cache::HashCache;
-
-const TABLE: redb::TableDefinition<&str, u64> = redb::TableDefinition::new("guard_cache");
 
 /// Result of CLAUDE.md scanning.
 pub enum CheckResult {
@@ -31,8 +28,8 @@ impl CheckResult {
 /// Results are cached per content hash — user is only asked once per unique content.
 /// ML errors are not cached so they retry on the next invocation.
 #[must_use]
-#[instrument(skip(config))]
-pub fn check(config: &Config) -> CheckResult {
+#[instrument(skip(config, db, repo_path))]
+pub fn check(config: &Config, db: Option<&RepoDb>, repo_path: Option<&str>) -> CheckResult {
     let paths = claude_md_paths();
     if paths.is_empty() {
         debug!("no CLAUDE.md files found");
@@ -40,7 +37,6 @@ pub fn check(config: &Config) -> CheckResult {
     }
 
     debug!(count = paths.len(), "checking CLAUDE.md files");
-    let cache = HashCache::open(TABLE, config.runtime_dir.as_deref());
 
     for path in &paths {
         let content = match std::fs::read_to_string(path) {
@@ -57,8 +53,8 @@ pub fn check(config: &Config) -> CheckResult {
         let hash = hash_content(&content);
         let key = path.to_string_lossy();
 
-        if let Some(ref c) = cache {
-            if c.is_cached(&key, hash) {
+        if let (Some(db), Some(rp)) = (db, repo_path) {
+            if db.is_guard_cached(rp, &key, hash) {
                 debug!(path = %path.display(), "CLAUDE.md already reviewed (cached)");
                 continue;
             }
@@ -68,7 +64,7 @@ pub fn check(config: &Config) -> CheckResult {
         let fast = parry_core::scan_text_fast(&content);
         if !fast.is_clean() {
             debug!(path = %path.display(), "fast scan detected injection in CLAUDE.md");
-            cache_hash(cache.as_ref(), &key, hash);
+            cache_hash(db, repo_path, &key, hash);
             return CheckResult::Ask(format!(
                 "Prompt injection detected in {} — please verify",
                 path.display()
@@ -79,14 +75,14 @@ pub fn check(config: &Config) -> CheckResult {
         match crate::scan_text_with_threshold(&content, config, config.claude_md_threshold) {
             Ok(result) if !result.is_clean() => {
                 debug!(path = %path.display(), "ML flagged CLAUDE.md");
-                cache_hash(cache.as_ref(), &key, hash);
+                cache_hash(db, repo_path, &key, hash);
                 return CheckResult::Ask(format!(
                     "ML flagged potential injection in {} — please verify",
                     path.display()
                 ));
             }
             Ok(_) => {
-                cache_hash(cache.as_ref(), &key, hash);
+                cache_hash(db, repo_path, &key, hash);
                 debug!(path = %path.display(), "CLAUDE.md clean, cached");
             }
             Err(e) => {
@@ -103,9 +99,9 @@ pub fn check(config: &Config) -> CheckResult {
     CheckResult::Clean
 }
 
-fn cache_hash(cache: Option<&HashCache>, key: &str, hash: u64) {
-    if let Some(c) = cache {
-        c.mark_clean(key, hash);
+fn cache_hash(db: Option<&RepoDb>, repo_path: Option<&str>, key: &str, hash: u64) {
+    if let (Some(db), Some(rp)) = (db, repo_path) {
+        db.mark_guard_clean(rp, key, hash);
     }
 }
 
@@ -141,14 +137,7 @@ fn hash_content(content: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::CwdGuard;
-
-    fn test_config_with_dir(dir: &std::path::Path) -> Config {
-        Config {
-            runtime_dir: Some(dir.to_path_buf()),
-            ..Config::default()
-        }
-    }
+    use crate::test_util::{test_config_with_dir, test_db, CwdGuard};
 
     #[test]
     fn clean_claude_md_asks_without_daemon() {
@@ -156,15 +145,17 @@ mod tests {
         std::fs::write(dir.path().join("CLAUDE.md"), "# Project\nNormal content.").unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(
             matches!(result, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
             "ML unavailable should ask"
         );
 
         // ML errors are not cached — retries on next call so daemon recovery works
-        let result2 = check(&config);
+        let result2 = check(&config, Some(&db), Some(rp));
         assert!(
             matches!(result2, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
             "should retry ML when not cached"
@@ -181,8 +172,10 @@ mod tests {
         .unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(
             matches!(result, CheckResult::Ask(ref r) if r.contains("CLAUDE.md")),
             "fast-scan injection should ask"
@@ -199,12 +192,14 @@ mod tests {
         .unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(!result.is_clean(), "first check should ask");
 
         // Second check with same content should be cached
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(result.is_clean(), "second check should be clean (cached)");
     }
 
@@ -219,8 +214,10 @@ mod tests {
         .unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(!result.is_clean(), ".claude/CLAUDE.md should be scanned");
     }
 
@@ -229,8 +226,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(result.is_clean(), "no CLAUDE.md should return Clean");
     }
 
@@ -240,16 +239,20 @@ mod tests {
         std::fs::write(dir.path().join("CLAUDE.md"), "# Clean content").unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(!result.is_clean(), "first check should ask without daemon");
 
         // ML error should NOT be cached — retry when daemon comes back
-        let cache = HashCache::open(TABLE, config.runtime_dir.as_deref()).unwrap();
         let hash = hash_content("# Clean content");
         let canonical_path = std::env::current_dir().unwrap().join("CLAUDE.md");
         let key = canonical_path.to_string_lossy();
-        assert!(!cache.is_cached(&key, hash), "should not cache ML errors");
+        assert!(
+            !db.is_guard_cached(rp, &key, hash),
+            "should not cache ML errors"
+        );
     }
 
     #[test]
@@ -266,8 +269,10 @@ mod tests {
         std::fs::create_dir_all(repo.join(".git")).unwrap();
         let _guard = CwdGuard::new(&repo);
         let config = test_config_with_dir(repo.as_path());
+        let db = test_db(repo.as_path());
+        let rp = repo.to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(
             result.is_clean(),
             "should not scan CLAUDE.md above repo root"
@@ -286,8 +291,10 @@ mod tests {
         .unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(!result.is_clean(), "should scan CLAUDE.md at repo root");
     }
 
@@ -297,8 +304,6 @@ mod tests {
         std::fs::write(dir.path().join("CLAUDE.md"), "# Normal project docs").unwrap();
         let _guard = CwdGuard::new(dir.path());
 
-        // Custom claude_md_threshold should be passed through (verified structurally;
-        // full ML threshold behavior is tested in ml::tests::request_threshold_used_when_no_per_model)
         let config = Config {
             claude_md_threshold: 0.95,
             runtime_dir: Some(dir.path().to_path_buf()),
@@ -310,8 +315,11 @@ mod tests {
             "custom claude_md_threshold should be preserved in config"
         );
 
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
+
         // Without daemon, ML fails — but the threshold config is accepted
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(
             matches!(result, CheckResult::Ask(ref r) if r.contains("ML unavailable")),
             "should attempt ML scan with custom threshold"
@@ -324,8 +332,10 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("CLAUDE.md")).unwrap();
         let _guard = CwdGuard::new(dir.path());
         let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
 
-        let result = check(&config);
+        let result = check(&config, Some(&db), Some(rp));
         assert!(result.is_clean());
     }
 }

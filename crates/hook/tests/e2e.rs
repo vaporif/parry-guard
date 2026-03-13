@@ -58,7 +58,7 @@ async fn stop_daemon(handle: JoinHandle<()>) {
 }
 
 fn process_hook(input: &HookInput, config: &Config) -> Option<HookOutput> {
-    parry_hook::post_tool_use::process(input, config)
+    parry_hook::post_tool_use::process(input, config, parry_core::repo_db::RepoState::Unknown)
 }
 
 /// Single test to avoid daemon socket races.
