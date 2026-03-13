@@ -86,7 +86,7 @@ cargo install --path crates/cli --no-default-features --features candle
 { inputs, pkgs, config, ... }: {
   imports = [ inputs.parry.homeManagerModules.default ];
 
-  programs.parry = {
+  programs.parry-guard = {
     enable = true;
     package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default)
     # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)

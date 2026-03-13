@@ -5,7 +5,7 @@
   ...
 }: let
   inherit (lib) mkEnableOption mkOption mkIf types;
-  cfg = config.programs.parry;
+  cfg = config.programs.parry-guard;
 
   patternEntryType = types.submodule {
     options = {
@@ -124,7 +124,7 @@
       }
     else cfg.package;
 in {
-  options.programs.parry = {
+  options.programs.parry-guard = {
     enable = mkEnableOption "parry prompt injection scanner";
 
     package = mkOption {
