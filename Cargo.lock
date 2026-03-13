@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "clap",
  "fork",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-core"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-daemon"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "bytes",
@@ -1932,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-destructive"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "dirs",
  "regex",
@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-exfil"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "dirs",
  "regex",
@@ -1973,7 +1973,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-hook"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "parry-guard-core",
@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-ml"
-version = "0.2.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "candle-core",
  "candle-nn",
