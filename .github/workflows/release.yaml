@@ -38,13 +38,14 @@ jobs:
             backend: onnx-fetch
           - target: aarch64-unknown-linux-musl
             backend: onnx-fetch
+          - target: x86_64-apple-darwin
+            backend: onnx-fetch
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: parry
           target: ${{ matrix.target }}
-          build-tool: cargo
           features: ${{ matrix.backend }}
           no-default-features: true
           archive: $bin-${{ matrix.suffix }}$target-$tag
