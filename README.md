@@ -1,4 +1,4 @@
-# Parry
+# Parry-guard
 [![Check](https://github.com/vaporif/parry/actions/workflows/check.yml/badge.svg)](https://github.com/vaporif/parry/actions/workflows/check.yml)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
