@@ -159,10 +159,20 @@ mod tests {
     }
 
     #[test]
-    fn shred_blocked() {
+    fn shred_outside_cwd_blocked() {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("shred /dev/sda", cwd).is_some());
+    }
+
+    #[test]
+    fn shred_inside_cwd_allowed() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive("shred ./secrets.txt", cwd).is_none(),
+            "shred within CWD should pass"
+        );
     }
 
     #[test]
@@ -180,10 +190,31 @@ mod tests {
     }
 
     #[test]
-    fn truncate_blocked() {
+    fn truncate_outside_cwd_blocked() {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("truncate -s 0 /var/log/syslog", cwd).is_some());
+    }
+
+    #[test]
+    fn truncate_inside_cwd_allowed() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive("truncate -s 0 ./myfile", cwd).is_none(),
+            "truncate within CWD should pass"
+        );
+    }
+
+    #[test]
+    fn truncate_nested_inside_cwd_allowed() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir_all(d.path().join("f2/s3/t3")).unwrap();
+        assert!(
+            detect_destructive("truncate -s 0 f2/s3/t3/file.txt", cwd).is_none(),
+            "truncate in nested CWD subdirectory should pass"
+        );
     }
 
     // === Category 2: Process / Service ===

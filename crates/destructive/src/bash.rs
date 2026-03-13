@@ -45,7 +45,7 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         ));
     }
 
-    // Category 1: Unconditional filesystem destruction
+    // Category 1: Unconditional filesystem destruction (device-oriented)
     if consts::UNCONDITIONAL_DESTRUCTIVE.contains(&cmd_name) {
         return Some(format!(
             "'{cmd_name}' is a destructive filesystem operation"
@@ -62,8 +62,9 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         return Some(reason);
     }
 
-    // Category 1 continued: rm / rmdir (path-dependent)
-    if cmd_name == "rm" || cmd_name == "rmdir" {
+    // Category 1 continued: rm / rmdir / shred / truncate / srm (path-dependent)
+    if cmd_name == "rm" || cmd_name == "rmdir" || consts::CWD_AWARE_DESTRUCTIVE.contains(&cmd_name)
+    {
         return check_rm(cmd_name, node, source, cwd);
     }
 

@@ -2,9 +2,11 @@
 
 // === Category 1: Filesystem Destruction (unconditional) ===
 
-/// Commands that are always destructive regardless of arguments.
-pub const UNCONDITIONAL_DESTRUCTIVE: &[&str] =
-    &["shred", "mkfs", "dd", "wipefs", "truncate", "srm"];
+/// Commands that are always destructive regardless of arguments (device-oriented).
+pub const UNCONDITIONAL_DESTRUCTIVE: &[&str] = &["mkfs", "dd", "wipefs"];
+
+/// Destructive file commands allowed inside CWD (same logic as rm/rmdir).
+pub const CWD_AWARE_DESTRUCTIVE: &[&str] = &["shred", "truncate", "srm"];
 
 // === Category 2: Process / Service ===
 
