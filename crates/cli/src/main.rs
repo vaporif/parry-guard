@@ -3,7 +3,7 @@
 mod cli;
 
 use clap::Parser;
-use parry_core::Config;
+use parry_guard_core::Config;
 use std::io::Read;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -18,12 +18,12 @@ fn init_tracing() {
         .map(std::path::PathBuf::from)
         .map_or_else(
             || {
-                parry_daemon::transport::parry_dir(None).and_then(|dir| {
+                parry_guard_daemon::transport::parry_dir(None).and_then(|dir| {
                     std::fs::create_dir_all(&dir)?;
                     std::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
-                        .open(dir.join("parry.log"))
+                        .open(dir.join("parry-guard.log"))
                 })
             },
             |path| {
@@ -100,7 +100,7 @@ fn main() -> ExitCode {
 }
 
 fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
-    use parry_core::repo_db::{self, RepoDb, RepoState};
+    use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
     let mut input = String::new();
@@ -115,7 +115,7 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let hook_input: parry_hook::HookInput = match serde_json::from_str(input) {
+    let hook_input: parry_guard_hook::HookInput = match serde_json::from_str(input) {
         Ok(v) => v,
         Err(e) => {
             warn!(%e, "invalid hook JSON (fail-closed)");
@@ -165,7 +165,7 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
             debug!(tool, "detected PostToolUse hook");
             if let Some(output) =
-                parry_hook::post_tool_use::process(&hook_input, config, repo_state)
+                parry_guard_hook::post_tool_use::process(&hook_input, config, repo_state)
             {
                 info!(tool, "threat detected in tool output");
                 match serde_json::to_string(&output) {
@@ -177,7 +177,7 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
         _ => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
             debug!(tool, "detected PreToolUse hook");
-            if let Some(output) = parry_hook::pre_tool_use::process(
+            if let Some(output) = parry_guard_hook::pre_tool_use::process(
                 &hook_input,
                 config,
                 repo_state,
@@ -202,12 +202,12 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
 }
 
 fn run_audit(
-    hook_input: &parry_hook::HookInput,
+    hook_input: &parry_guard_hook::HookInput,
     config: &Config,
-    db: Option<&parry_core::repo_db::RepoDb>,
+    db: Option<&parry_guard_core::repo_db::RepoDb>,
     repo_path: Option<&str>,
 ) -> ExitCode {
-    use parry_core::repo_db::RepoState;
+    use parry_guard_core::repo_db::RepoState;
 
     let repo_state = db
         .zip(repo_path)
@@ -229,7 +229,7 @@ fn run_audit(
         return ExitCode::SUCCESS;
     };
 
-    let warnings = match parry_hook::project_audit::scan(&dir, config, db, repo_path) {
+    let warnings = match parry_guard_hook::project_audit::scan(&dir, config, db, repo_path) {
         Ok(w) => w,
         Err(e) => {
             warn!(%e, "audit ML scan failed (fail-closed)");
@@ -237,7 +237,7 @@ fn run_audit(
                 "parry: project audit failed — ML scanner unavailable. \
                  Run `parry serve` and retry. Error: {e}"
             );
-            let output = parry_hook::HookOutput::user_prompt_warning(&message);
+            let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
             if let Ok(json) = serde_json::to_string(&output) {
                 println!("{json}");
             }
@@ -249,7 +249,7 @@ fn run_audit(
 
     if is_first_run {
         if let (Some(db), Some(rp)) = (db, repo_path) {
-            let remote = parry_core::repo_db::git_remote_url(&dir);
+            let remote = parry_guard_core::repo_db::git_remote_url(&dir);
             db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
         }
     }
@@ -261,7 +261,7 @@ fn run_audit(
                 "Parry: first scan of {rp_display} — no issues found. Now monitoring. \
                  Run 'parry ignore' to stop scanning, or 'parry monitor' to keep scanning."
             );
-            let output = parry_hook::HookOutput::user_prompt_warning(&message);
+            let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
             if let Ok(json) = serde_json::to_string(&output) {
                 println!("{json}");
             }
@@ -270,9 +270,9 @@ fn run_audit(
         return ExitCode::SUCCESS;
     }
 
-    let message = parry_hook::project_audit::format_warnings(&warnings);
+    let message = parry_guard_hook::project_audit::format_warnings(&warnings);
     info!(count = warnings.len(), "audit warnings");
-    let output = parry_hook::HookOutput::user_prompt_warning(&message);
+    let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
     match serde_json::to_string(&output) {
         Ok(json) => println!("{json}"),
         Err(e) => warn!(%e, "failed to serialize audit output"),
@@ -282,14 +282,14 @@ fn run_audit(
 }
 
 fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {
-    parry_core::repo_db::canonicalize_repo_path(path).ok_or_else(|| {
+    parry_guard_core::repo_db::canonicalize_repo_path(path).ok_or_else(|| {
         eprintln!("error: cannot resolve path");
         ExitCode::FAILURE
     })
 }
 
 fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Path>) -> ExitCode {
-    use parry_core::repo_db::{self, RepoDb, RepoState};
+    use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     let db = match RepoDb::open(runtime_dir) {
         Ok(db) => db,
@@ -390,7 +390,7 @@ fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool
     }
 
     let ext_filter: Option<Vec<&str>> = extensions.map(|e| e.split(',').map(str::trim).collect());
-    let mut detected: Vec<(&str, parry_core::ScanResult)> = Vec::new();
+    let mut detected: Vec<(&str, parry_guard_core::ScanResult)> = Vec::new();
     let mut scanned = 0;
 
     for file in &files {
@@ -416,7 +416,7 @@ fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool
         scanned += 1;
         debug!(file, "scanning");
         let result = if full {
-            match parry_hook::scan_text(&content, config) {
+            match parry_guard_hook::scan_text(&content, config) {
                 Ok(r) => r,
                 Err(e) => {
                     warn!(%e, "scan failed");
@@ -424,7 +424,7 @@ fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool
                 }
             }
         } else {
-            parry_core::scan_text_fast(&content)
+            parry_guard_core::scan_text_fast(&content)
         };
 
         if !result.is_clean() {
@@ -454,7 +454,7 @@ fn run_serve(config: &Config, idle_timeout: u64) -> ExitCode {
     }
 
     info!(idle_timeout, "starting daemon server");
-    let daemon_config = parry_daemon::DaemonConfig {
+    let daemon_config = parry_guard_daemon::DaemonConfig {
         idle_timeout: Duration::from_secs(idle_timeout),
     };
 
@@ -470,7 +470,7 @@ fn run_serve(config: &Config, idle_timeout: u64) -> ExitCode {
         }
     };
 
-    match rt.block_on(parry_daemon::run(config, &daemon_config)) {
+    match rt.block_on(parry_guard_daemon::run(config, &daemon_config)) {
         Ok(()) => {
             info!("daemon shutdown cleanly");
             ExitCode::SUCCESS

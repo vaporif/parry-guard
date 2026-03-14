@@ -2,9 +2,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "candle")]
-use parry_core::config::ScanMode;
-use parry_core::{Config, ScanResult};
-use parry_daemon::DaemonConfig;
+use parry_guard_core::config::ScanMode;
+use parry_guard_core::{Config, ScanResult};
+use parry_guard_daemon::DaemonConfig;
 use tokio::task::JoinHandle;
 
 fn fast_config(dir: &Path) -> Config {
@@ -31,7 +31,7 @@ async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -
     let daemon_config = DaemonConfig { idle_timeout };
 
     let handle = tokio::spawn(async move {
-        let _ = parry_daemon::run(&config, &daemon_config).await;
+        let _ = parry_guard_daemon::run(&config, &daemon_config).await;
     });
 
     let rd = dir.to_path_buf();
@@ -39,7 +39,7 @@ async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -
         tokio::time::sleep(Duration::from_millis(100)).await;
         let rd2 = rd.clone();
         let ready =
-            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd2)))
+            tokio::task::spawn_blocking(move || parry_guard_daemon::is_daemon_running(Some(&rd2)))
                 .await
                 .unwrap();
         if ready {
@@ -59,7 +59,7 @@ async fn stop_daemon(handle: JoinHandle<()>) {
 async fn scan_with_retry(
     text: &str,
     config: &Config,
-) -> std::result::Result<ScanResult, parry_core::ScanError> {
+) -> std::result::Result<ScanResult, parry_guard_core::ScanError> {
     let text = text.to_string();
     for attempt in 0u64..3 {
         if attempt > 0 {
@@ -67,12 +67,12 @@ async fn scan_with_retry(
         }
         let t = text.clone();
         let c = config.clone();
-        let result = tokio::task::spawn_blocking(move || parry_daemon::scan_full(&t, &c))
+        let result = tokio::task::spawn_blocking(move || parry_guard_daemon::scan_full(&t, &c))
             .await
             .unwrap();
         match result {
             Ok(r) => return Ok(r),
-            Err(parry_core::ScanError::DaemonScanFailed) => return result,
+            Err(parry_guard_core::ScanError::DaemonScanFailed) => return result,
             Err(_) if attempt < 2 => {}
             Err(_) => return result,
         }
@@ -94,7 +94,7 @@ async fn daemon_e2e() {
 
         let rd = dir.path().to_path_buf();
         let running =
-            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+            tokio::task::spawn_blocking(move || parry_guard_daemon::is_daemon_running(Some(&rd)))
                 .await
                 .unwrap();
         assert!(running);
@@ -140,7 +140,7 @@ async fn daemon_e2e() {
 
         let rd = dir.path().to_path_buf();
         let running =
-            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+            tokio::task::spawn_blocking(move || parry_guard_daemon::is_daemon_running(Some(&rd)))
                 .await
                 .unwrap();
         assert!(running);
@@ -150,7 +150,7 @@ async fn daemon_e2e() {
 
         let rd = dir.path().to_path_buf();
         let running =
-            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd)))
+            tokio::task::spawn_blocking(move || parry_guard_daemon::is_daemon_running(Some(&rd)))
                 .await
                 .unwrap();
         assert!(!running);

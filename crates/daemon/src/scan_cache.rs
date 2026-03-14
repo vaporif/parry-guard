@@ -1,11 +1,11 @@
 //! Scan result cache with TTL.
 //!
 //! Caches `ScanResult` keyed by content hash (blake3, 32 bytes) with a 30-day lazy expiry.
-//! DB lives at `~/.parry/scan-cache.redb` (respects `PARRY_RUNTIME_DIR`).
+//! DB lives at `~/.parry-guard/scan-cache.redb` (respects `PARRY_RUNTIME_DIR`).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use parry_core::ScanResult;
+use parry_guard_core::ScanResult;
 use redb::{ReadableDatabase, ReadableTable};
 use tracing::{debug, warn};
 

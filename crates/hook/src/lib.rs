@@ -8,7 +8,7 @@ pub mod pre_tool_use;
 pub mod project_audit;
 pub mod taint;
 
-use parry_core::{Config, ScanError, ScanResult};
+use parry_guard_core::{Config, ScanError, ScanResult};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -154,13 +154,13 @@ pub fn scan_text_with_threshold(
     config: &Config,
     threshold: f32,
 ) -> Result<ScanResult, ScanError> {
-    let fast = parry_core::scan_text_fast(text);
+    let fast = parry_guard_core::scan_text_fast(text);
     if !fast.is_clean() {
         return Ok(fast);
     }
 
-    parry_daemon::ensure_running(config)?;
-    parry_daemon::scan_full_with_threshold(text, config, threshold)
+    parry_guard_daemon::ensure_running(config)?;
+    parry_guard_daemon::scan_full_with_threshold(text, config, threshold)
 }
 
 /// Shared test utilities for tests that manipulate cwd.
@@ -198,15 +198,15 @@ pub(crate) mod test_util {
         }
     }
 
-    pub(crate) fn test_config_with_dir(dir: &Path) -> parry_core::Config {
-        parry_core::Config {
+    pub(crate) fn test_config_with_dir(dir: &Path) -> parry_guard_core::Config {
+        parry_guard_core::Config {
             runtime_dir: Some(dir.to_path_buf()),
-            ..parry_core::Config::default()
+            ..parry_guard_core::Config::default()
         }
     }
 
-    pub(crate) fn test_db(dir: &Path) -> parry_core::repo_db::RepoDb {
-        parry_core::repo_db::RepoDb::open(Some(dir)).unwrap()
+    pub(crate) fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
+        parry_guard_core::repo_db::RepoDb::open(Some(dir)).unwrap()
     }
 }
 

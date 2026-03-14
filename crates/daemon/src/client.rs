@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use parry_core::{Config, ScanError, ScanResult};
+use parry_guard_core::{Config, ScanError, ScanResult};
 use tracing::{debug, info, trace, warn};
 
 use crate::protocol::{self, ScanRequest, ScanResponse, ScanType};

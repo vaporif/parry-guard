@@ -10,8 +10,8 @@
 
 use std::path::{Path, PathBuf};
 
-use parry_core::repo_db::RepoDb;
-use parry_core::{Config, ScanError, ScanResult};
+use parry_guard_core::repo_db::RepoDb;
+use parry_guard_core::{Config, ScanError, ScanResult};
 use tracing::{debug, instrument};
 
 /// A single audit warning.
@@ -216,7 +216,7 @@ fn check_text_content(
         }
         let name = path.strip_prefix(dir).unwrap_or(path);
         let result = if is_code_file(path) {
-            parry_core::scan_text_fast(content)
+            parry_guard_core::scan_text_fast(content)
         } else {
             crate::scan_text(content, config)?
         };
@@ -232,7 +232,7 @@ fn check_text_content(
             ScanResult::Clean => {}
         }
         if is_code_file(path) {
-            if let Some(reason) = parry_exfil::detect_exfiltration(content) {
+            if let Some(reason) = parry_guard_exfil::detect_exfiltration(content) {
                 warnings.push(AuditWarning {
                     category: "EXFIL",
                     message: format!("{} contains exfiltration pattern: {reason}", name.display()),
@@ -306,7 +306,7 @@ fn check_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
     });
 
     for (name, content) in &state.hooks {
-        let fast = parry_core::scan_text_fast(content);
+        let fast = parry_guard_core::scan_text_fast(content);
         if fast.is_injection() {
             warnings.push(AuditWarning {
                 category: "HOOKS",
@@ -314,7 +314,7 @@ fn check_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
             });
         }
 
-        if let Some(reason) = parry_exfil::detect_exfiltration(content) {
+        if let Some(reason) = parry_guard_exfil::detect_exfiltration(content) {
             warnings.push(AuditWarning {
                 category: "HOOKS",
                 message: format!(".claude/hooks/{name} contains exfiltration pattern: {reason}"),

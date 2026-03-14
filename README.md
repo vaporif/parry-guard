@@ -1,4 +1,4 @@
-# Parry
+# Parry-guard
 [![Check](https://github.com/vaporif/parry/actions/workflows/check.yml/badge.svg)](https://github.com/vaporif/parry/actions/workflows/check.yml)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
@@ -15,31 +15,50 @@ The ML models are gated on HuggingFace. Before installing:
 3. For `full` mode: also accept the [Llama Prompt Guard 2 license](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M) (Meta approval required)
 4. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
-## Install
+## Usage
 
-### cargo-binstall
+Add to `~/.claude/settings.json`:
 
-```bash
-cargo binstall parry-ai
-```
-
-### [rvx](https://github.com/vaporif/rvx?tab=readme-ov-file#install)
-
-No Rust toolchain needed. Install rvx, then use it directly in hooks — it downloads the pre-built binary on first run and caches it:
+**With [uvx](https://docs.astral.sh/uv/):**
 
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 1000 }],
-    "PostToolUse": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 5000 }],
-    "UserPromptSubmit": [{ "command": "rvx parry-ai --bin parry -- hook", "timeout": 2000 }]
+    "PreToolUse": [{ "command": "uvx parry-guard hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "uvx parry-guard hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "uvx parry-guard hook", "timeout": 2000 }]
   }
 }
 ```
 
-Environment variables (`HF_TOKEN`, `PARRY_IGNORE_PATHS`, etc.) are inherited as normal.
+**With [rvx](https://github.com/vaporif/rvx):**
 
-### From source
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "rvx parry-guard hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "rvx parry-guard hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "rvx parry-guard hook", "timeout": 2000 }]
+  }
+}
+```
+
+**With parry-guard on PATH** (via [Nix](#nix-home-manager), cargo install, or [release binary](https://github.com/vaporif/parry/releases)):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "parry-guard hook", "timeout": 1000 }],
+    "PostToolUse": [{ "command": "parry-guard hook", "timeout": 5000 }],
+    "UserPromptSubmit": [{ "command": "parry-guard hook", "timeout": 2000 }]
+  }
+}
+```
+
+<details>
+<summary>Other installation methods</summary>
+
+**From source:**
 
 ```bash
 # Default (ONNX backend - statically linked, 5-6x faster than Candle)
@@ -67,7 +86,7 @@ cargo install --path crates/cli --no-default-features --features candle
 { inputs, pkgs, config, ... }: {
   imports = [ inputs.parry.homeManagerModules.default ];
 
-  programs.parry = {
+  programs.parry-guard = {
     enable = true;
     package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default)
     # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
@@ -86,7 +105,7 @@ cargo install --path crates/cli --no-default-features --features candle
 }
 ```
 
-You still need to configure the Claude Code hook separately (see below).
+</details>
 
 ## Setup
 
@@ -99,23 +118,9 @@ export HF_TOKEN_PATH="/path/to/token"              # file path
 # or place token at /run/secrets/hf-token-scan-injection
 ```
 
-### 2. Add Claude Code hook
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [{ "command": "parry hook", "timeout": 1000 }],
-    "PostToolUse": [{ "command": "parry hook", "timeout": 5000 }],
-    "UserPromptSubmit": [{ "command": "parry hook", "timeout": 2000 }]
-  }
-}
-```
-
 The daemon auto-starts on first scan, downloads the model on first run, and idles out after 30 minutes.
 
-> **Note (non-Nix users):** The Nix home-manager module wraps the binary with all config baked in via env vars. Without Nix, set env vars in your shell profile (e.g. `HF_TOKEN`, `PARRY_IGNORE_PATHS`, `PARRY_SCAN_MODE`) — the hook command inherits them. Alternatively, pass flags directly in the hook command: `parry --hf-token-path ~/.hf-token --ignore-path /home/user/safe hook`. See [Config](#config) for all options.
+> **Note (non-Nix users):** The Nix home-manager module wraps the binary with all config baked in via env vars. Without Nix, set env vars in your shell profile (e.g. `HF_TOKEN`, `PARRY_IGNORE_PATHS`, `PARRY_SCAN_MODE`) — the hook command inherits them. Alternatively, pass flags directly in the hook command: `parry-guard --hf-token-path ~/.hf-token --ignore-path /home/user/safe hook`. See [Config](#config) for all options.
 
 ### What each hook does
 
@@ -125,9 +130,9 @@ The daemon auto-starts on first scan, downloads the model on first run, and idle
 
 ### Daemon & Cache
 
-The daemon keeps ML models in memory and can be run standalone with `parry serve --idle-timeout 1800`. Hook calls auto-start it if not running.
+The daemon keeps ML models in memory and can be run standalone with `parry-guard serve --idle-timeout 1800`. Hook calls auto-start it if not running.
 
-Scan results are cached in `~/.parry/scan-cache.redb` (30-day TTL, ~8ms cache hits vs ~70ms+ inference). Cache is shared across projects and pruned hourly.
+Scan results are cached in `~/.parry-guard/scan-cache.redb` (30-day TTL, ~8ms cache hits vs ~70ms+ inference). Cache is shared across projects and pruned hourly.
 
 ## Detection Layers
 
@@ -146,9 +151,9 @@ Multi-stage, fail-closed (if unsure, treat as unsafe):
 |------|--------|---------------|---------|
 | `fast` (default) | DeBERTa v3 | ~50-70ms | any |
 | `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | candle only |
-| `custom` | User-defined (`~/.config/parry/models.toml`) | varies | any |
+| `custom` | User-defined (`~/.config/parry-guard/models.toml`) | varies | any |
 
-Use `fast` for interactive workflows; `full` for high-security or batch scanning (`parry diff --full`). The two models cover different blind spots — DeBERTa v3 catches common injection patterns while Llama Prompt Guard 2 is better at subtle, context-dependent attacks (role-play jailbreaks, indirect injections). Running both as an OR ensemble reduces missed attacks at ~20x higher latency per chunk.
+Use `fast` for interactive workflows; `full` for high-security or batch scanning (`parry-guard diff --full`). The two models cover different blind spots — DeBERTa v3 catches common injection patterns while Llama Prompt Guard 2 is better at subtle, context-dependent attacks (role-play jailbreaks, indirect injections). Running both as an OR ensemble reduces missed attacks at ~20x higher latency per chunk.
 
 > **Note:** `full` mode requires the `candle` backend — Llama Prompt Guard 2 does not ship an ONNX export. Build with `--features candle --no-default-features` to use `full` mode.
 
@@ -178,10 +183,10 @@ Use `fast` for interactive workflows; `full` for high-security or batch scanning
 | Env | Default | Description |
 |-----|---------|-------------|
 | `PARRY_LOG` | warn | Tracing filter (`trace`, `debug`, `info`, `warn`, `error`) |
-| `PARRY_LOG_FILE` | `~/.parry/parry.log` | Override log file path |
+| `PARRY_LOG_FILE` | `~/.parry-guard/parry-guard.log` | Override log file path |
 
-Custom patterns: `~/.config/parry/patterns.toml` (add/remove sensitive paths, exfil domains, secret patterns).
-Custom models: `~/.config/parry/models.toml` (used with `--scan-mode custom`, see `examples/models.toml`).
+Custom patterns: `~/.config/parry-guard/patterns.toml` (add/remove sensitive paths, exfil domains, secret patterns).
+Custom models: `~/.config/parry-guard/models.toml` (used with `--scan-mode custom`, see `examples/models.toml`).
 
 ## ML Backends
 

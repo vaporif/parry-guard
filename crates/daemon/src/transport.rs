@@ -7,7 +7,7 @@ use std::time::Duration;
 use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
 
 /// Returns the parry runtime directory.
-/// If `runtime_dir` is `Some`, returns it directly. Otherwise returns `~/.parry/`.
+/// If `runtime_dir` is `Some`, returns it directly. Otherwise returns `~/.parry-guard/`.
 ///
 /// # Errors
 ///
@@ -18,7 +18,7 @@ pub fn parry_dir(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
     }
 
     home_dir()
-        .map(|h| h.join(".parry"))
+        .map(|h| h.join(".parry-guard"))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "cannot determine home directory"))
 }
 
@@ -34,7 +34,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 fn socket_path(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
-    Ok(parry_dir(runtime_dir)?.join("parry.sock"))
+    Ok(parry_dir(runtime_dir)?.join("parry-guard.sock"))
 }
 
 /// Check if the daemon socket file exists on disk.

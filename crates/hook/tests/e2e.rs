@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use parry_core::Config;
-use parry_daemon::DaemonConfig;
-use parry_hook::{HookInput, HookOutput};
+use parry_guard_core::Config;
+use parry_guard_daemon::DaemonConfig;
+use parry_guard_hook::{HookInput, HookOutput};
 use tokio::task::JoinHandle;
 
 fn config(dir: &Path) -> Config {
@@ -33,7 +33,7 @@ async fn start_daemon(dir: &Path) -> JoinHandle<()> {
     };
 
     let handle = tokio::spawn(async move {
-        let _ = parry_daemon::run(&cfg, &daemon_cfg).await;
+        let _ = parry_guard_daemon::run(&cfg, &daemon_cfg).await;
     });
 
     let rd = dir.to_path_buf();
@@ -41,7 +41,7 @@ async fn start_daemon(dir: &Path) -> JoinHandle<()> {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let rd2 = rd.clone();
         let ready =
-            tokio::task::spawn_blocking(move || parry_daemon::is_daemon_running(Some(&rd2)))
+            tokio::task::spawn_blocking(move || parry_guard_daemon::is_daemon_running(Some(&rd2)))
                 .await
                 .unwrap();
         if ready {
@@ -58,7 +58,7 @@ async fn stop_daemon(handle: JoinHandle<()>) {
 }
 
 fn process_hook(input: &HookInput, config: &Config) -> Option<HookOutput> {
-    parry_hook::post_tool_use::process(input, config, parry_core::repo_db::RepoState::Unknown)
+    parry_guard_hook::post_tool_use::process(input, config, parry_guard_core::repo_db::RepoState::Unknown)
 }
 
 /// Single test to avoid daemon socket races.

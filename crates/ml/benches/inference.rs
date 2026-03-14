@@ -9,8 +9,8 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use parry_core::config::{Config, ScanMode};
-use parry_ml::MlScanner;
+use parry_guard_core::config::{Config, ScanMode};
+use parry_guard_ml::MlScanner;
 
 const SHORT: &str = "The quarterly earnings report shows revenue increased by 12% \
     year-over-year, driven primarily by strong performance in the cloud services division.";

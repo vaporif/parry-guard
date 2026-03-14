@@ -1,7 +1,7 @@
 //! CLI argument parsing.
 
 use clap::{Parser, Subcommand};
-use parry_core::config::ScanMode;
+use parry_guard_core::config::ScanMode;
 use std::path::PathBuf;
 
 fn threshold_in_range(s: &str) -> Result<f32, String> {
@@ -25,7 +25,7 @@ fn parse_scan_mode(s: &str) -> Result<ScanMode, String> {
 }
 
 #[derive(Parser)]
-#[command(name = "parry", about = "Prompt injection scanner", version)]
+#[command(name = "parry-guard", about = "Prompt injection scanner", version)]
 pub struct Cli {
     /// `HuggingFace` token (direct value)
     #[arg(long, env = "HF_TOKEN")]

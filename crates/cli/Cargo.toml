@@ -1,6 +1,6 @@
 [package]
-name = "parry-ai"
-default-run = "parry"
+name = "parry-guard"
+default-run = "parry-guard"
 description = "Prompt injection scanner CLI - substring, unicode, secrets, and ML detection"
 version.workspace = true
 edition.workspace = true
@@ -15,14 +15,14 @@ readme = "../../README.md"
 features = ["candle"]
 
 [[bin]]
-name = "parry"
+name = "parry-guard"
 path = "src/main.rs"
 
 [dependencies]
-parry-core.workspace = true
-parry-ml.workspace = true
-parry-daemon.workspace = true
-parry-hook.workspace = true
+parry-guard-core.workspace = true
+parry-guard-ml.workspace = true
+parry-guard-daemon.workspace = true
+parry-guard-hook.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -32,22 +32,26 @@ fork.workspace = true
 
 [features]
 default = ["onnx-fetch"]
-onnx = ["parry-ml/onnx", "parry-daemon/onnx", "parry-hook/onnx"]
+onnx = [
+  "parry-guard-ml/onnx",
+  "parry-guard-daemon/onnx",
+  "parry-guard-hook/onnx",
+]
 onnx-fetch = [
-  "parry-ml/onnx-fetch",
-  "parry-daemon/onnx-fetch",
-  "parry-hook/onnx-fetch",
+  "parry-guard-ml/onnx-fetch",
+  "parry-guard-daemon/onnx-fetch",
+  "parry-guard-hook/onnx-fetch",
 ]
 onnx-coreml = [
-  "parry-ml/onnx-coreml",
-  "parry-daemon/onnx-coreml",
-  "parry-hook/onnx-coreml",
+  "parry-guard-ml/onnx-coreml",
+  "parry-guard-daemon/onnx-coreml",
+  "parry-guard-hook/onnx-coreml",
 ]
 candle = [
-  "parry-ml/candle",
-  "parry-daemon/candle",
-  "parry-hook/candle",
-  "parry-core/candle",
+  "parry-guard-ml/candle",
+  "parry-guard-daemon/candle",
+  "parry-guard-hook/candle",
+  "parry-guard-core/candle",
 ]
 
 [lints]

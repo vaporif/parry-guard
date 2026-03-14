@@ -1,5 +1,5 @@
 [package]
-name = "parry-core"
+name = "parry-guard-core"
 description = "Core scanning (unicode, substring, secrets, decode) - no ML, no async"
 version.workspace = true
 edition.workspace = true

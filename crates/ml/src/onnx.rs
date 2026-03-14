@@ -2,7 +2,7 @@
 
 use ort::session::Session;
 use ort::value::Tensor;
-use parry_core::Result;
+use parry_guard_core::Result;
 
 pub struct OnnxBackend {
     session: Session,
