@@ -529,6 +529,10 @@ fn tainted_project_no_crash() {
 
 #[test]
 fn repo_lifecycle() {
+    // Repo management needs ~/.parry-guard/ db which is unavailable in Nix sandbox
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
     let dir = git_repo();
     let path = dir.path().to_str().unwrap();
 
