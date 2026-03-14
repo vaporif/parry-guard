@@ -4,6 +4,7 @@
 pub mod config;
 pub mod decode;
 pub mod error;
+pub mod repo_db;
 pub mod secrets;
 pub mod substring;
 pub mod unicode;

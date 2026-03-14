@@ -50,8 +50,8 @@ pub struct Cli {
           value_parser = parse_scan_mode)]
     pub scan_mode: ScanMode,
 
-    /// Paths to ignore (skip all scanning). Repeatable.
-    #[arg(long, env = "PARRY_IGNORE_PATHS", value_delimiter = ',')]
+    /// [DEPRECATED] Paths to ignore. Use 'parry ignore <path>' instead. Repeatable.
+    #[arg(long, env = "PARRY_IGNORE_PATHS", value_delimiter = ',', hide = true)]
     pub ignore_path: Vec<String>,
 
     #[command(subcommand)]
@@ -111,6 +111,28 @@ pub enum Command {
         #[arg(long)]
         full: bool,
     },
+    /// Set repo to ignored (no scanning)
+    Ignore {
+        /// Repo path (defaults to CWD)
+        path: Option<std::path::PathBuf>,
+    },
+    /// Set repo to monitored (scan silently, alert on findings)
+    Monitor {
+        /// Repo path (defaults to CWD)
+        path: Option<std::path::PathBuf>,
+    },
+    /// Reset repo to unknown (clear state + caches)
+    Reset {
+        /// Repo path (defaults to CWD)
+        path: Option<std::path::PathBuf>,
+    },
+    /// Show current repo state
+    Status {
+        /// Repo path (defaults to CWD)
+        path: Option<std::path::PathBuf>,
+    },
+    /// List all known repos and their states
+    Repos,
 }
 
 #[cfg(test)]

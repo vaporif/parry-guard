@@ -60,7 +60,6 @@ pub struct Config {
     /// Higher than `threshold` because CLAUDE.md files are instructions
     /// by design and `DeBERTa` scores them higher than normal text.
     pub claude_md_threshold: f32,
-    pub ignore_paths: Vec<String>,
     pub scan_mode: ScanMode,
     /// Explicit runtime directory for daemon IPC, caches, and taint files.
     /// `None` means use default paths (`~/.parry-guard/` for daemon, cwd for hook files).
@@ -69,14 +68,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Check if the given path should be ignored (prefix match against `ignore_paths`).
-    #[must_use]
-    pub fn is_ignored(&self, path: &str) -> bool {
-        self.ignore_paths
-            .iter()
-            .any(|ignored| path.starts_with(ignored))
-    }
-
     /// Resolve the list of models to load based on `scan_mode`.
     ///
     /// # Errors
@@ -138,7 +129,6 @@ impl Default for Config {
             hf_token: None,
             threshold: 0.7,
             claude_md_threshold: DEFAULT_CLAUDE_MD_THRESHOLD,
-            ignore_paths: Vec::new(),
             scan_mode: ScanMode::default(),
             runtime_dir: None,
         }
@@ -214,15 +204,5 @@ mod tests {
             0.9f32.to_bits(),
             "default CLAUDE.md threshold should be 0.9"
         );
-    }
-
-    #[test]
-    fn is_ignored_prefix_match() {
-        let config = Config {
-            ignore_paths: vec!["/home/user/safe".to_string()],
-            ..Config::default()
-        };
-        assert!(config.is_ignored("/home/user/safe/project"));
-        assert!(!config.is_ignored("/home/user/other"));
     }
 }
