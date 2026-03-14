@@ -4,6 +4,7 @@ mod cli;
 
 use clap::Parser;
 use parry_guard_core::Config;
+use std::fmt::Write as _;
 use std::io::Read;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -280,10 +281,11 @@ fn run_audit(
     if is_first_run {
         let rp_display = repo_path.unwrap_or("this repo");
         let cmd = command_name();
-        message.push_str(&format!(
+        let _ = write!(
+            message,
             "\nParry: first scan of {rp_display}. Now monitoring. \
              Run '{cmd} ignore' to stop scanning, or '{cmd} reset' to re-scan."
-        ));
+        );
     }
     info!(count = warnings.len(), "audit warnings");
     let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
