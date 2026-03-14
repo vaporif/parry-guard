@@ -56,6 +56,7 @@
         inherit src;
         pname = "parry-guard";
         strictDeps = true;
+        nativeCheckInputs = [pkgs.git];
         nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
           pkgs.pkg-config
           pkgs.openssl
