@@ -133,9 +133,11 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
     if !deprecated_ignore_paths.is_empty() {
         if let Some(ref db) = db {
             for path in deprecated_ignore_paths {
-                let (state, _) = db.get_repo_state(path);
+                let canonical = repo_db::canonicalize_repo_path(Some(std::path::Path::new(path)));
+                let key = canonical.as_deref().unwrap_or(path);
+                let (state, _) = db.get_repo_state(key);
                 if state == RepoState::Unknown {
-                    db.set_repo_state(path, RepoState::Ignored, None);
+                    let _ = db.set_repo_state(key, RepoState::Ignored, None);
                 }
             }
             warn!("--ignore-path is deprecated, use 'parry ignore <path>' instead");
@@ -156,7 +158,13 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
     match hook_input.hook_event_name.as_deref() {
         Some("UserPromptSubmit") => {
             debug!("detected UserPromptSubmit hook");
-            let code = run_audit(&hook_input, config, db.as_ref(), repo_path.as_deref());
+            let code = run_audit(
+                &hook_input,
+                config,
+                repo_state,
+                db.as_ref(),
+                repo_path.as_deref(),
+            );
             if code != ExitCode::SUCCESS {
                 return code;
             }
@@ -204,14 +212,11 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
 fn run_audit(
     hook_input: &parry_guard_hook::HookInput,
     config: &Config,
+    repo_state: parry_guard_core::repo_db::RepoState,
     db: Option<&parry_guard_core::repo_db::RepoDb>,
     repo_path: Option<&str>,
 ) -> ExitCode {
     use parry_guard_core::repo_db::RepoState;
-
-    let repo_state = db
-        .zip(repo_path)
-        .map_or(RepoState::Unknown, |(db, rp)| db.get_repo_state(rp).0);
 
     if repo_state == RepoState::Ignored {
         debug!("repo ignored, skipping audit");
@@ -250,16 +255,17 @@ fn run_audit(
     if is_first_run {
         if let (Some(db), Some(rp)) = (db, repo_path) {
             let remote = parry_guard_core::repo_db::git_remote_url(&dir);
-            db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
+            let _ = db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
         }
     }
 
     if warnings.is_empty() {
         if is_first_run {
             let rp_display = repo_path.unwrap_or("this repo");
+            let cmd = command_name();
             let message = format!(
                 "Parry: first scan of {rp_display} — no issues found. Now monitoring. \
-                 Run 'parry ignore' to stop scanning, or 'parry monitor' to keep scanning."
+                 Run '{cmd} ignore' to stop scanning, or '{cmd} monitor' to keep scanning."
             );
             let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
             if let Ok(json) = serde_json::to_string(&output) {
@@ -270,7 +276,15 @@ fn run_audit(
         return ExitCode::SUCCESS;
     }
 
-    let message = parry_guard_hook::project_audit::format_warnings(&warnings);
+    let mut message = parry_guard_hook::project_audit::format_warnings(&warnings);
+    if is_first_run {
+        let rp_display = repo_path.unwrap_or("this repo");
+        let cmd = command_name();
+        message.push_str(&format!(
+            "\nParry: first scan of {rp_display}. Now monitoring. \
+             Run '{cmd} ignore' to stop scanning, or '{cmd} reset' to re-scan."
+        ));
+    }
     info!(count = warnings.len(), "audit warnings");
     let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
     match serde_json::to_string(&output) {
@@ -279,6 +293,23 @@ fn run_audit(
     }
 
     ExitCode::SUCCESS
+}
+
+/// Detect the command prefix based on how the binary was installed.
+/// Returns e.g. `"uvx parry-guard"`, `"rvx parry-guard"`, or `"parry-guard"`.
+fn command_name() -> String {
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::canonicalize(p).ok());
+    let path_str = exe.as_deref().and_then(|p| p.to_str()).unwrap_or("");
+
+    if path_str.contains("/.cache/uv/") || path_str.contains("/.local/share/uv/") {
+        "uvx parry-guard".to_string()
+    } else if path_str.contains("/.cache/rvx/") || path_str.contains("/.local/share/rvx/") {
+        "rvx parry-guard".to_string()
+    } else {
+        "parry-guard".to_string()
+    }
 }
 
 fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {
@@ -305,7 +336,10 @@ fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Pa
                 return ExitCode::FAILURE;
             };
             let remote = repo_db::git_remote_url(std::path::Path::new(&canonical));
-            db.set_repo_state(&canonical, RepoState::Ignored, remote.as_deref());
+            if let Err(e) = db.set_repo_state(&canonical, RepoState::Ignored, remote.as_deref()) {
+                eprintln!("error: failed to set repo state: {e}");
+                return ExitCode::FAILURE;
+            }
             println!("Set {canonical} to ignored");
             ExitCode::SUCCESS
         }
@@ -314,7 +348,10 @@ fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Pa
                 return ExitCode::FAILURE;
             };
             let remote = repo_db::git_remote_url(std::path::Path::new(&canonical));
-            db.set_repo_state(&canonical, RepoState::Monitored, remote.as_deref());
+            if let Err(e) = db.set_repo_state(&canonical, RepoState::Monitored, remote.as_deref()) {
+                eprintln!("error: failed to set repo state: {e}");
+                return ExitCode::FAILURE;
+            }
             println!("Set {canonical} to monitored");
             ExitCode::SUCCESS
         }

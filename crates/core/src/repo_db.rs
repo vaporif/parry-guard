@@ -134,15 +134,31 @@ impl RepoDb {
     }
 
     /// Set the state and optional remote URL for a repo path.
-    pub fn set_repo_state(&self, repo_path: &str, state: RepoState, remote: Option<&str>) {
-        let Ok(txn) = self.db.begin_write() else {
-            return;
-        };
-        if let Ok(mut table) = txn.open_table(REPO_STATE_TABLE) {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database write or commit fails.
+    pub fn set_repo_state(
+        &self,
+        repo_path: &str,
+        state: RepoState,
+        remote: Option<&str>,
+    ) -> Result<(), RepoDbError> {
+        let txn = self
+            .db
+            .begin_write()
+            .map_err(|e| RepoDbError::Db(e.to_string()))?;
+        {
+            let mut table = txn
+                .open_table(REPO_STATE_TABLE)
+                .map_err(|e| RepoDbError::Db(e.to_string()))?;
             let encoded = encode_state(state, remote);
-            let _ = table.insert(repo_path, encoded.as_slice());
+            table
+                .insert(repo_path, encoded.as_slice())
+                .map_err(|e| RepoDbError::Db(e.to_string()))?;
         }
-        let _ = txn.commit();
+        txn.commit().map_err(|e| RepoDbError::Db(e.to_string()))?;
+        Ok(())
     }
 
     /// List all known repos and their states.
@@ -222,8 +238,8 @@ impl RepoDb {
             .is_some_and(|v| v.value() == hash)
     }
 
-    /// Mark a CLAUDE.md file as clean with the given content hash.
-    pub fn mark_guard_clean(&self, repo_path: &str, file_path: &str, hash: u64) {
+    /// Mark a CLAUDE.md file as scanned with the given content hash.
+    pub fn mark_guard_scanned(&self, repo_path: &str, file_path: &str, hash: u64) {
         let key = Self::guard_key(repo_path, file_path);
         let Ok(txn) = self.db.begin_write() else {
             return;
@@ -250,8 +266,8 @@ impl RepoDb {
             .is_some_and(|v| v.value() == hash)
     }
 
-    /// Mark a project audit as clean with the given state hash.
-    pub fn mark_audit_clean(&self, repo_path: &str, hash: u64) {
+    /// Mark a project audit as scanned with the given state hash.
+    pub fn mark_audit_scanned(&self, repo_path: &str, hash: u64) {
         let Ok(txn) = self.db.begin_write() else {
             return;
         };
@@ -360,7 +376,8 @@ mod tests {
             "/my/repo",
             RepoState::Monitored,
             Some("github.com/user/repo"),
-        );
+        )
+        .unwrap();
         let (state, remote) = db.get_repo_state("/my/repo");
         assert_eq!(state, RepoState::Monitored);
         assert_eq!(remote.as_deref(), Some("github.com/user/repo"));
@@ -378,8 +395,9 @@ mod tests {
     fn list_repos_returns_all() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.set_repo_state("/a", RepoState::Monitored, None);
-        db.set_repo_state("/b", RepoState::Ignored, Some("origin"));
+        db.set_repo_state("/a", RepoState::Monitored, None).unwrap();
+        db.set_repo_state("/b", RepoState::Ignored, Some("origin"))
+            .unwrap();
         let repos = db.list_repos();
         assert_eq!(repos.len(), 2);
     }
@@ -388,7 +406,8 @@ mod tests {
     fn reset_repo_clears_state() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.set_repo_state("/my/repo", RepoState::Ignored, None);
+        db.set_repo_state("/my/repo", RepoState::Ignored, None)
+            .unwrap();
         db.reset_repo("/my/repo");
         let (state, _) = db.get_repo_state("/my/repo");
         assert_eq!(state, RepoState::Unknown);
@@ -405,7 +424,7 @@ mod tests {
     fn guard_cache_hit() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.mark_guard_clean("/repo", "/repo/CLAUDE.md", 12345);
+        db.mark_guard_scanned("/repo", "/repo/CLAUDE.md", 12345);
         assert!(db.is_guard_cached("/repo", "/repo/CLAUDE.md", 12345));
     }
 
@@ -413,7 +432,7 @@ mod tests {
     fn guard_cache_different_hash_is_miss() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.mark_guard_clean("/repo", "/repo/CLAUDE.md", 12345);
+        db.mark_guard_scanned("/repo", "/repo/CLAUDE.md", 12345);
         assert!(!db.is_guard_cached("/repo", "/repo/CLAUDE.md", 99999));
     }
 
@@ -428,7 +447,7 @@ mod tests {
     fn audit_cache_hit() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.mark_audit_clean("/repo", 12345);
+        db.mark_audit_scanned("/repo", 12345);
         assert!(db.is_audit_cached("/repo", 12345));
     }
 
@@ -436,10 +455,11 @@ mod tests {
     fn reset_clears_guard_and_audit_caches() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.mark_guard_clean("/repo", "/repo/CLAUDE.md", 111);
-        db.mark_guard_clean("/repo", "/repo/.claude/CLAUDE.md", 222);
-        db.mark_audit_clean("/repo", 333);
-        db.set_repo_state("/repo", RepoState::Monitored, None);
+        db.mark_guard_scanned("/repo", "/repo/CLAUDE.md", 111);
+        db.mark_guard_scanned("/repo", "/repo/.claude/CLAUDE.md", 222);
+        db.mark_audit_scanned("/repo", 333);
+        db.set_repo_state("/repo", RepoState::Monitored, None)
+            .unwrap();
 
         db.reset_repo("/repo");
 
@@ -467,7 +487,8 @@ mod tests {
     fn ignore_then_status_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.set_repo_state("/my/repo", RepoState::Ignored, Some("github.com/user/repo"));
+        db.set_repo_state("/my/repo", RepoState::Ignored, Some("github.com/user/repo"))
+            .unwrap();
         let (state, remote) = db.get_repo_state("/my/repo");
         assert_eq!(state, RepoState::Ignored);
         assert_eq!(remote.as_deref(), Some("github.com/user/repo"));
@@ -477,8 +498,9 @@ mod tests {
     fn monitor_then_list_repos() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.set_repo_state("/a", RepoState::Monitored, None);
-        db.set_repo_state("/b", RepoState::Ignored, Some("origin"));
+        db.set_repo_state("/a", RepoState::Monitored, None).unwrap();
+        db.set_repo_state("/b", RepoState::Ignored, Some("origin"))
+            .unwrap();
         let repos = db.list_repos();
         assert_eq!(repos.len(), 2);
         assert!(repos
@@ -493,7 +515,8 @@ mod tests {
     fn reset_then_verify_unknown() {
         let dir = tempfile::tempdir().unwrap();
         let db = RepoDb::open(Some(dir.path())).unwrap();
-        db.set_repo_state("/my/repo", RepoState::Ignored, None);
+        db.set_repo_state("/my/repo", RepoState::Ignored, None)
+            .unwrap();
         db.reset_repo("/my/repo");
         let (state, _) = db.get_repo_state("/my/repo");
         assert_eq!(state, RepoState::Unknown);

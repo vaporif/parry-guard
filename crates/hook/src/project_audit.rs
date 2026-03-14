@@ -175,7 +175,7 @@ pub fn scan(
     check_settings_permissions(&state, &mut warnings);
 
     if let (Some(db), Some(rp)) = (db, repo_path) {
-        db.mark_audit_clean(rp, hash);
+        db.mark_audit_scanned(rp, hash);
         debug!(warning_count = warnings.len(), "audit state cached");
     }
 

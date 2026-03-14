@@ -101,7 +101,7 @@ pub fn check(config: &Config, db: Option<&RepoDb>, repo_path: Option<&str>) -> C
 
 fn cache_hash(db: Option<&RepoDb>, repo_path: Option<&str>, key: &str, hash: u64) {
     if let (Some(db), Some(rp)) = (db, repo_path) {
-        db.mark_guard_clean(rp, key, hash);
+        db.mark_guard_scanned(rp, key, hash);
     }
 }
 

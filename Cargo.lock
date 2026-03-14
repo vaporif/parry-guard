@@ -1876,7 +1876,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "clap",
  "fork",
@@ -1892,7 +1892,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-core"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-daemon"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "blake3",
  "bytes",
@@ -1932,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-destructive"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "dirs",
  "regex",
@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-exfil"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "dirs",
  "regex",
@@ -1973,7 +1973,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-hook"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "blake3",
  "parry-guard-core",
@@ -1989,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-ml"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -3266,9 +3266,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-scala"
-version = "0.24.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b4f354028b5fcf1d0c77f1c6d84cd5a579f29a1e43cb61551ec6580e9a99229"
+checksum = "83079f50ea7d03e0faf6be6260ed97538e6df7349ec3cbcbf5771f7b38e3c8b7"
 dependencies = [
  "cc",
  "tree-sitter-language",
