@@ -1885,6 +1885,7 @@ dependencies = [
  "parry-guard-hook",
  "parry-guard-ml",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
