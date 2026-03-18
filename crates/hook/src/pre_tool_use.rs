@@ -290,7 +290,6 @@ mod tests {
                 tool_name: "Read",
                 session_id: Some("test-session"),
                 tool_input: &serde_json::json!({}),
-                content: None,
             },
             config.runtime_dir.as_deref(),
         );

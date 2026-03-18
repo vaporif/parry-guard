@@ -39,7 +39,6 @@ pub fn process(input: &HookInput, config: &Config, repo_state: RepoState) -> Opt
                         tool_name: input.tool_name.as_deref().unwrap_or("unknown"),
                         session_id: input.session_id.as_deref(),
                         tool_input: &input.tool_input,
-                        content: Some(&response),
                     },
                     config.runtime_dir.as_deref(),
                 );
