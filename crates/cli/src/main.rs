@@ -285,7 +285,7 @@ fn run_audit(
         return ExitCode::SUCCESS;
     }
 
-    // Monitored repos: show warnings if any (existing behavior)
+    // Monitored repos: show warnings if any
     if warnings.is_empty() {
         debug!("audit clean");
         return ExitCode::SUCCESS;
