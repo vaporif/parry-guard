@@ -122,9 +122,23 @@ The daemon auto-starts on first scan, downloads the model on first run, and idle
 
 > **Note (non-Nix users):** The Nix home-manager module wraps the binary with all config baked in via env vars. Without Nix, set env vars in your shell profile (e.g. `HF_TOKEN`, `PARRY_IGNORE_PATHS`, `PARRY_SCAN_MODE`) — the hook command inherits them. Alternatively, pass flags directly in the hook command: `parry-guard --hf-token-path ~/.hf-token --ignore-path /home/user/safe hook`. See [Config](#config) for all options.
 
+### Opt-in scanning
+
+Parry uses an opt-in model — scanning is only active for repos you explicitly enable. On first session in an unknown repo, the `UserPromptSubmit` hook returns findings and asks whether to enable scanning. See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
+
+| Command | Description |
+|---------|-------------|
+| `parry-guard monitor [path]` | Enable scanning for a repo |
+| `parry-guard ignore [path]` | Disable scanning for a repo |
+| `parry-guard reset [path]` | Clear state and caches, back to unknown |
+| `parry-guard status [path]` | Show current repo state and findings |
+| `parry-guard repos` | List all known repos and their states |
+
+All commands default to the current directory if `path` is omitted.
+
 ### What each hook does
 
-- **PreToolUse**: 5-layer security — taint enforcement, CLAUDE.md scanning, exfil blocking, sensitive path blocking, input content injection scanning (Write/Edit/Bash/MCP tools)
+- **PreToolUse**: 7-layer security — ignore paths, taint enforcement, CLAUDE.md scanning, exfil blocking, destructive operation detection, sensitive path blocking, input content injection scanning (Write/Edit/Bash/MCP tools)
 - **PostToolUse**: Scans tool output for injection/secrets, auto-taints project on detection
 - **UserPromptSubmit**: Audits `.claude/` directory for dangerous permissions, injected commands, hook scripts
 
