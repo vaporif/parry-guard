@@ -193,6 +193,62 @@ pub fn format_warnings(warnings: &[AuditWarning]) -> String {
     out
 }
 
+/// Format the opt-in `additionalContext` message for Claude.
+#[must_use]
+pub fn format_opt_in_message(
+    warnings: &[AuditWarning],
+    repo_path: &str,
+    cmd: &str,
+    ml_unavailable: bool,
+) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+
+    let _ = write!(out, "[Parry Guard] First scan of {repo_path}");
+    if warnings.is_empty() && !ml_unavailable {
+        out.push_str(" — no issues found.\n");
+    } else {
+        out.push_str(".\n");
+    }
+    out.push_str(
+        "Parry scans tool inputs and outputs for prompt injection attacks \
+         to protect your development environment.\n",
+    );
+
+    if ml_unavailable && warnings.is_empty() {
+        out.push_str("\nNote: scan completed with ML unavailable, partial results only.\n");
+    }
+
+    if !warnings.is_empty() {
+        let total = warnings.len();
+        if total > 3 {
+            let _ = writeln!(out, "\nFindings (showing first 2 of {total}):");
+            for w in warnings.iter().take(2) {
+                let _ = writeln!(out, "- {}: {}", w.category, w.message);
+            }
+        } else {
+            out.push_str("\nFindings:\n");
+            for w in warnings {
+                let _ = writeln!(out, "- {}: {}", w.category, w.message);
+            }
+        }
+    }
+
+    out.push_str("\nAction required: Ask the user if they want to enable injection scanning for this repo.\n");
+    if warnings.is_empty() {
+        let _ = writeln!(out, "- If yes: run `{cmd} monitor` using the Bash tool.");
+    } else {
+        let _ = writeln!(
+            out,
+            "- If yes: run `{cmd} monitor` using the Bash tool, \
+             then inform the user about the findings above and offer to help fix them."
+        );
+    }
+    let _ = writeln!(out, "- If no: run `{cmd} ignore` using the Bash tool.");
+
+    out
+}
+
 /// Code file extensions that should use fast scan + exfil detection only (no ML).
 /// `DeBERTa` produces false positives on code syntax.
 const CODE_EXTENSIONS: &[&str] = &["sh", "bash", "zsh", "py", "rb", "js", "ts"];
@@ -706,5 +762,58 @@ mod tests {
         assert!(warnings
             .iter()
             .any(|w| w.message.contains("settings.local.json")));
+    }
+
+    #[test]
+    fn opt_in_message_clean_scan() {
+        let msg = format_opt_in_message(&[], "/path/to/repo", "parry-guard", false);
+        assert!(msg.contains("[Parry Guard]"));
+        assert!(msg.contains("/path/to/repo"));
+        assert!(msg.contains("no issues found"));
+        assert!(msg.contains("parry-guard monitor"));
+        assert!(msg.contains("parry-guard ignore"));
+        assert!(msg.contains("prompt injection attacks"));
+    }
+
+    #[test]
+    fn opt_in_message_with_findings() {
+        let warnings = vec![
+            AuditWarning {
+                category: "INJECTION",
+                message: ".claude/commands/evil.md may contain prompt injection".to_string(),
+            },
+            AuditWarning {
+                category: "HOOKS",
+                message: ".claude/hooks/ contains executable scripts: evil.sh".to_string(),
+            },
+        ];
+        let msg = format_opt_in_message(&warnings, "/path/to/repo", "parry-guard", false);
+        assert!(msg.contains("[Parry Guard]"));
+        assert!(msg.contains("Findings:"));
+        assert!(msg.contains("INJECTION"));
+        assert!(msg.contains("HOOKS"));
+        assert!(msg.contains("offer to help fix them"));
+    }
+
+    #[test]
+    fn opt_in_message_caps_at_two_findings() {
+        let warnings: Vec<AuditWarning> = (0..5)
+            .map(|i| AuditWarning {
+                category: "INJECTION",
+                message: format!("finding {i}"),
+            })
+            .collect();
+        let msg = format_opt_in_message(&warnings, "/path/to/repo", "parry-guard", false);
+        assert!(msg.contains("showing first 2 of 5"));
+        assert!(msg.contains("finding 0"));
+        assert!(msg.contains("finding 1"));
+        assert!(!msg.contains("finding 2"));
+    }
+
+    #[test]
+    fn opt_in_message_ml_unavailable() {
+        let msg = format_opt_in_message(&[], "/path/to/repo", "parry-guard", true);
+        assert!(msg.contains("ML unavailable"));
+        assert!(!msg.contains("no issues found"));
     }
 }

@@ -2,9 +2,8 @@
 
 mod cli;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use parry_guard_core::Config;
-use std::fmt::Write as _;
 use std::io::Read;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -72,14 +71,17 @@ fn main() -> ExitCode {
     }
 
     let hf_token = cli.resolve_hf_token();
-    let deprecated_ignore_paths = cli.ignore_path;
+    let ignore_dirs = cli.ignore_dirs;
+    let ask_on_new_project = cli.ask_on_new_project;
 
     let config = Config {
         hf_token,
         threshold: cli.threshold,
         claude_md_threshold: cli.claude_md_threshold,
         scan_mode: cli.scan_mode,
-        runtime_dir: None,
+        runtime_dir: std::env::var("PARRY_RUNTIME_DIR")
+            .ok()
+            .map(std::path::PathBuf::from),
     };
 
     match cli.command {
@@ -95,12 +97,20 @@ fn main() -> ExitCode {
             | cli::Command::Reset { .. }
             | cli::Command::Status { .. }
             | cli::Command::Repos),
-        ) => run_repo_command(cmd, config.runtime_dir.as_deref()),
-        Some(cli::Command::Hook) | None => run_hook(&config, &deprecated_ignore_paths),
+        ) => run_repo_command(cmd, &config),
+        Some(cli::Command::Hook) => run_hook(&config, &ignore_dirs, ask_on_new_project),
+        None => {
+            if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                let _ = cli::Cli::command().print_help();
+                ExitCode::SUCCESS
+            } else {
+                run_hook(&config, &ignore_dirs, ask_on_new_project)
+            }
+        }
     }
 }
 
-fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
+fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
@@ -128,22 +138,15 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
         .cwd
         .as_ref()
         .and_then(|cwd| repo_db::canonicalize_repo_path(Some(std::path::Path::new(cwd))));
-    let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
 
-    // Migrate old --ignore-path values to central db (deprecation period)
-    if !deprecated_ignore_paths.is_empty() {
-        if let Some(ref db) = db {
-            for path in deprecated_ignore_paths {
-                let canonical = repo_db::canonicalize_repo_path(Some(std::path::Path::new(path)));
-                let key = canonical.as_deref().unwrap_or(path);
-                let (state, _) = db.get_repo_state(key);
-                if state == RepoState::Unknown {
-                    let _ = db.set_repo_state(key, RepoState::Ignored, None);
-                }
-            }
-            warn!("--ignore-path is deprecated, use 'parry ignore <path>' instead");
+    if let Some(ref rp) = repo_path {
+        if is_under_ignore_dirs(rp, ignore_dirs) {
+            debug!(repo = %rp, "repo under ignore dir, skipping");
+            return ExitCode::SUCCESS;
         }
     }
+
+    let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
 
     // Remove obsolete per-project .parry-guard.redb if it exists
     if let Some(ref rp) = repo_path {
@@ -165,6 +168,7 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
                 repo_state,
                 db.as_ref(),
                 repo_path.as_deref(),
+                ask_on_new_project,
             );
             if code != ExitCode::SUCCESS {
                 return code;
@@ -216,6 +220,7 @@ fn run_audit(
     repo_state: parry_guard_core::repo_db::RepoState,
     db: Option<&parry_guard_core::repo_db::RepoDb>,
     repo_path: Option<&str>,
+    ask_on_new_project: bool,
 ) -> ExitCode {
     use parry_guard_core::repo_db::RepoState;
 
@@ -235,58 +240,71 @@ fn run_audit(
         return ExitCode::SUCCESS;
     };
 
-    let warnings = match parry_guard_hook::project_audit::scan(&dir, config, db, repo_path) {
-        Ok(w) => w,
-        Err(e) => {
-            warn!(%e, "audit ML scan failed (fail-closed)");
-            let message = format!(
-                "parry: project audit failed — ML scanner unavailable. \
-                 Run `parry serve` and retry. Error: {e}"
-            );
-            let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-            if let Ok(json) = serde_json::to_string(&output) {
-                println!("{json}");
-            }
-            return ExitCode::FAILURE;
-        }
-    };
-
     let is_first_run = repo_state == RepoState::Unknown;
 
-    if is_first_run {
+    // Auto-monitor: set repo to Monitored immediately so PreToolUse/PostToolUse
+    // scanning is active from the first session.
+    if is_first_run && !ask_on_new_project {
         if let (Some(db), Some(rp)) = (db, repo_path) {
-            let remote = parry_guard_core::repo_db::git_remote_url(&dir);
+            let remote = parry_guard_core::repo_db::git_remote_url(std::path::Path::new(rp));
             let _ = db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
+            info!(repo = rp, "auto-monitored new project");
         }
     }
 
-    if warnings.is_empty() {
-        if is_first_run {
-            let rp_display = repo_path.unwrap_or("this repo");
-            let cmd = command_name();
-            let message = format!(
-                "Parry: first scan of {rp_display} — no issues found. Now monitoring. \
-                 Run '{cmd} ignore' to stop scanning, or '{cmd} monitor' to keep scanning."
-            );
-            let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-            if let Ok(json) = serde_json::to_string(&output) {
-                println!("{json}");
+    let (scan_db, scan_rp): (Option<&parry_guard_core::repo_db::RepoDb>, Option<&str>) =
+        if is_first_run && ask_on_new_project {
+            (None, None)
+        } else {
+            (db, repo_path)
+        };
+
+    let mut ml_unavailable = false;
+    let warnings = match parry_guard_hook::project_audit::scan(&dir, config, scan_db, scan_rp) {
+        Ok(w) => w,
+        Err(e) => {
+            if is_first_run && ask_on_new_project {
+                // Soft-fail for Unknown repos in prompt mode
+                warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
+                ml_unavailable = true;
+                Vec::new()
+            } else {
+                warn!(%e, "audit ML scan failed (fail-closed)");
+                let message = format!(
+                    "parry: project audit failed — ML scanner unavailable. \
+                     Run `parry serve` and retry. Error: {e}"
+                );
+                let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
+                if let Ok(json) = serde_json::to_string(&output) {
+                    println!("{json}");
+                }
+                return ExitCode::FAILURE;
             }
         }
+    };
+
+    if is_first_run && ask_on_new_project {
+        let rp_display = repo_path.unwrap_or("this repo");
+        let cmd = command_name();
+        let message = parry_guard_hook::project_audit::format_opt_in_message(
+            &warnings,
+            rp_display,
+            &cmd,
+            ml_unavailable,
+        );
+        let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
+        if let Ok(json) = serde_json::to_string(&output) {
+            println!("{json}");
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    if warnings.is_empty() {
         debug!("audit clean");
         return ExitCode::SUCCESS;
     }
 
-    let mut message = parry_guard_hook::project_audit::format_warnings(&warnings);
-    if is_first_run {
-        let rp_display = repo_path.unwrap_or("this repo");
-        let cmd = command_name();
-        let _ = write!(
-            message,
-            "\nParry: first scan of {rp_display}. Now monitoring. \
-             Run '{cmd} ignore' to stop scanning, or '{cmd} reset' to re-scan."
-        );
-    }
+    let message = parry_guard_hook::project_audit::format_warnings(&warnings);
     info!(count = warnings.len(), "audit warnings");
     let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
     match serde_json::to_string(&output) {
@@ -314,6 +332,17 @@ fn command_name() -> String {
     }
 }
 
+fn is_under_ignore_dirs(repo_path: &str, ignore_dirs: &[String]) -> bool {
+    let repo = std::path::Path::new(repo_path);
+    ignore_dirs.iter().any(|dir| {
+        let canonical = std::fs::canonicalize(dir).ok();
+        let dir_path = canonical
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new(dir));
+        repo.starts_with(dir_path)
+    })
+}
+
 fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {
     parry_guard_core::repo_db::canonicalize_repo_path(path).ok_or_else(|| {
         eprintln!("error: cannot resolve path");
@@ -321,10 +350,10 @@ fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode>
     })
 }
 
-fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Path>) -> ExitCode {
+fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
-    let db = match RepoDb::open(runtime_dir) {
+    let db = match RepoDb::open(config.runtime_dir.as_deref()) {
         Ok(db) => db,
         Err(e) => {
             eprintln!("error: cannot open repo database: {e}");
@@ -375,6 +404,24 @@ fn run_repo_command(subcommand: cli::Command, runtime_dir: Option<&std::path::Pa
             if let Some(url) = remote {
                 println!("Remote:  {url}");
             }
+
+            // Re-run audit to show current findings (bypasses cache by passing None for db/repo_path)
+            let dir = std::path::Path::new(&canonical);
+            match parry_guard_hook::project_audit::scan(dir, config, None, None) {
+                Ok(warnings) if warnings.is_empty() => {
+                    println!("Audit:   clean (no findings)");
+                }
+                Ok(warnings) => {
+                    println!("Audit:   {} finding(s)", warnings.len());
+                    for w in &warnings {
+                        println!("  - {}: {}", w.category, w.message);
+                    }
+                }
+                Err(e) => {
+                    println!("Audit:   unavailable ({e})");
+                }
+            }
+
             ExitCode::SUCCESS
         }
         cli::Command::Repos => {
