@@ -227,6 +227,9 @@
             RUST_BACKTRACE = "1";
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
           }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl];
+          }
           // pkgs.lib.optionalAttrs onnxSupported {
             ORT_DYLIB_PATH = onnxArgs.ORT_DYLIB_PATH;
           };
