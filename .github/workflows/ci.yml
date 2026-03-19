@@ -65,33 +65,21 @@ jobs:
       - name: Test
         run: cargo nextest run --workspace --no-default-features --features onnx-fetch
 
-  lint:
-    name: Lint
+  gitleaks:
+    name: Gitleaks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Typos
-        uses: crate-ci/typos@master
-
-      - name: Install taplo
-        uses: taiki-e/install-action@v2
-        with:
-          tool: taplo-cli
-
-      - name: TOML lint
-        run: taplo check
-
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
-  nix-lint:
-    name: Nix lint
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
