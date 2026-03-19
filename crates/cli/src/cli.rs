@@ -50,6 +50,10 @@ pub struct Cli {
           value_parser = parse_scan_mode)]
     pub scan_mode: ScanMode,
 
+    /// Ask before monitoring new projects (default: auto-monitor)
+    #[arg(long, env = "PARRY_ASK_ON_NEW_PROJECT")]
+    pub ask_on_new_project: bool,
+
     /// [DEPRECATED] Paths to ignore. Use 'parry ignore <path>' instead. Repeatable.
     #[arg(long, env = "PARRY_IGNORE_PATHS", value_delimiter = ',', hide = true)]
     pub ignore_path: Vec<String>,
@@ -152,5 +156,17 @@ mod tests {
     fn parse_scan_mode_invalid() {
         assert!(parse_scan_mode("turbo").is_err());
         assert!(parse_scan_mode("").is_err());
+    }
+
+    #[test]
+    fn ask_on_new_project_defaults_to_false() {
+        let cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        assert!(!cli.ask_on_new_project);
+    }
+
+    #[test]
+    fn ask_on_new_project_flag() {
+        let cli = Cli::try_parse_from(["parry-guard", "--ask-on-new-project"]).unwrap();
+        assert!(cli.ask_on_new_project);
     }
 }

@@ -107,6 +107,7 @@
     ++ lib.optional (cfg.idleTimeout != null) ''--set PARRY_IDLE_TIMEOUT "${toString cfg.idleTimeout}"''
     ++ lib.optional (cfg.claudeMdThreshold != null) ''--set PARRY_CLAUDE_MD_THRESHOLD "${toString cfg.claudeMdThreshold}"''
     ++ lib.optional (cfg.ignorePaths != []) ''--set PARRY_IGNORE_PATHS "${lib.concatStringsSep "," cfg.ignorePaths}"''
+    ++ lib.optional cfg.askOnNewProject ''--set PARRY_ASK_ON_NEW_PROJECT "true"''
     ++ lib.optional (cfg.models != []) ''--set PARRY_SCAN_MODE "custom"''
     ++ lib.optional (cfg.scanMode != null && cfg.models == []) ''--set PARRY_SCAN_MODE "${cfg.scanMode}"''
     ++ lib.optional (cfg.logFile != null) ''--set PARRY_LOG_FILE "${cfg.logFile}"'';
@@ -166,6 +167,12 @@ in {
       type = types.listOf types.str;
       default = [];
       description = "Project paths to skip scanning entirely (prefix match).";
+    };
+
+    askOnNewProject = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Ask before monitoring new projects. When false (default), new projects are auto-monitored.";
     };
 
     scanMode = mkOption {

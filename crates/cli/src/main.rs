@@ -2,7 +2,7 @@
 
 mod cli;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use parry_guard_core::Config;
 use std::io::Read;
 use std::process::ExitCode;
@@ -72,6 +72,7 @@ fn main() -> ExitCode {
 
     let hf_token = cli.resolve_hf_token();
     let deprecated_ignore_paths = cli.ignore_path;
+    let ask_on_new_project = cli.ask_on_new_project;
 
     let config = Config {
         hf_token,
@@ -97,11 +98,23 @@ fn main() -> ExitCode {
             | cli::Command::Status { .. }
             | cli::Command::Repos),
         ) => run_repo_command(cmd, &config),
-        Some(cli::Command::Hook) | None => run_hook(&config, &deprecated_ignore_paths),
+        Some(cli::Command::Hook) => run_hook(&config, &deprecated_ignore_paths, ask_on_new_project),
+        None => {
+            if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                let _ = cli::Cli::command().print_help();
+                ExitCode::SUCCESS
+            } else {
+                run_hook(&config, &deprecated_ignore_paths, ask_on_new_project)
+            }
+        }
     }
 }
 
-fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
+fn run_hook(
+    config: &Config,
+    deprecated_ignore_paths: &[String],
+    ask_on_new_project: bool,
+) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
@@ -166,6 +179,7 @@ fn run_hook(config: &Config, deprecated_ignore_paths: &[String]) -> ExitCode {
                 repo_state,
                 db.as_ref(),
                 repo_path.as_deref(),
+                ask_on_new_project,
             );
             if code != ExitCode::SUCCESS {
                 return code;
@@ -217,6 +231,7 @@ fn run_audit(
     repo_state: parry_guard_core::repo_db::RepoState,
     db: Option<&parry_guard_core::repo_db::RepoDb>,
     repo_path: Option<&str>,
+    ask_on_new_project: bool,
 ) -> ExitCode {
     use parry_guard_core::repo_db::RepoState;
 
@@ -238,8 +253,18 @@ fn run_audit(
 
     let is_first_run = repo_state == RepoState::Unknown;
 
+    // Auto-monitor: set repo to Monitored immediately so PreToolUse/PostToolUse
+    // scanning is active from the first session.
+    if is_first_run && !ask_on_new_project {
+        if let (Some(db), Some(rp)) = (db, repo_path) {
+            let remote = parry_guard_core::repo_db::git_remote_url(std::path::Path::new(rp));
+            let _ = db.set_repo_state(rp, RepoState::Monitored, remote.as_deref());
+            info!(repo = rp, "auto-monitored new project");
+        }
+    }
+
     let (scan_db, scan_rp): (Option<&parry_guard_core::repo_db::RepoDb>, Option<&str>) =
-        if is_first_run {
+        if is_first_run && ask_on_new_project {
             (None, None)
         } else {
             (db, repo_path)
@@ -249,8 +274,8 @@ fn run_audit(
     let warnings = match parry_guard_hook::project_audit::scan(&dir, config, scan_db, scan_rp) {
         Ok(w) => w,
         Err(e) => {
-            if is_first_run {
-                // Soft-fail for Unknown repos — don't block users who haven't opted in
+            if is_first_run && ask_on_new_project {
+                // Soft-fail for Unknown repos in prompt mode
                 warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
                 ml_unavailable = true;
                 Vec::new()
@@ -269,7 +294,7 @@ fn run_audit(
         }
     };
 
-    if is_first_run {
+    if is_first_run && ask_on_new_project {
         let rp_display = repo_path.unwrap_or("this repo");
         let cmd = command_name();
         let message = parry_guard_hook::project_audit::format_opt_in_message(
@@ -285,7 +310,6 @@ fn run_audit(
         return ExitCode::SUCCESS;
     }
 
-    // Monitored repos: show warnings if any
     if warnings.is_empty() {
         debug!("audit clean");
         return ExitCode::SUCCESS;

@@ -92,6 +92,7 @@ cargo install --path crates/cli --no-default-features --features candle
     # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignorePaths = [ "/home/user/repos/parry" ];
+    # askOnNewProject = true;  # Ask before monitoring new projects (default: auto-monitor)
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
 
     # scanMode = "full";  # fast (default) | full | custom
@@ -122,9 +123,11 @@ The daemon auto-starts on first scan, downloads the model on first run, and idle
 
 > **Note (non-Nix users):** The Nix home-manager module wraps the binary with all config baked in via env vars. Without Nix, set env vars in your shell profile (e.g. `HF_TOKEN`, `PARRY_IGNORE_PATHS`, `PARRY_SCAN_MODE`) — the hook command inherits them. Alternatively, pass flags directly in the hook command: `parry-guard --hf-token-path ~/.hf-token --ignore-path /home/user/safe hook`. See [Config](#config) for all options.
 
-### Opt-in scanning
+### Project scanning
 
-Parry uses an opt-in model — scanning is only active for repos you explicitly enable. On first session in an unknown repo, the `UserPromptSubmit` hook returns findings and asks whether to enable scanning. See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
+By default, parry auto-monitors every new project — scanning is active from the first session with no prompt. To opt out of a specific repo, run `parry-guard ignore <path>`.
+
+To restore the old ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProject = true` in Nix). See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
 
 | Command | Description |
 |---------|-------------|
@@ -182,6 +185,7 @@ Use `fast` for interactive workflows; `full` for high-security or batch scanning
 | `--scan-mode` | `PARRY_SCAN_MODE` | fast | ML scan mode: `fast`, `full`, `custom` |
 | `--hf-token` | `HF_TOKEN` | — | HuggingFace token (direct value) |
 | `--hf-token-path` | `HF_TOKEN_PATH` | `/run/secrets/hf-token-scan-injection` | HuggingFace token file |
+| `--ask-on-new-project` | `PARRY_ASK_ON_NEW_PROJECT` | false | Ask before monitoring new projects (default: auto-monitor) |
 | `--ignore-path` | `PARRY_IGNORE_PATHS` | — | Paths to skip scanning (comma-separated / repeatable) |
 
 ### Subcommand flags
