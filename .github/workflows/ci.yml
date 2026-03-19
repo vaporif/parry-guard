@@ -66,20 +66,7 @@ jobs:
       - name: Test
         run: cargo nextest run --workspace --no-default-features --features onnx-fetch
 
-  gitleaks:
-    name: Gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-  nix-build:
+  build:
     name: Nix build (${{ matrix.backend }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -101,6 +88,20 @@ jobs:
 
       - name: Nix build
         run: nix build .#${{ matrix.backend }}
+
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
 
   e2e:
     name: E2E (${{ matrix.feature }})
