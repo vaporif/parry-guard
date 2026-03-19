@@ -113,25 +113,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: taiki-e/install-action@v2
+      - uses: cachix/install-nix-action@v31
         with:
-          tool: cargo-nextest
+          nix_path: nixpkgs=channel:nixpkgs-unstable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: cachix/cachix-action@v15
         with:
-          key: e2e-${{ matrix.feature }}
-
-      - name: Download ONNX Runtime
-        if: matrix.feature == 'onnx'
-        run: |
-          curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz -o ort.tgz
-          tar xzf ort.tgz
-          echo "ORT_DYLIB_PATH=$PWD/onnxruntime-linux-x64-1.23.2/lib/libonnxruntime.so" >> "$GITHUB_ENV"
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: ML e2e tests
-        run: cargo nextest run -p parry-guard-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
+        run: nix develop --command cargo nextest run -p parry-guard-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 

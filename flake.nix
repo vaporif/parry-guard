@@ -119,6 +119,7 @@
         // pkgs.lib.optionalAttrs onnxSupported {
           default = onnxPkg;
           onnx = onnxPkg;
+          onnxruntime = onnxruntime-bin;
         };
 
       checks =
@@ -224,10 +225,14 @@
             pkgs.apple-sdk_15
           ];
 
-        env = {
-          RUST_BACKTRACE = "1";
-          RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
-        };
+        env =
+          {
+            RUST_BACKTRACE = "1";
+            RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
+          }
+          // pkgs.lib.optionalAttrs onnxSupported {
+            ORT_DYLIB_PATH = onnxArgs.ORT_DYLIB_PATH;
+          };
       };
     });
   in {
