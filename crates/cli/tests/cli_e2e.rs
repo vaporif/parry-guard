@@ -18,10 +18,6 @@ fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
     cmd
 }
 
-fn run_parry_with_retry(args: &[&str], dir: &Path) -> std::process::Output {
-    run_parry_with_retry_rt(args, dir, None)
-}
-
 fn run_parry_with_retry_rt(
     args: &[&str],
     dir: &Path,
