@@ -112,7 +112,7 @@
         "rust-analyzer"
       ];
 
-      maturinVendorDir = craneLib.vendorCargoDeps {src = self;};
+      maturinVendorDir = craneLib.vendorCargoDeps {inherit src;};
     in {
       packages =
         {candle = candlePkg;}
@@ -220,6 +220,10 @@
             pkgs.typos
             pkgs.actionlint
             pkgs.cargo-nextest
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.pkg-config
+            pkgs.openssl
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15
