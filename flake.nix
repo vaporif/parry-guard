@@ -27,28 +27,11 @@
             (crane.mkLib nixpkgs.legacyPackages.${system}).overrideToolchain
             fenix.packages.${system}.stable.toolchain;
         });
-  in {
-    formatter = nixpkgs.lib.genAttrs systems (system: nixpkgs.legacyPackages.${system}.alejandra);
 
-    overlays.default = final: _prev: let
-      sys = final.stdenv.hostPlatform.system;
-    in {
-      parry =
-        self.packages.${
-          sys
-        }.${
-          if builtins.hasAttr "default" self.packages.${sys}
-          then "default"
-          else "candle"
-        };
-    };
-
-    homeManagerModules.default = import ./nix/hm-module.nix;
-
-    packages = forAllSystems ({
+    perSystem = forAllSystems ({
       pkgs,
+      fenixPkgs,
       craneLib,
-      ...
     }: let
       src = craneLib.cleanCargoSource ./.;
       onnxruntime-bin = pkgs.callPackage ./nix/onnxruntime.nix {};
@@ -80,6 +63,8 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
+
+      # Candle
       candleArgs =
         commonArgs
         // {
@@ -91,6 +76,8 @@
           cargoArtifacts = candleArtifacts;
           inherit meta;
         });
+
+      # ONNX
       onnxArgs =
         commonArgs
         // {
@@ -115,20 +102,7 @@
           '';
           inherit meta;
         };
-    in
-      {
-        candle = candlePkg;
-      }
-      // pkgs.lib.optionalAttrs onnxSupported {
-        default = onnxPkg;
-        onnx = onnxPkg;
-      });
 
-    devShells = forAllSystems ({
-      pkgs,
-      fenixPkgs,
-      ...
-    }: let
       toolchain = fenixPkgs.stable.withComponents [
         "cargo"
         "clippy"
@@ -137,8 +111,98 @@
         "rust-src"
         "rust-analyzer"
       ];
+
+      maturinVendorDir = craneLib.vendorCargoDeps {src = self;};
     in {
-      default = pkgs.mkShell {
+      packages =
+        {candle = candlePkg;}
+        // pkgs.lib.optionalAttrs onnxSupported {
+          default = onnxPkg;
+          onnx = onnxPkg;
+        };
+
+      checks =
+        {
+          fmt = craneLib.cargoFmt {inherit src;};
+
+          candle-clippy = craneLib.cargoClippy (candleArgs
+            // {
+              cargoArtifacts = candleArtifacts;
+              cargoClippyExtraArgs = "--workspace -- -D warnings";
+            });
+
+          candle-nextest = craneLib.cargoNextest (candleArgs
+            // {
+              cargoArtifacts = candleArtifacts;
+            });
+
+          taplo =
+            pkgs.runCommand "taplo-check" {
+              nativeBuildInputs = [pkgs.taplo];
+            } ''
+              cd ${self}
+              taplo check
+              touch $out
+            '';
+
+          typos =
+            pkgs.runCommand "typos-check" {
+              nativeBuildInputs = [pkgs.typos];
+            } ''
+              cd ${self}
+              typos
+              touch $out
+            '';
+
+          maturin-build = pkgs.stdenv.mkDerivation {
+            name = "maturin-build-check";
+            src = self;
+            nativeBuildInputs =
+              [
+                toolchain
+                pkgs.maturin
+                pkgs.python3
+              ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+                pkgs.pkg-config
+                pkgs.openssl
+              ];
+            buildInputs =
+              pkgs.lib.optionals pkgs.stdenv.isLinux [pkgs.openssl]
+              ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+                pkgs.libiconv
+                pkgs.apple-sdk_15
+              ];
+            buildPhase = let
+              vendorConfig = pkgs.writeText "maturin-vendor-config" ''
+                [source.crates-io]
+                replace-with = "vendored-sources"
+                [source.vendored-sources]
+                directory = "${maturinVendorDir}"
+              '';
+            in ''
+              mkdir -p .cargo
+              cat ${vendorConfig} >> .cargo/config.toml
+              maturin build --release --out dist
+            '';
+            installPhase = "touch $out";
+            HOME = "/build";
+          };
+        }
+        // pkgs.lib.optionalAttrs onnxSupported {
+          onnx-clippy = craneLib.cargoClippy (onnxArgs
+            // {
+              cargoArtifacts = onnxArtifacts;
+              cargoClippyExtraArgs = "--workspace -- -D warnings";
+            });
+
+          onnx-nextest = craneLib.cargoNextest (onnxArgs
+            // {
+              cargoArtifacts = onnxArtifacts;
+            });
+        };
+
+      devShells.default = pkgs.mkShell {
         packages =
           [
             toolchain
@@ -158,5 +222,26 @@
         };
       };
     });
+  in {
+    formatter = nixpkgs.lib.genAttrs systems (system: nixpkgs.legacyPackages.${system}.alejandra);
+
+    overlays.default = final: _prev: let
+      sys = final.stdenv.hostPlatform.system;
+    in {
+      parry =
+        self.packages.${
+          sys
+        }.${
+          if builtins.hasAttr "default" self.packages.${sys}
+          then "default"
+          else "candle"
+        };
+    };
+
+    homeManagerModules.default = import ./nix/hm-module.nix;
+
+    packages = nixpkgs.lib.mapAttrs (_: s: s.packages) perSystem;
+    checks = nixpkgs.lib.mapAttrs (_: s: s.checks) perSystem;
+    devShells = nixpkgs.lib.mapAttrs (_: s: s.devShells) perSystem;
   };
 }
