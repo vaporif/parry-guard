@@ -182,16 +182,9 @@
                 pkgs.libiconv
                 pkgs.apple-sdk_15
               ];
-            buildPhase = let
-              vendorConfig = pkgs.writeText "maturin-vendor-config" ''
-                [source.crates-io]
-                replace-with = "vendored-sources"
-                [source.vendored-sources]
-                directory = "${maturinVendorDir}"
-              '';
-            in ''
+            buildPhase = ''
               mkdir -p .cargo
-              cat ${vendorConfig} >> .cargo/config.toml
+              cat ${maturinVendorDir}/config.toml >> .cargo/config.toml
               maturin build --release --out dist
             '';
             installPhase = "touch $out";
