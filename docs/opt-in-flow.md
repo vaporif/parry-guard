@@ -15,6 +15,11 @@ New projects are automatically set to Monitored on first session. No prompt, imm
                          |
                          v
                +-------------------+
+               | Under ignore dir? |--yes--> Skip (return success)
+               +-------------------+
+                         | no
+                         v
+               +-------------------+
                | Check repo state  |
                | in RepoDb         |
                +-------------------+
@@ -48,6 +53,11 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
                | hook fires        |
                +-------------------+
                          |
+                         v
+               +-------------------+
+               | Under ignore dir? |--yes--> Skip (return success)
+               +-------------------+
+                         | no
                          v
                +-------------------+
                | Check repo state  |
@@ -98,6 +108,11 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
                PreToolUse or PostToolUse
                hook fires
                          |
+                         v
+               +-------------------+
+               | Under ignore dir? |--yes--> Skip (return success)
+               +-------------------+
+                         | no
                          v
                +-------------------+
                | Check repo state  |
@@ -155,6 +170,7 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
 |---|---|
 | `PARRY_ASK_ON_NEW_PROJECT=false` (default) | Auto-monitor new projects, no prompt |
 | `PARRY_ASK_ON_NEW_PROJECT=true` | Ask user before monitoring each new project |
+| `PARRY_IGNORE_DIRS=/path/to/parent` | Skip all repos under these parent directories (comma-separated) |
 | `parry-guard ignore <path>` | Opt out of scanning for a specific repo |
 | `parry-guard monitor <path>` | Opt in to scanning for a specific repo |
 

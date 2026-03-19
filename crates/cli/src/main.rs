@@ -71,7 +71,7 @@ fn main() -> ExitCode {
     }
 
     let hf_token = cli.resolve_hf_token();
-    let deprecated_ignore_paths = cli.ignore_path;
+    let ignore_dirs = cli.ignore_dirs;
     let ask_on_new_project = cli.ask_on_new_project;
 
     let config = Config {
@@ -98,23 +98,19 @@ fn main() -> ExitCode {
             | cli::Command::Status { .. }
             | cli::Command::Repos),
         ) => run_repo_command(cmd, &config),
-        Some(cli::Command::Hook) => run_hook(&config, &deprecated_ignore_paths, ask_on_new_project),
+        Some(cli::Command::Hook) => run_hook(&config, &ignore_dirs, ask_on_new_project),
         None => {
             if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                 let _ = cli::Cli::command().print_help();
                 ExitCode::SUCCESS
             } else {
-                run_hook(&config, &deprecated_ignore_paths, ask_on_new_project)
+                run_hook(&config, &ignore_dirs, ask_on_new_project)
             }
         }
     }
 }
 
-fn run_hook(
-    config: &Config,
-    deprecated_ignore_paths: &[String],
-    ask_on_new_project: bool,
-) -> ExitCode {
+fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
@@ -142,22 +138,15 @@ fn run_hook(
         .cwd
         .as_ref()
         .and_then(|cwd| repo_db::canonicalize_repo_path(Some(std::path::Path::new(cwd))));
-    let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
 
-    // Migrate old --ignore-path values to central db (deprecation period)
-    if !deprecated_ignore_paths.is_empty() {
-        if let Some(ref db) = db {
-            for path in deprecated_ignore_paths {
-                let canonical = repo_db::canonicalize_repo_path(Some(std::path::Path::new(path)));
-                let key = canonical.as_deref().unwrap_or(path);
-                let (state, _) = db.get_repo_state(key);
-                if state == RepoState::Unknown {
-                    let _ = db.set_repo_state(key, RepoState::Ignored, None);
-                }
-            }
-            warn!("--ignore-path is deprecated, use 'parry ignore <path>' instead");
+    if let Some(ref rp) = repo_path {
+        if is_under_ignore_dirs(rp, ignore_dirs) {
+            debug!(repo = %rp, "repo under ignore dir, skipping");
+            return ExitCode::SUCCESS;
         }
     }
+
+    let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
 
     // Remove obsolete per-project .parry-guard.redb if it exists
     if let Some(ref rp) = repo_path {
@@ -341,6 +330,16 @@ fn command_name() -> String {
     } else {
         "parry-guard".to_string()
     }
+}
+
+fn is_under_ignore_dirs(repo_path: &str, ignore_dirs: &[String]) -> bool {
+    ignore_dirs.iter().any(|dir| {
+        let canonical = std::fs::canonicalize(dir)
+            .ok()
+            .and_then(|p| p.to_str().map(String::from));
+        let dir_path = canonical.as_deref().unwrap_or(dir.as_str());
+        repo_path.starts_with(dir_path)
+    })
 }
 
 fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {

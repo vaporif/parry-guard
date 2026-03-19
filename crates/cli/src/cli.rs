@@ -54,9 +54,9 @@ pub struct Cli {
     #[arg(long, env = "PARRY_ASK_ON_NEW_PROJECT")]
     pub ask_on_new_project: bool,
 
-    /// [DEPRECATED] Paths to ignore. Use 'parry ignore <path>' instead. Repeatable.
-    #[arg(long, env = "PARRY_IGNORE_PATHS", value_delimiter = ',', hide = true)]
-    pub ignore_path: Vec<String>,
+    /// Parent directories to ignore — all repos under these paths are skipped (comma-separated)
+    #[arg(long, env = "PARRY_IGNORE_DIRS", value_delimiter = ',')]
+    pub ignore_dirs: Vec<String>,
 
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -168,5 +168,17 @@ mod tests {
     fn ask_on_new_project_flag() {
         let cli = Cli::try_parse_from(["parry-guard", "--ask-on-new-project"]).unwrap();
         assert!(cli.ask_on_new_project);
+    }
+
+    #[test]
+    fn ignore_dirs_empty_by_default() {
+        let cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        assert!(cli.ignore_dirs.is_empty());
+    }
+
+    #[test]
+    fn ignore_dirs_comma_separated() {
+        let cli = Cli::try_parse_from(["parry-guard", "--ignore-dirs", "/a,/b,/c"]).unwrap();
+        assert_eq!(cli.ignore_dirs, vec!["/a", "/b", "/c"]);
     }
 }
