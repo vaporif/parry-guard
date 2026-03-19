@@ -336,7 +336,9 @@ fn is_under_ignore_dirs(repo_path: &str, ignore_dirs: &[String]) -> bool {
     let repo = std::path::Path::new(repo_path);
     ignore_dirs.iter().any(|dir| {
         let canonical = std::fs::canonicalize(dir).ok();
-        let dir_path = canonical.as_deref().unwrap_or(std::path::Path::new(dir));
+        let dir_path = canonical
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new(dir));
         repo.starts_with(dir_path)
     })
 }
