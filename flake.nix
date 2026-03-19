@@ -124,7 +124,10 @@
 
       checks =
         {
-          fmt = craneLib.cargoFmt {inherit src;};
+          fmt = craneLib.cargoFmt {
+            inherit src;
+            pname = "parry-guard";
+          };
 
           candle-clippy = craneLib.cargoClippy (candleArgs
             // {
