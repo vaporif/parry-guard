@@ -154,6 +154,14 @@
               touch $out
             '';
 
+          nix-fmt =
+            pkgs.runCommand "nix-fmt-check" {
+              nativeBuildInputs = [pkgs.alejandra];
+            } ''
+              alejandra --check ${self}/flake.nix ${self}/nix/
+              touch $out
+            '';
+
           maturin-build = pkgs.stdenv.mkDerivation {
             name = "maturin-build-check";
             src = self;
