@@ -91,16 +91,16 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            manylinux: musllinux_1_2
+            platform_tag: musllinux_1_2_x86_64
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
-            manylinux: musllinux_1_2
+            platform_tag: musllinux_1_2_aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
-            manylinux: ""
+            platform_tag: ""
           - target: aarch64-apple-darwin
             os: macos-latest
-            manylinux: ""
+            platform_tag: ""
     steps:
       - uses: actions/checkout@v6
 
@@ -115,11 +115,17 @@ jobs:
 
       - name: Build wheel
         run: |
-          COMPAT_FLAG="${{ matrix.manylinux && format('--compatibility {0}', matrix.manylinux) || '' }}"
           nix develop --command maturin build --release \
             --target ${{ matrix.target }} \
-            $COMPAT_FLAG \
             --out dist
+
+      - name: Fix platform tag
+        if: ${{ matrix.platform_tag }}
+        run: |
+          for whl in dist/*.whl; do
+            new="$(echo "$whl" | sed "s/linux_[^.]*/${{ matrix.platform_tag }}/")"
+            mv "$whl" "$new"
+          done
 
       - uses: actions/upload-artifact@v7
         with:
