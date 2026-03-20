@@ -128,7 +128,7 @@ jobs:
               if new != whl:
                   os.rename(whl, new)
                   print(f"Renamed: {whl} -> {new}")
-        shell: python3
+        shell: python
 
       - uses: actions/upload-artifact@v7
         with:
