@@ -115,10 +115,10 @@ jobs:
 
       - name: Build wheel
         run: |
-          MANYLINUX_FLAG="${{ matrix.manylinux && format('--manylinux {0}', matrix.manylinux) || '' }}"
+          COMPAT_FLAG="${{ matrix.manylinux && format('--compatibility {0}', matrix.manylinux) || '' }}"
           nix develop --command maturin build --release \
             --target ${{ matrix.target }} \
-            $MANYLINUX_FLAG \
+            $COMPAT_FLAG \
             --out dist
 
       - uses: actions/upload-artifact@v7
