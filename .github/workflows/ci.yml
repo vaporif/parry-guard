@@ -33,7 +33,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixpkgs-unstable
 
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: parry-guard
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -81,7 +81,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixpkgs-unstable
 
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: parry-guard
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -117,7 +117,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixpkgs-unstable
 
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: parry-guard
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
