@@ -122,10 +122,13 @@ jobs:
       - name: Fix platform tag
         if: ${{ matrix.platform_tag }}
         run: |
-          for whl in dist/*.whl; do
-            new="$(echo "$whl" | sed "s/linux_[^.]*/${{ matrix.platform_tag }}/")"
-            mv "$whl" "$new"
-          done
+          import glob, os, re
+          for whl in glob.glob("dist/*.whl"):
+              new = re.sub(r"linux_[^.]+", "${{ matrix.platform_tag }}", whl)
+              if new != whl:
+                  os.rename(whl, new)
+                  print(f"Renamed: {whl} -> {new}")
+        shell: python3
 
       - uses: actions/upload-artifact@v7
         with:
