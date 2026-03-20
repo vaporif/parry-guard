@@ -139,5 +139,9 @@ jobs:
           pattern: wheel-*
           merge-multiple: true
           path: dist
+      - name: List wheels
+        run: ls -la dist/
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
