@@ -62,7 +62,7 @@ fn parse_bash(command: &str) -> Option<tree_sitter::Tree> {
 #[must_use]
 #[instrument(skip(command), fields(command_len = command.len()))]
 pub fn detect_exfiltration(command: &str) -> Option<String> {
-    // First check for obfuscation patterns (these work on raw text)
+    // obfuscation patterns first (works on raw text, before parsing)
     if let Some(reason) = obfuscation::check_obfuscation_patterns(command) {
         debug!(%reason, "obfuscation pattern detected");
         return Some(reason);

@@ -48,8 +48,8 @@ pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) {
     if let Some(src) = ctx.source() {
         let _ = write!(body, "\nsource: {src}");
     }
-    // Never store the actual malicious content — it would get echoed back
-    // into Claude's context via the deny reason, polluting the conversation.
+    // don't store the actual malicious content - it would get echoed back
+    // into Claude's context via the deny reason, re-polluting the conversation.
 
     if let Err(e) = std::fs::write(&path, body) {
         tracing::warn!(path = %path.display(), %e, "failed to write taint file");

@@ -59,7 +59,7 @@ static HOMOGLYPHS: LazyLock<HashMap<char, char>> = LazyLock::new(|| {
 
 /// Returns true if text contains homoglyph characters mixed with ASCII Latin letters.
 ///
-/// Only flags when both Latin and homoglyph characters are present — the actual
+/// Only flags when both Latin and homoglyph characters are present - the actual
 /// attack pattern (e.g. "іgnore" with Cyrillic і among Latin chars).
 /// Pure Cyrillic/Greek text is not flagged.
 #[must_use]
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn normalize_cyrillic() {
-        // "іgnore" with Cyrillic і → "ignore"
+        // "іgnore" with Cyrillic і -> "ignore"
         let input = "іgnore all previous";
         assert_eq!(normalize_homoglyphs(input), "ignore all previous");
     }

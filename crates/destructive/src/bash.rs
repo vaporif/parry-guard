@@ -26,88 +26,88 @@ pub fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let cmd_name = get_command_name(node, source)?;
 
-    // User-removed commands
+    // user allowlisted this command
     if CONFIG.is_removed_command(cmd_name) {
         return None;
     }
 
-    // User-added extra commands
+    // user-configured extra destructive commands
     if CONFIG.extra_commands.iter().any(|c| c == cmd_name) {
         return Some(format!(
             "'{cmd_name}' matched user-configured destructive command"
         ));
     }
 
-    // Category 11: Privilege escalation (always first — wraps other commands)
+    // privilege escalation - always first since it wraps other commands
     if consts::PRIV_ESC.contains(&cmd_name) {
         return Some(format!(
-            "Privilege escalation via '{cmd_name}' — all elevated commands require confirmation"
+            "Privilege escalation via '{cmd_name}' - all elevated commands require confirmation"
         ));
     }
 
-    // Category 1: Unconditional filesystem destruction
+    // unconditional filesystem destruction (shred, wipefs, etc.)
     if consts::UNCONDITIONAL_DESTRUCTIVE.contains(&cmd_name) {
         return Some(format!(
             "'{cmd_name}' is a destructive filesystem operation"
         ));
     }
 
-    // Category 7: Disk / mount
+    // disk / mount
     if consts::DISK_COMMANDS.contains(&cmd_name) {
         return Some(format!("'{cmd_name}' modifies disk/mount state"));
     }
 
-    // Category 2: Process / Service
+    // process / service management
     if let Some(reason) = check_process_service(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Category 1 continued: rm / rmdir (path-dependent)
+    // rm / rmdir - needs path analysis
     if cmd_name == "rm" || cmd_name == "rmdir" {
         return check_rm(cmd_name, node, source, cwd);
     }
 
-    // Category 3: Permissions on protected paths
+    // permissions on protected paths
     if matches!(cmd_name, "chmod" | "chown" | "chgrp") {
         return check_permissions(cmd_name, node, source, cwd);
     }
 
-    // Category 4: Package managers
+    // package managers
     if let Some(reason) = check_package_manager(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Category 5: Git destructive
+    // git destructive ops
     if cmd_name == "git" {
         return check_git(node, source);
     }
 
-    // Category 6: Database / storage
+    // database / storage
     if let Some(reason) = check_database(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Category 8: Container / orchestration
+    // container / orchestration
     if let Some(reason) = check_container(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Category 9: System admin
+    // system admin
     if let Some(reason) = check_sysadmin(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Category 10: Nix
+    // nix
     if let Some(reason) = check_nix(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // Docker special handling
+    // docker (needs subcommand inspection)
     if cmd_name == "docker" {
         return check_docker(node, source);
     }
 
-    // Recurse into children for nested structures (e.g., command substitutions)
+    // nested structures (command substitutions, etc.)
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() != "command" {
@@ -120,14 +120,12 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     None
 }
 
-// === Helpers ===
-
 fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<&'a str> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "command_name" {
             let text = node_text(child, source);
-            // Strip path prefix (e.g., /usr/bin/rm -> rm)
+            // /usr/bin/rm -> rm
             return Some(text.rsplit('/').next().unwrap_or(text));
         }
     }
@@ -143,14 +141,11 @@ fn get_args<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut args = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "command_name" {
-            continue;
-        }
-        match child.kind() {
-            "word" | "string" | "raw_string" | "concatenation" => {
-                args.push(node_text(child, source));
-            }
-            _ => {}
+        if matches!(
+            child.kind(),
+            "word" | "string" | "raw_string" | "concatenation"
+        ) {
+            args.push(node_text(child, source));
         }
     }
     args
@@ -164,13 +159,12 @@ fn has_flag(args: &[&str], flag: &str) -> bool {
             .and_then(|s| if s.len() == 1 { s.chars().next() } else { None });
 
     for arg in args {
-        // Exact match for both short (-r) and long (--force) flags
+        // exact match (-r, --force, etc.)
         if *arg == flag {
             return true;
         }
-        // Handle combined short flags: -rf contains both -r and -f
-        // Only match short combined flags (2-4 chars after '-'), not single-dash long options
-        // like -forward or -format which some tools use
+        // combined short flags: -rf means both -r and -f
+        // cap at 4 chars to avoid matching single-dash long opts like -forward
         if let Some(fc) = flag_char {
             if let Some(rest) = arg.strip_prefix('-') {
                 let len = rest.len();
@@ -205,22 +199,21 @@ fn check_function_body(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     None
 }
 
-// === Category checks ===
+// --- category checks ---
 
 fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let args = get_args(node, source);
     let path_args = get_path_args(&args);
 
     for path in &path_args {
-        // Strip quotes
+        // strip quotes around paths
         let clean = path.trim_matches(|c| c == '\'' || c == '"');
 
-        // Block rm that targets CWD itself (e.g. `rm -rf .` or `rm -rf ./`)
+        // rm -rf . / rm -rf ./ - nuking the project dir
         if paths::is_cwd_itself(clean, cwd) {
             return Some(format!("'{cmd_name}' targets project directory itself"));
         }
 
-        // Check if any path arg targets outside CWD
         if paths::is_outside_cwd(clean, cwd) {
             return Some(format!(
                 "'{cmd_name}' targets '{clean}' outside project directory"
@@ -274,7 +267,7 @@ fn check_package_manager(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
     let path_args = get_path_args(&args);
     let first_arg = path_args.first().copied().unwrap_or("");
 
-    // Standard package managers
+    // standard package managers
     for &(pm, destructive_subcmds) in consts::PKG_MANAGER_DESTRUCTIVE {
         if cmd_name == pm && destructive_subcmds.contains(&first_arg) {
             return Some(format!("'{cmd_name} {first_arg}' removes packages"));
@@ -297,7 +290,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
     let path_args = get_path_args(&args);
     let subcmd = path_args.first().copied().unwrap_or("");
 
-    // History rewriting commands
+    // history rewriting
     if consts::GIT_HISTORY_REWRITE.contains(&subcmd) {
         return Some(format!("'git {subcmd}' rewrites repository history"));
     }
@@ -334,9 +327,9 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
             }
         }
         "restore" => {
-            // Only flag `git restore .` (wildcard), not specific files
-            let restore_args: Vec<&&str> = path_args.iter().skip(1).collect();
-            if restore_args.len() == 1 && **restore_args[0] == *"." {
+            // only the wildcard form, not specific files
+            let mut rest = path_args.iter().skip(1);
+            if rest.clone().count() == 1 && rest.next().copied() == Some(".") {
                 Some("'git restore .' discards all unstaged changes".into())
             } else {
                 None
@@ -379,7 +372,7 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
     }
 
     // git push origin :branch (colon-prefix deletes remote branch)
-    // Skip "push" only — remote may be omitted
+    // skip "push" itself - remote name may be omitted
     for arg in path_args.iter().skip(1) {
         if arg.starts_with(':') {
             return Some(format!("'git push {arg}' deletes remote branch"));
@@ -569,7 +562,7 @@ fn check_sysadmin(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
 }
 
 fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
-    // Unconditional nix commands
+    // always destructive
     if consts::NIX_UNCONDITIONAL.contains(&cmd_name) {
         return Some(format!("'{cmd_name}' removes Nix store entries"));
     }
@@ -577,10 +570,10 @@ fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
     let path_args = get_path_args(&args);
 
-    // Nix commands with destructive subcommands
+    // destructive only with certain subcommands
     for &(cmd, destructive_subcmds) in consts::NIX_DESTRUCTIVE {
         if cmd_name == cmd {
-            // Join non-flag args to match multi-word subcommands like "store gc"
+            // join args for multi-word subcommands like "store gc"
             let subcmd_str = path_args.join(" ");
             for subcmd in destructive_subcmds {
                 if subcmd_str.starts_with(subcmd) {
@@ -589,7 +582,6 @@ fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
                     ));
                 }
             }
-            // Also check raw args for flag-style subcommands like "--gc"
             for subcmd in destructive_subcmds {
                 if args.contains(subcmd) {
                     return Some(format!(

@@ -39,14 +39,14 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
-    // Socket exists but nobody responded to ping — stale, clean up
+    // stale socket -nobody responded to ping
     crate::transport::cleanup_stale_state(rd);
     let listener = transport::bind_async(rd)?;
 
     let pid_path = transport::pid_file_path(rd)?;
     std::fs::write(&pid_path, std::process::id().to_string())?;
 
-    // ML model loads lazily on first scan request so Pings work immediately
+    // ML loads lazily on first scan so pings work immediately
     let mut ml_state = MlState::NotLoaded;
     let cache = ScanCache::open(rd).map(Arc::new);
 
@@ -119,31 +119,31 @@ async fn handle_connection(
         return;
     };
 
-    let resp = if req.scan_type == ScanType::Ping {
-        ScanResponse::Pong
-    } else {
-        if matches!(ml_state, MlState::NotLoaded) {
-            info!("loading ML model");
-            *ml_state = load_ml_scanner(config).map_or_else(
-                || {
-                    warn!(
-                        ml = "unavailable",
-                        "ML model failed to load, scans will fail-close"
-                    );
-                    MlState::Failed
-                },
-                |scanner| {
-                    info!(ml = "loaded", "ML model ready");
-                    MlState::Loaded(scanner)
-                },
-            );
+    let resp = match req.scan_type {
+        ScanType::Ping => ScanResponse::Pong,
+        ScanType::Full => {
+            if matches!(ml_state, MlState::NotLoaded) {
+                info!("loading ML model");
+                *ml_state = load_ml_scanner(config).map_or_else(
+                    || {
+                        warn!(
+                            ml = "unavailable",
+                            "ML model failed to load, scans will fail-close"
+                        );
+                        MlState::Failed
+                    },
+                    |scanner| {
+                        info!(ml = "loaded", "ML model ready");
+                        MlState::Loaded(scanner)
+                    },
+                );
+            }
+            let scanner = match ml_state {
+                MlState::Loaded(ref mut s) => Some(s),
+                _ => None,
+            };
+            handle_request(&req, scanner, cache)
         }
-        let scanner = if let MlState::Loaded(ref mut s) = ml_state {
-            Some(s)
-        } else {
-            None
-        };
-        handle_request(&req, scanner, cache)
     };
     let _ = framed.send(resp).await;
 }
@@ -167,7 +167,7 @@ fn handle_request(
         }
 
         let result = run_full_scan(&req.text, req.threshold, ml_scanner);
-        // Don't cache errors — model may load on next daemon restart
+        // don't cache errors -model may load on next restart
         if result != ScanResponse::Error {
             c.put(&hash, response_to_result(result));
         }

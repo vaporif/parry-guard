@@ -33,7 +33,7 @@ impl DestructiveConfig {
     }
 
     fn default_path() -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|p| p.join(".config").join("parry-guard").join("patterns.toml"))
+        dirs::config_dir().map(|p| p.join("parry-guard").join("patterns.toml"))
     }
 
     fn load_from_path(path: Option<std::path::PathBuf>) -> Self {
@@ -72,18 +72,17 @@ impl CompiledDestructive {
     /// Load from default config path.
     #[must_use]
     pub fn load() -> Self {
-        let config = DestructiveConfig::load();
-        Self::from_config(&config)
+        Self::from_config(DestructiveConfig::load())
     }
 
     /// Create from explicit config (useful for testing).
     #[must_use]
-    pub fn from_config(config: &DestructiveConfig) -> Self {
+    pub fn from_config(config: DestructiveConfig) -> Self {
         Self {
-            extra_paths: config.destructive_paths.add.clone(),
-            removed_paths: config.destructive_paths.remove.clone(),
-            extra_commands: config.destructive_commands.add.clone(),
-            removed_commands: config.destructive_commands.remove.clone(),
+            extra_paths: config.destructive_paths.add,
+            removed_paths: config.destructive_paths.remove,
+            extra_commands: config.destructive_commands.add,
+            removed_commands: config.destructive_commands.remove,
         }
     }
 
@@ -103,8 +102,7 @@ mod tests {
 
     #[test]
     fn default_config_empty_overrides() {
-        let config = DestructiveConfig::default();
-        let compiled = CompiledDestructive::from_config(&config);
+        let compiled = CompiledDestructive::from_config(DestructiveConfig::default());
         assert!(compiled.extra_paths.is_empty());
         assert!(compiled.removed_paths.is_empty());
         assert!(compiled.extra_commands.is_empty());
@@ -123,7 +121,7 @@ mod tests {
                 remove: vec!["kill".into()],
             },
         };
-        let compiled = CompiledDestructive::from_config(&config);
+        let compiled = CompiledDestructive::from_config(config);
         assert_eq!(compiled.extra_paths, vec!["/my/protected"]);
         assert_eq!(compiled.removed_paths, vec!["~/.cargo/"]);
         assert!(compiled.is_removed_command("kill"));

@@ -1,4 +1,4 @@
-//! CLI e2e tests — runs the `parry-guard` binary with JSON on stdin.
+//! CLI e2e tests - runs the `parry-guard` binary with JSON on stdin.
 //!
 //! `PreToolUse` tests must use `current_dir` set to a temp dir, otherwise
 //! `claude_md::check()` finds the repo's real CLAUDE.md and triggers ML scan.
@@ -10,7 +10,15 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_parry-guard"));
+    let mut dir = std::env::current_exe()
+        .expect("cannot resolve test binary path")
+        .parent()
+        .expect("no parent dir")
+        .to_path_buf();
+    if dir.ends_with("deps") {
+        dir.pop();
+    }
+    let mut cmd = Command::new(dir.join("parry-guard"));
     cmd.env("PARRY_LOG", "off");
     if let Some(rd) = runtime_dir {
         cmd.env("PARRY_RUNTIME_DIR", rd);
@@ -144,7 +152,7 @@ fn isolated_dir() -> tempfile::TempDir {
 }
 
 /// Temp dir pre-registered as Monitored with its own isolated runtime db.
-/// Returns `(project_dir, runtime_dir)` — both must stay alive for the test.
+/// Returns `(project_dir, runtime_dir)` - both must stay alive for the test.
 fn monitored_dir() -> (tempfile::TempDir, tempfile::TempDir) {
     let dir = isolated_dir();
     let runtime = tempfile::tempdir().unwrap();
@@ -243,7 +251,7 @@ fn pre_write_clean_content() {
         "hook_event_name": "PreToolUse",
         "cwd": dir.path().to_str().unwrap()
     }).to_string();
-    // Fast scan clean → ML scan fails without daemon → fail-closed (ask)
+    // Fast scan clean -> ML scan fails without daemon -> fail-closed (ask)
     let out = run_hook(dir.path(), &json);
     assert!(out.status.success());
 }
@@ -614,7 +622,7 @@ fn unknown_hook_event() {
 }
 
 // ── Taint (smoke test) ────────────────────────────────────────
-// Taint uses runtime_dir, not JSON cwd — can only verify no crash.
+// Taint uses runtime_dir, not JSON cwd - can only verify no crash.
 
 #[test]
 fn tainted_project_no_crash() {

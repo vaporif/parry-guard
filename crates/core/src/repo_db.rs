@@ -170,20 +170,22 @@ impl RepoDb {
         let Ok(table) = txn.open_table(REPO_STATE_TABLE) else {
             return Vec::new();
         };
-        let mut entries = Vec::new();
-        if let Ok(iter) = table.iter() {
-            for item in iter {
-                let Ok(item) = item else { continue };
+        table
+            .iter()
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|item| {
                 let path = item.0.value().to_string();
                 let (state, remote) = decode_state(item.1.value());
-                entries.push(RepoEntry {
+                RepoEntry {
                     path,
                     state,
                     remote,
-                });
-            }
-        }
-        entries
+                }
+            })
+            .collect()
     }
 
     /// Reset a repo to unknown state and clear its guard/audit caches.
@@ -198,11 +200,11 @@ impl RepoDb {
             let prefix = format!("{repo_path}\0");
             let keys_to_remove: Vec<String> = table
                 .iter()
+                .ok()
                 .into_iter()
                 .flatten()
-                .flatten()
                 .filter_map(|item| {
-                    let key = item.0.value().to_string();
+                    let key = item.ok()?.0.value().to_string();
                     key.starts_with(&prefix).then_some(key)
                 })
                 .collect();
@@ -296,10 +298,9 @@ impl RepoDb {
 /// Returns None if canonicalization fails.
 #[must_use]
 pub fn canonicalize_repo_path(path: Option<&Path>) -> Option<String> {
-    let target = if let Some(p) = path {
-        p.to_path_buf()
-    } else {
-        std::env::current_dir().ok()?
+    let target = match path {
+        Some(p) => p.to_path_buf(),
+        None => std::env::current_dir().ok()?,
     };
     std::fs::canonicalize(target)
         .ok()

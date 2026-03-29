@@ -73,14 +73,15 @@ impl ScanRequest {
             ));
         }
 
-        let total = HEADER_LEN + text_len as usize;
+        let text_len_usize = text_len as usize;
+        let total = HEADER_LEN + text_len_usize;
         if src.len() < total {
             src.reserve(total - src.len());
             return Ok(None);
         }
 
         src.advance(HEADER_LEN);
-        let text_bytes = src.split_to(text_len as usize);
+        let text_bytes = src.split_to(text_len_usize);
         let text = String::from_utf8(text_bytes.to_vec())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 

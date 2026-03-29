@@ -9,7 +9,7 @@ repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
-readme = "../../README.md"
+readme = "../README.md"
 
 [package.metadata.docs.rs]
 features = ["candle"]
@@ -53,10 +53,6 @@ candle = [
   "parry-guard-hook/candle",
   "parry-guard-core/candle",
 ]
-
-[dev-dependencies]
-serde_json.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

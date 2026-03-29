@@ -16,7 +16,7 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
     // 1. Base64 decoding patterns: $(echo xxx | base64 -d), $(base64 -d <<< xxx)
     if lower.contains("base64")
         && (lower.contains("-d") || lower.contains("--decode"))
-        && has_suspicious_context(command)
+        && has_suspicious_context(command, &lower)
     {
         return Some("Command obfuscation via base64 decoding with suspicious context".into());
     }
@@ -44,27 +44,29 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
     }
 
     // 4. Printf-based command construction with suspicious patterns
-    if lower.contains("printf") && lower.contains("$(") && has_suspicious_context(command) {
+    if lower.contains("printf") && lower.contains("$(") && has_suspicious_context(command, &lower) {
         return Some("Potential command obfuscation via printf".into());
     }
 
     // 5. xxd/od decoding (binary to text)
     if ((XXD_REGEX.is_match(&lower) && lower.contains("-r"))
         || (OD_REGEX.is_match(&lower) && lower.contains("-c")))
-        && has_suspicious_context(command)
+        && has_suspicious_context(command, &lower)
     {
         return Some("Command obfuscation via binary decoding".into());
     }
 
     // 6. rev (reverse string) obfuscation
-    if (lower.contains("| rev") || lower.contains("|rev")) && has_suspicious_context(command) {
+    if (lower.contains("| rev") || lower.contains("|rev"))
+        && has_suspicious_context(command, &lower)
+    {
         return Some("Potential command obfuscation via string reversal".into());
     }
 
     // 7. eval with variable expansion
     if lower.contains("eval")
         && (command.contains('$') || command.contains('`'))
-        && has_suspicious_context(command)
+        && has_suspicious_context(command, &lower)
     {
         return Some("Potential command obfuscation via eval".into());
     }
@@ -85,20 +87,20 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
     // 10. tr-based ROT13 obfuscation: echo xxx | tr 'A-Za-z' 'N-ZA-Mn-za-m'
     if lower.contains("| tr ")
         && (lower.contains("a-za-z") || lower.contains("a-mn-z"))
-        && has_suspicious_context(command)
+        && has_suspicious_context(command, &lower)
     {
         return Some("Potential ROT13 obfuscation via tr".into());
     }
 
     // 11. IFS manipulation for command splitting
-    if lower.contains("ifs=") && has_suspicious_context(command) {
+    if lower.contains("ifs=") && has_suspicious_context(command, &lower) {
         return Some("IFS manipulation detected with suspicious context".into());
     }
 
     // 12. Bash substring/parameter expansion obfuscation: ${var:0:1}
     if command.contains("${")
         && command.contains(':')
-        && has_suspicious_context(command)
+        && has_suspicious_context(command, &lower)
         && BASH_SUBSTRING_REGEX.is_match(command)
     {
         return Some("Bash substring extraction with suspicious context".into());
@@ -106,7 +108,7 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
 
     // 13. Cloud storage uploads with sensitive data
     for upload_cmd in CLOUD_UPLOAD_COMMANDS {
-        if lower.contains(upload_cmd) && has_sensitive_context_in_command(command) {
+        if lower.contains(upload_cmd) && has_sensitive_context_in_command(command, &lower) {
             return Some(format!(
                 "Cloud storage upload '{upload_cmd}' with sensitive data"
             ));
@@ -115,7 +117,7 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
 
     // 14. Clipboard exfiltration
     for clip_tool in CLIPBOARD_TOOLS {
-        if command.contains(clip_tool) && has_sensitive_context_in_command(command) {
+        if command.contains(clip_tool) && has_sensitive_context_in_command(command, &lower) {
             return Some(format!(
                 "Clipboard tool '{clip_tool}' with sensitive data (potential exfil staging)"
             ));
@@ -126,22 +128,19 @@ pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
 }
 
 /// Check if command contains sensitive data being piped or used.
-fn has_sensitive_context_in_command(command: &str) -> bool {
+fn has_sensitive_context_in_command(command: &str, lower: &str) -> bool {
     if patterns::has_sensitive_path(command) {
         return true;
     }
 
-    let lower = command.to_lowercase();
     SENSITIVE_SOURCES.iter().any(|src| lower.contains(src))
 }
 
 /// Check if command has suspicious context (sensitive files or network indicators).
-fn has_suspicious_context(command: &str) -> bool {
+fn has_suspicious_context(command: &str, lower: &str) -> bool {
     if patterns::has_sensitive_path(command) {
         return true;
     }
-
-    let lower = command.to_lowercase();
 
     if lower.contains("http://")
         || lower.contains("https://")
@@ -214,23 +213,11 @@ fn try_decode_octal_escapes(text: &str) -> Option<String> {
 fn is_suspicious_decoded(decoded: &str) -> bool {
     let lower = decoded.to_lowercase();
 
-    for sink in NETWORK_SINKS {
-        if lower.contains(sink) {
-            return true;
-        }
-    }
-
-    if lower.contains("bash")
+    NETWORK_SINKS.iter().any(|sink| lower.contains(sink))
+        || lower.contains("bash")
         || lower.contains("/bin/sh")
         || lower.contains("eval")
         || lower.contains("exec")
-    {
-        return true;
-    }
-
-    if lower.contains("/dev/tcp") || lower.contains("/dev/udp") {
-        return true;
-    }
-
-    false
+        || lower.contains("/dev/tcp")
+        || lower.contains("/dev/udp")
 }

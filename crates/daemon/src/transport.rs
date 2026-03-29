@@ -46,9 +46,8 @@ pub fn socket_exists(runtime_dir: Option<&Path>) -> bool {
 fn socket_name(
     runtime_dir: Option<&Path>,
 ) -> io::Result<interprocess::local_socket::Name<'static>> {
-    // Always use filesystem path for reliable cleanup across all platforms.
-    // Namespaced sockets (Linux abstract, Windows named pipes) can leave stale
-    // references that are difficult to clean up, causing "Address already in use".
+    // filesystem paths for reliable cleanup - namespaced sockets (Linux abstract,
+    // Windows named pipes) leave stale refs that cause "Address already in use".
     socket_path(runtime_dir)?
         .to_fs_name::<GenericFilePath>()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
@@ -75,13 +74,13 @@ fn is_process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
-    // SAFETY: kill with signal 0 checks process existence without sending a signal.
+    // SAFETY: signal 0 just checks if the process exists, doesn't actually signal.
     unsafe { kill(pid, 0) == 0 }
 }
 
 #[cfg(not(unix))]
 fn is_process_alive(_pid: u32) -> bool {
-    // Cannot verify on non-Unix; assume alive to avoid accidental cleanup.
+    // can't verify on non-Unix; assume alive to be safe.
     true
 }
 
@@ -91,7 +90,7 @@ pub fn cleanup_stale_state(runtime_dir: Option<&Path>) {
         return;
     };
 
-    // If PID file exists, check if that process is alive
+    // if PID file exists, verify the process is still alive
     if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
         match pid_str.trim().parse::<u32>() {
             Ok(pid) if is_process_alive(pid) => return,
@@ -105,7 +104,7 @@ pub fn cleanup_stale_state(runtime_dir: Option<&Path>) {
         let _ = std::fs::remove_file(&pid_path);
     }
 
-    // Clean up orphaned socket even if PID file was missing
+    // orphaned socket cleanup (PID file may have been missing)
     if let Ok(sock) = socket_path(runtime_dir) {
         if sock.exists() {
             tracing::info!("removing stale socket");
@@ -127,7 +126,7 @@ pub fn bind_async(
     let dir = parry_dir(runtime_dir)?;
     std::fs::create_dir_all(&dir)?;
 
-    // Remove stale socket file before binding
+    // stale socket from previous run
     let sock_path = socket_path(runtime_dir)?;
     if sock_path.exists() {
         let _ = std::fs::remove_file(&sock_path);
