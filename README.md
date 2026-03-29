@@ -1,6 +1,8 @@
 # Parry-guard
 [![ci](https://github.com/vaporif/parry/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaporif/parry/actions/workflows/ci.yml)
 [![audit](https://github.com/vaporif/parry/actions/workflows/audit.yml/badge.svg?branch=main)](https://github.com/vaporif/parry/actions/workflows/audit.yml)
+[![codecov](https://codecov.io/gh/vaporif/parry-guard/branch/main/graph/badge.svg)](https://codecov.io/gh/vaporif/parry-guard)
+
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
 Prompt injection scanner for Claude Code hooks. Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs.

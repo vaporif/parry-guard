@@ -3,7 +3,10 @@ default:
     @just --list
 
 # Run all checks
-check: clippy test check-fmt lint-toml check-typos lint-actions check-nix-fmt
+check: clippy test check-fmt lint
+
+# Lint all
+lint: lint-toml check-typos check-nix-fmt lint-actions
 
 # Format all
 fmt: fmt-rust fmt-toml fmt-nix
@@ -23,6 +26,14 @@ clippy:
 # Run tests
 test:
     cargo nextest run --workspace
+
+# Generate coverage (lcov)
+coverage:
+    cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+
+# Generate coverage (html)
+coverage-html:
+    cargo llvm-cov nextest --workspace --html
 
 # Check Rust formatting
 check-fmt:
