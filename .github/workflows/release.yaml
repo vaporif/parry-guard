@@ -42,16 +42,33 @@ jobs:
             backend: onnx-fetch
     steps:
       - uses: actions/checkout@v6
-      - uses: taiki-e/upload-rust-binary-action@v1
+
+      - uses: cachix/install-nix-action@v31
         with:
-          bin: parry-guard
-          target: ${{ matrix.target }}
-          features: ${{ matrix.backend }}
-          no-default-features: true
-          archive: $bin-${{ matrix.suffix }}$target-$tag
-          checksum: sha256
-          token: ${{ secrets.GITHUB_TOKEN }}
-          include: README.md,LICENSE
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build binary
+        run: |
+          nix develop --command cargo build --release \
+            --target ${{ matrix.target }} \
+            --no-default-features --features ${{ matrix.backend }}
+
+      - name: Package and upload
+        run: |
+          TAG=${{ github.ref_name }}
+          ARCHIVE="parry-guard-${{ matrix.suffix }}${{ matrix.target }}-${TAG}"
+          mkdir "${ARCHIVE}"
+          cp "target/${{ matrix.target }}/release/parry-guard" README.md LICENSE "${ARCHIVE}/"
+          tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}"
+          sha256sum "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
+          gh release upload "${TAG}" "${ARCHIVE}.tar.gz" "${ARCHIVE}.tar.gz.sha256"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     name: Publish to crates.io
@@ -74,21 +91,46 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+            platform_tag: musllinux_1_2_x86_64
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
+            platform_tag: musllinux_1_2_aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
+            platform_tag: ""
           - target: aarch64-apple-darwin
             os: macos-latest
+            platform_tag: ""
     steps:
       - uses: actions/checkout@v6
-      - name: Build wheel
-        uses: PyO3/maturin-action@v1
+
+      - uses: cachix/install-nix-action@v31
         with:
-          target: ${{ matrix.target }}
-          args: --release --out dist
-          manylinux: musllinux_1_2
-      - uses: actions/upload-artifact@v4
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build wheel
+        run: |
+          nix develop --command maturin build --release \
+            --target ${{ matrix.target }} \
+            --out dist
+
+      - name: Fix platform tag
+        if: ${{ matrix.platform_tag }}
+        run: |
+          import glob, os, re
+          for whl in glob.glob("dist/*.whl"):
+              new = re.sub(r"linux_[^.]+", "${{ matrix.platform_tag }}", whl)
+              if new != whl:
+                  os.rename(whl, new)
+                  print(f"Renamed: {whl} -> {new}")
+        shell: python
+
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.target }}
           path: dist/*.whl
@@ -106,5 +148,9 @@ jobs:
           pattern: wheel-*
           merge-multiple: true
           path: dist
+      - name: List wheels
+        run: ls -la dist/
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
