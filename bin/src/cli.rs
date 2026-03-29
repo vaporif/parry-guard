@@ -1,5 +1,3 @@
-//! CLI argument parsing.
-
 use clap::{Parser, Subcommand};
 use parry_guard_core::config::ScanMode;
 use std::path::PathBuf;
