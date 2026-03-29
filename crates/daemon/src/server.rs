@@ -130,7 +130,11 @@ async fn handle_connection(
                 _ => None,
             };
             if let Some(attempt) = should_load {
-                info!(attempt = attempt + 1, max = MAX_ML_RETRIES, "loading ML model");
+                info!(
+                    attempt = attempt + 1,
+                    max = MAX_ML_RETRIES,
+                    "loading ML model"
+                );
                 *ml_state = load_ml_scanner(config).map_or_else(
                     || {
                         warn!(
