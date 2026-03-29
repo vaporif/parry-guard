@@ -14,7 +14,7 @@ pub const SYSTEMCTL_DESTRUCTIVE: &[&str] = &["stop", "disable", "mask"];
 pub const LAUNCHCTL_DESTRUCTIVE: &[&str] = &["unload", "remove"];
 pub const SERVICE_DESTRUCTIVE: &[&str] = &["stop"];
 
-// Category 3 (Permissions: chmod/chown/chgrp) handled in bash.rs — no constants needed.
+// Category 3 (Permissions: chmod/chown/chgrp) handled in bash.rs -no constants needed.
 
 // === Category 4: Package Managers ===
 

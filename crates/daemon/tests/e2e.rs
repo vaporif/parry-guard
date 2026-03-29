@@ -114,7 +114,7 @@ async fn daemon_e2e() {
         let result = scan_with_retry("The weather is nice today.", &config).await;
         match &result {
             Ok(r) => assert!(r.is_clean(), "expected clean, got: {r:?}"),
-            Err(_) => {} // fail-closed without ML model — expected in CI
+            Err(_) => {} // fail-closed without ML model -expected in CI
         }
         eprintln!("[scan] clean text ok ({:?})", t.elapsed());
 

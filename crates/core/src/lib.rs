@@ -9,7 +9,7 @@ pub mod secrets;
 pub mod substring;
 pub mod unicode;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tracing::{debug, instrument, trace};
 
@@ -72,13 +72,13 @@ pub fn scan_injection_only(text: &str) -> ScanResult {
         return ScanResult::Injection;
     }
 
-    // Check for homoglyphs (Cyrillic/Greek lookalikes, RTL overrides)
+    // Cyrillic/Greek lookalikes and RTL overrides
     if unicode::has_homoglyphs(text) {
         debug!("homoglyph characters detected");
         return ScanResult::Injection;
     }
 
-    // Strip invisible chars and normalize homoglyphs for pattern matching
+    // strip invisible chars and normalize homoglyphs before pattern matching
     let stripped = unicode::strip_invisible(text);
     let normalized = unicode::normalize_homoglyphs(&stripped);
 
@@ -102,10 +102,10 @@ pub fn scan_injection_only(text: &str) -> ScanResult {
 /// If `runtime_dir` is `Some`, uses that directory. Otherwise falls back to cwd.
 #[must_use]
 pub fn runtime_path(runtime_dir: Option<&std::path::Path>, filename: &str) -> Option<PathBuf> {
-    if let Some(dir) = runtime_dir {
-        return Some(dir.join(filename));
-    }
-    std::env::current_dir().ok().map(|d| d.join(filename))
+    runtime_dir
+        .map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())
+        .map(|d| d.join(filename))
 }
 
 #[cfg(test)]

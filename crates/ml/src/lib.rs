@@ -154,10 +154,10 @@ pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
         return 0.0;
     }
     let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let exps: Vec<f32> = logits.iter().map(|&l| (l - max).exp()).collect();
-    let sum: f32 = exps.iter().sum();
+    let exp0 = (logits[0] - max).exp();
+    let sum: f32 = logits.iter().map(|&l| (l - max).exp()).sum();
     // 1 - P(safe) handles both 2-class and 3+ class models where label 0 is "safe"
-    1.0 - exps[0] / sum
+    1.0 - exp0 / sum
 }
 
 #[cfg(test)]

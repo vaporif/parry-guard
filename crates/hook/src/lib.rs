@@ -133,7 +133,7 @@ impl PreToolUseOutput {
 }
 
 /// Run all scans (unicode + substring + secrets + ML) on the given text.
-/// Uses the daemon for ML scanning — auto-starts it if not running.
+/// Uses the daemon for ML scanning - auto-starts it if not running.
 ///
 /// # Errors
 ///

@@ -35,12 +35,12 @@ pub struct Cli {
     #[arg(long, env = "HF_TOKEN_PATH")]
     pub hf_token_path: Option<PathBuf>,
 
-    /// ML detection threshold (0.0–1.0)
+    /// ML detection threshold (0.0-1.0)
     #[arg(long, env = "PARRY_THRESHOLD", default_value = "0.7",
           value_parser = threshold_in_range)]
     pub threshold: f32,
 
-    /// ML threshold for CLAUDE.md scanning (0.0–1.0, default 0.9)
+    /// ML threshold for CLAUDE.md scanning (0.0-1.0, default 0.9)
     #[arg(long, env = "PARRY_CLAUDE_MD_THRESHOLD", default_value = "0.9",
           value_parser = threshold_in_range)]
     pub claude_md_threshold: f32,
@@ -54,7 +54,7 @@ pub struct Cli {
     #[arg(long, env = "PARRY_ASK_ON_NEW_PROJECT")]
     pub ask_on_new_project: bool,
 
-    /// Parent directories to ignore — all repos under these paths are skipped (comma-separated)
+    /// Parent directories to ignore - all repos under these paths are skipped (comma-separated)
     #[arg(long, env = "PARRY_IGNORE_DIRS", value_delimiter = ',')]
     pub ignore_dirs: Vec<String>,
 
@@ -95,7 +95,7 @@ fn read_token_file(path: &std::path::Path) -> Option<String> {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Claude Code hook mode (JSON stdin → JSON stdout)
+    /// Claude Code hook mode (JSON stdin -> JSON stdout)
     Hook,
     /// Run as a daemon with the ML model loaded in memory
     Serve {

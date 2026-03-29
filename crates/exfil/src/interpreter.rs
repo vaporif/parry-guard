@@ -137,14 +137,12 @@ fn check_code_string_for_exfil(code: &str, cmd_name: &str) -> Option<String> {
         ));
     }
 
-    // Check for exfil domains in the code string using proper domain regex
     if patterns::has_exfil_domain(code) {
         return Some(format!(
             "Interpreter '{cmd_name}' inline code targeting exfil domain"
         ));
     }
 
-    // Check for raw IP URLs in the code string
     if contains_ip_url(&lower) {
         return Some(format!(
             "Interpreter '{cmd_name}' inline code targeting IP address"

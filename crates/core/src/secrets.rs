@@ -162,8 +162,7 @@ impl CompiledSecrets {
             .copied()
             .collect();
 
-        let add_refs: Vec<&str> = config.add.iter().map(String::as_str).collect();
-        patterns.extend(add_refs);
+        patterns.extend(config.add.iter().map(String::as_str));
 
         let regex_set = RegexSet::new(&patterns).unwrap_or_else(|e| {
             warn!(%e, "failed to compile secret patterns, using defaults");

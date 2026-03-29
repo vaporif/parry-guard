@@ -127,7 +127,7 @@ The daemon starts itself on the first scan, downloads the model on the first run
 
 By default, parry auto-monitors every new project - scanning is active from the first session with no prompt. To opt out of a specific repo, run `parry-guard ignore <path>`.
 
-To get the old ask-first behavior back, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProject = true` in Nix). See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
+To get ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProject = true` in Nix). See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
 
 | Command | What it does |
 |---------|-------------|

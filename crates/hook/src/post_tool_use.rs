@@ -18,7 +18,7 @@ const SECRET_WARNING: &str =
 #[must_use]
 #[instrument(skip(input, config), fields(tool = input.tool_name.as_deref().unwrap_or("unknown"), response_len))]
 pub fn process(input: &HookInput, config: &Config, repo_state: RepoState) -> Option<HookOutput> {
-    if repo_state == RepoState::Ignored || repo_state == RepoState::Unknown {
+    if matches!(repo_state, RepoState::Ignored | RepoState::Unknown) {
         return None;
     }
 
@@ -27,9 +27,9 @@ pub fn process(input: &HookInput, config: &Config, repo_state: RepoState) -> Opt
 
     let fast_result = parry_guard_core::scan_text_fast(&response);
 
-    // Only taint if ML confirms the fast-scan detection.
-    // Fast scan alone has false positives (e.g. "you are now connected"),
-    // and taint is a nuclear option — blocks ALL tools until manual removal.
+    // taint is nuclear (blocks ALL tools until manual removal),
+    // so require ML confirmation -fast scan alone has false positives
+    // like "you are now connected".
     if fast_result.is_injection() {
         match parry_guard_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {

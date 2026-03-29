@@ -53,7 +53,7 @@ fn init_tracing() {
 
 fn main() -> ExitCode {
     init_tracing();
-    // Fail-closed: any panic exits with failure
+    // fail-closed: panics exit with failure
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_hook(info);
@@ -66,7 +66,7 @@ fn main() -> ExitCode {
         warn!(
             claude_md_threshold = cli.claude_md_threshold,
             threshold = cli.threshold,
-            "claude-md-threshold is lower than threshold — CLAUDE.md scanning will be more sensitive than normal content"
+            "claude-md-threshold is lower than threshold - CLAUDE.md scanning will be more sensitive than normal content"
         );
     }
 
@@ -148,7 +148,6 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
 
     let db = RepoDb::open(config.runtime_dir.as_deref()).ok();
 
-    // Remove obsolete per-project .parry-guard.redb if it exists
     if let Some(ref rp) = repo_path {
         RepoDb::cleanup_old_db(std::path::Path::new(rp.as_str()));
     }
@@ -158,7 +157,6 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
         .zip(repo_path.as_deref())
         .map_or(RepoState::Unknown, |(db, rp)| db.get_repo_state(rp).0);
 
-    // Dispatch by event type
     match hook_input.hook_event_name.as_deref() {
         Some("UserPromptSubmit") => {
             debug!("detected UserPromptSubmit hook");
@@ -242,8 +240,7 @@ fn run_audit(
 
     let is_first_run = repo_state == RepoState::Unknown;
 
-    // Auto-monitor: set repo to Monitored immediately so PreToolUse/PostToolUse
-    // scanning is active from the first session.
+    // auto-monitor so scanning is active from the first session
     if is_first_run && !ask_on_new_project {
         if let (Some(db), Some(rp)) = (db, repo_path) {
             let remote = parry_guard_core::repo_db::git_remote_url(std::path::Path::new(rp));
@@ -264,14 +261,14 @@ fn run_audit(
         Ok(w) => w,
         Err(e) => {
             if is_first_run && ask_on_new_project {
-                // Soft-fail for Unknown repos in prompt mode
+                // soft-fail: unknown repos in prompt mode
                 warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
                 ml_unavailable = true;
                 Vec::new()
             } else {
                 warn!(%e, "audit ML scan failed (fail-closed)");
                 let message = format!(
-                    "parry: project audit failed — ML scanner unavailable. \
+                    "parry: project audit failed - ML scanner unavailable. \
                      Run `parry serve` and retry. Error: {e}"
                 );
                 let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
@@ -317,18 +314,18 @@ fn run_audit(
 
 /// Detect the command prefix based on how the binary was installed.
 /// Returns e.g. `"uvx parry-guard"`, `"rvx parry-guard"`, or `"parry-guard"`.
-fn command_name() -> String {
+fn command_name() -> &'static str {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::canonicalize(p).ok());
     let path_str = exe.as_deref().and_then(|p| p.to_str()).unwrap_or("");
 
     if path_str.contains("/.cache/uv/") || path_str.contains("/.local/share/uv/") {
-        "uvx parry-guard".to_string()
+        "uvx parry-guard"
     } else if path_str.contains("/.cache/rvx/") || path_str.contains("/.local/share/rvx/") {
-        "rvx parry-guard".to_string()
+        "rvx parry-guard"
     } else {
-        "parry-guard".to_string()
+        "parry-guard"
     }
 }
 
@@ -405,7 +402,7 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 println!("Remote:  {url}");
             }
 
-            // Re-run audit to show current findings (bypasses cache by passing None for db/repo_path)
+            // fresh audit (None for db/repo_path bypasses cache)
             let dir = std::path::Path::new(&canonical);
             match parry_guard_hook::project_audit::scan(dir, config, None, None) {
                 Ok(warnings) if warnings.is_empty() => {
