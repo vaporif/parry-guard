@@ -252,7 +252,7 @@ fn check_alias_definition(node: Node, source: &[u8]) -> Option<String> {
 
                 let value = crate::util::strip_quotes(alias_value);
 
-                if let Some(tree) = crate::parse_bash(value) {
+                if let Ok(Some(tree)) = crate::parse_bash(value) {
                     if let Some(reason) = check_node(tree.root_node(), value.as_bytes()) {
                         return Some(format!(
                             "Alias '{alias_name}' contains exfiltration: {reason}"

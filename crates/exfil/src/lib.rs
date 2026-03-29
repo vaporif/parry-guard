@@ -41,20 +41,35 @@ static BASH_SUBSTRING_REGEX: LazyLock<Regex> =
 /// Mutex to serialize tree-sitter parser creation (C runtime is not thread-safe during init).
 static PARSER_LOCK: Mutex<()> = Mutex::new(());
 
-/// Parse a bash command into a tree-sitter AST. Fail-open: returns `None` on errors.
-fn parse_bash(command: &str) -> Option<tree_sitter::Tree> {
+/// Parse a bash command into a tree-sitter AST.
+///
+/// Returns `Err` if the parser mutex is poisoned (fail-closed).
+/// Returns `Ok(None)` if parsing fails or the AST contains errors.
+fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     let tree = {
-        let _guard = PARSER_LOCK.lock().ok()?;
+        let _guard = PARSER_LOCK.lock().map_err(|e| {
+            tracing::warn!("tree-sitter parser mutex poisoned: {e}");
+            "exfiltration detection unavailable (parser mutex poisoned)".to_string()
+        })?;
         let mut parser = Parser::new();
-        parser
+        if parser
             .set_language(&tree_sitter_bash::LANGUAGE.into())
-            .ok()?;
-        parser.parse(command, None)?
+            .is_err()
+        {
+            tracing::warn!("tree-sitter failed to set bash language");
+            return Err(
+                "exfiltration detection unavailable (parser language init failed)".to_string(),
+            );
+        }
+        match parser.parse(command, None) {
+            Some(t) => t,
+            None => return Ok(None),
+        }
     };
     if tree.root_node().has_error() {
-        None
+        Ok(None)
     } else {
-        Some(tree)
+        Ok(Some(tree))
     }
 }
 
@@ -68,7 +83,11 @@ pub fn detect_exfiltration(command: &str) -> Option<String> {
         return Some(reason);
     }
 
-    let tree = parse_bash(command)?;
+    let tree = match parse_bash(command) {
+        Ok(Some(tree)) => tree,
+        Ok(None) => return None,
+        Err(reason) => return Some(reason),
+    };
     let result = bash::check_node(tree.root_node(), command.as_bytes());
     if let Some(ref reason) = result {
         debug!(%reason, "exfiltration detected");
@@ -1098,5 +1117,20 @@ mod tests {
             result.is_some(),
             "wget --body-file with ANY file should detect"
         );
+    }
+
+    // === Fail-closed parser tests ===
+
+    #[test]
+    fn parse_bash_valid_command() {
+        let result = parse_bash("echo hello");
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn parse_bash_malformed_returns_ok_none() {
+        let result = parse_bash("((({{{");
+        assert!(matches!(result, Ok(None)));
     }
 }
