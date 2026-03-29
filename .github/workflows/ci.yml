@@ -29,14 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixpkgs-unstable
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: cachix/cachix-action@v17
-        with:
-          name: parry-guard
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Check
         run: nix flake check
@@ -77,14 +72,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixpkgs-unstable
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: cachix/cachix-action@v17
-        with:
-          name: parry-guard
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Nix build
         run: nix build .#${{ matrix.backend }}
@@ -113,14 +103,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixpkgs-unstable
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: cachix/cachix-action@v17
-        with:
-          name: parry-guard
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: ML e2e tests
         run: nix develop --command cargo nextest run -p parry-guard-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
