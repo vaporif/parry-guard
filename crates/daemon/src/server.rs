@@ -12,10 +12,12 @@ use tracing::{debug, info, instrument, warn};
 use parry_guard_core::{Config, ScanResult};
 use parry_guard_ml::MlScanner;
 
+const MAX_ML_RETRIES: u8 = 3;
+
 enum MlState {
     NotLoaded,
     Loaded(MlScanner),
-    Failed,
+    Failed(u8),
 }
 
 use crate::protocol::{DaemonCodec, ScanRequest, ScanResponse, ScanType};
@@ -122,15 +124,21 @@ async fn handle_connection(
     let resp = match req.scan_type {
         ScanType::Ping => ScanResponse::Pong,
         ScanType::Full => {
-            if matches!(ml_state, MlState::NotLoaded) {
-                info!("loading ML model");
+            let should_load = match ml_state {
+                MlState::NotLoaded => Some(0),
+                MlState::Failed(n) if *n < MAX_ML_RETRIES => Some(*n),
+                _ => None,
+            };
+            if let Some(attempt) = should_load {
+                info!(attempt = attempt + 1, max = MAX_ML_RETRIES, "loading ML model");
                 *ml_state = load_ml_scanner(config).map_or_else(
                     || {
                         warn!(
-                            ml = "unavailable",
+                            attempt = attempt + 1,
+                            max = MAX_ML_RETRIES,
                             "ML model failed to load, scans will fail-close"
                         );
-                        MlState::Failed
+                        MlState::Failed(attempt + 1)
                     },
                     |scanner| {
                         info!(ml = "loaded", "ML model ready");

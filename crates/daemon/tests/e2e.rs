@@ -72,7 +72,7 @@ async fn scan_with_retry(
             .unwrap();
         match result {
             Ok(r) => return Ok(r),
-            Err(parry_guard_core::ScanError::DaemonScanFailed) => return result,
+            Err(parry_guard_core::ScanError::DaemonScanFailed) if attempt < 2 => {}
             Err(_) if attempt < 2 => {}
             Err(_) => return result,
         }
