@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - ".claude/**"
+      - ".serena/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - ".claude/**"
+      - ".serena/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Check
+        run: nix flake check
+
+  # Cant do fetch in nix
+  check-onnx-fetch:
+    name: Check (onnx-fetch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: onnx-fetch
+
+      - name: Clippy
+        run: cargo clippy --workspace --no-default-features --features onnx-fetch -- -D warnings
+
+      - name: Test
+        run: cargo nextest run --workspace --no-default-features --features onnx-fetch
+
+  build:
+    name: Nix build (${{ matrix.backend }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        backend: [default, candle]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Nix build
+        run: nix build .#${{ matrix.backend }}
+
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+
+  e2e:
+    name: E2E (${{ matrix.feature }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [candle, onnx, onnx-fetch]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixpkgs-unstable
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: parry-guard
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: ML e2e tests
+        run: nix develop --command cargo nextest run -p parry-guard-daemon --no-default-features --features ${{ matrix.feature }} --test e2e --run-ignored all --success-output immediate
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
