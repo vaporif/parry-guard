@@ -25,7 +25,7 @@ pub fn process(
 
     let rd = config.runtime_dir.as_deref();
     if crate::taint::is_tainted(rd) {
-        let base = "Project tainted — all tools blocked. Remove .parry-tainted to resume.";
+        let base = "Project tainted - all tools blocked. Remove .parry-tainted to resume.";
         let reason = crate::taint::read_context(rd).map_or_else(
             || base.to_string(),
             |ctx| format!("{base}\nTainted by: {ctx}"),
@@ -37,7 +37,7 @@ pub fn process(
         return None;
     }
 
-    // Check CLAUDE.md files for prompt injection (fast scan + ML)
+    // CLAUDE.md injection check (fast scan + ML)
     match crate::claude_md::check(config, db, repo_path) {
         crate::claude_md::CheckResult::Ask(reason) => {
             return Some(PreToolUseOutput::ask(&reason));
@@ -47,7 +47,7 @@ pub fn process(
 
     let tool = input.tool_name.as_deref().unwrap_or("");
 
-    // Check Bash commands for exfiltration patterns first (deny - high confidence)
+    // Exfil detection (deny - high confidence)
     if tool == "Bash" {
         if let Some(command) = input.tool_input.get("command").and_then(|v| v.as_str()) {
             if let Some(reason) = parry_guard_exfil::detect_exfiltration(command) {
@@ -56,18 +56,18 @@ pub fn process(
         }
     }
 
-    // Check for destructive operations (Bash commands + Write/Edit protected paths)
+    // Destructive ops (rm outside CWD, force push, protected paths, etc.)
     if let Some(output) = check_destructive_operation(tool, &input.tool_input, input.cwd.as_deref())
     {
         return Some(output);
     }
 
-    // Check sensitive path access (Read, Write, Edit, Glob, Grep)
+    // Sensitive paths (~/.ssh, credentials, etc.)
     if let Some(output) = check_sensitive_path(tool, &input.tool_input) {
         return Some(output);
     }
 
-    // Scan tool input content for injection (Write, Edit, NotebookEdit, Bash, MCP tools)
+    // Content injection scan (Write, Edit, Bash, MCP, etc.)
     for content in extract_scannable_content(tool, &input.tool_input) {
         if let Some(output) = scan_input_content(tool, content, config) {
             return Some(output);
@@ -107,17 +107,13 @@ fn check_destructive_operation(
                 )));
             }
         }
-        "Write" | "Edit" => {
-            let path = input.get("file_path").and_then(|v| v.as_str())?;
-            if let Some(reason) = parry_guard_destructive::is_protected_path(path, &cwd) {
-                debug!(tool, path, %reason, "write to protected path blocked");
-                return Some(PreToolUseOutput::ask(&format!(
-                    "Write to protected path: {reason}"
-                )));
-            }
-        }
-        "NotebookEdit" => {
-            let path = input.get("notebook_path").and_then(|v| v.as_str())?;
+        "Write" | "Edit" | "NotebookEdit" => {
+            let key = if tool == "NotebookEdit" {
+                "notebook_path"
+            } else {
+                "file_path"
+            };
+            let path = input.get(key).and_then(|v| v.as_str())?;
             if let Some(reason) = parry_guard_destructive::is_protected_path(path, &cwd) {
                 debug!(tool, path, %reason, "write to protected path blocked");
                 return Some(PreToolUseOutput::ask(&format!(
@@ -160,8 +156,8 @@ fn extract_scannable_content<'a>(tool: &str, input: &'a serde_json::Value) -> Ve
         "Edit" => json_str_to_vec(input, "new_string"),
         "NotebookEdit" => json_str_to_vec(input, "new_source"),
         "Bash" => json_str_to_vec(input, "command"),
-        // MCP tools: each string value scanned individually, filtering short
-        // structural noise ("json", "asc") that degrades ML accuracy.
+        // MCP tools: scan each string value, filtering short noise
+        // ("json", "asc") that degrades ML accuracy.
         t if t.starts_with("mcp__") => {
             let mut strings = Vec::new();
             collect_strings(input, &mut strings);
@@ -201,15 +197,14 @@ fn collect_strings<'a>(value: &'a serde_json::Value, out: &mut Vec<&'a str>) {
 /// Scan input content for injection. Returns `Some(PreToolUseOutput)` to block.
 fn scan_input_content(tool: &str, content: &str, config: &Config) -> Option<PreToolUseOutput> {
     let result = if tool == "Bash" {
-        // Fast scan only — DeBERTa was trained on natural language and
-        // produces false positives on shell syntax. Layer 4 (exfil detection)
-        // already covers structural threats.
+        // fast scan only - DeBERTa false-positives on shell syntax,
+        // and exfil detection already covers structural threats.
         parry_guard_core::scan_text_fast(content)
     } else {
         match crate::scan_text(content, config) {
             Ok(r) => r,
             Err(e) => {
-                // Fail-closed: if scan fails, block the operation
+                // fail-closed
                 warn!(%e, tool, "PreToolUse scan failed, blocking");
                 return Some(PreToolUseOutput::ask(&format!(
                     "parry: scan failed ({e}), blocking {tool} for safety"
@@ -263,7 +258,7 @@ mod tests {
         let config = test_config_with_dir(dir.path());
         let input = make_bash_input("cargo build --release");
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // Fast-scan-only for Bash: clean commands pass without daemon
+        // fast-scan-only for Bash: clean commands pass without daemon
         assert!(result.is_none(), "clean Bash should pass without daemon");
     }
 

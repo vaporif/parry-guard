@@ -55,14 +55,13 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
     let tree = parser.parse(code, None)?;
     if tree.root_node().has_error() {
         trace!("parse error, falling back to keyword matching");
-        // Fall back to keyword matching if parse fails
+        // parse failed - fall back to keywords
         return None;
     }
 
     let source = code.as_bytes();
     let mut result = AnalysisResult::default();
 
-    // Check for network sinks
     if let Ok(query) = Query::new(&detector.language(), detector.network_sink_query()) {
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source);
@@ -71,12 +70,10 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
         }
     }
 
-    // Check for file sources
     if let Ok(query) = Query::new(&detector.language(), detector.file_source_query()) {
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source);
         while let Some(m) = matches.next() {
-            // Check if any captured node contains a sensitive path
             for capture in m.captures {
                 let text = capture.node.utf8_text(source).unwrap_or("");
                 if has_sensitive_path(text) {
@@ -90,7 +87,6 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
         }
     }
 
-    // Check string literals for exfil domains and IPs
     if let Ok(query) = Query::new(&detector.language(), detector.string_literal_query()) {
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source);
@@ -99,17 +95,14 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
                 let text = capture.node.utf8_text(source).unwrap_or("");
                 let lower = text.to_lowercase();
 
-                // Check for exfil domains using proper domain regex
                 if patterns::has_exfil_domain(text) {
                     result.has_exfil_domain = true;
                 }
 
-                // Check for IP URLs
                 if contains_ip_url(&lower) {
                     result.has_ip_url = true;
                 }
 
-                // Also check if this string is a sensitive path (for file sources)
                 if has_sensitive_path(text) {
                     result.has_file_source = true;
                 }
@@ -117,7 +110,7 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
         }
     }
 
-    // Detection logic: network + sensitive file, or exfil domain, or IP URL
+    // fire if: network + sensitive file, exfil domain, or raw IP URL
     if result.has_network_sink && result.has_file_source {
         debug!(interpreter, "detected network + sensitive file exfil");
         return Some(format!(

@@ -45,14 +45,14 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
         let cmd_name = get_command_name(child, source);
 
         if let Some(name) = cmd_name {
-            // Sensitive source -> network sink (existing check)
+            // sensitive source -> network sink
             if has_sensitive_source && is_network_sink(name) {
                 return Some(format!(
                     "Pipe from sensitive source to network sink '{name}'"
                 ));
             }
 
-            // Network source -> shell interpreter (RCE: curl url | sh)
+            // network source -> shell interpreter (RCE: curl url | sh)
             if has_network_source && is_shell_interpreter(name) {
                 return Some(format!(
                     "Pipe from network source '{network_source_name}' to shell interpreter '{name}' (remote code execution)"
@@ -68,13 +68,12 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
             }
         }
 
-        // Also check if any command in the pipeline reads a sensitive file
         if !has_sensitive_source && command_has_sensitive_path(child, source) {
             has_sensitive_source = true;
         }
     }
 
-    // Recurse into pipeline children for nested patterns
+    // nested pipelines
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
         if let Some(reason) = check_node_nested(child, source) {
@@ -96,17 +95,14 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
             }
         }
 
-        // Check for command substitution containing sensitive source
         if let Some(reason) = check_command_substitution_in_args(node, source, cmd_name) {
             return Some(reason);
         }
 
-        // Check for @-prefixed sensitive file args (e.g., curl -d @.env)
         if let Some(reason) = check_at_file_args(node, source, cmd_name) {
             return Some(reason);
         }
 
-        // Check for sensitive file as direct argument to sink
         if command_has_sensitive_path(node, source) {
             return Some(format!(
                 "Network sink '{cmd_name}' with sensitive file argument"
@@ -139,14 +135,13 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // Check for suspicious alias definitions
     if cmd_name == "alias" {
         if let Some(reason) = check_alias_definition(node, source) {
             return Some(reason);
         }
     }
 
-    // Recurse into children for nested structures
+    // nested structures
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() != "command" {
@@ -188,7 +183,7 @@ fn check_redirect(node: Node, source: &[u8]) -> Option<String> {
         ));
     }
 
-    // Recurse for nested patterns
+    // nested patterns
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
         if let Some(reason) = check_node_nested(child, source) {
@@ -255,11 +250,7 @@ fn check_alias_definition(node: Node, source: &[u8]) -> Option<String> {
                 let alias_name = &text[..eq_pos];
                 let alias_value = &text[eq_pos + 1..];
 
-                let value = alias_value
-                    .trim_start_matches('\'')
-                    .trim_start_matches('"')
-                    .trim_end_matches('\'')
-                    .trim_end_matches('"');
+                let value = crate::util::strip_quotes(alias_value);
 
                 if let Some(tree) = crate::parse_bash(value) {
                     if let Some(reason) = check_node(tree.root_node(), value.as_bytes()) {
@@ -308,7 +299,7 @@ fn find_sensitive_command_substitution(
         }
     }
 
-    // Recurse into children (e.g., string nodes containing command substitutions)
+    // dig into string nodes that might contain command substitutions
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if let Some(reason) = find_sensitive_command_substitution(child, source, sink_name) {
@@ -365,11 +356,10 @@ fn check_node_nested(node: Node, source: &[u8]) -> Option<String> {
 fn command_has_sensitive_path(node: Node, source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "word" || child.kind() == "string" || child.kind() == "raw_string" {
-            let text = node_text(child, source);
-            if has_sensitive_path(text) {
-                return true;
-            }
+        if matches!(child.kind(), "word" | "string" | "raw_string")
+            && has_sensitive_path(node_text(child, source))
+        {
+            return true;
         }
     }
     false
@@ -402,7 +392,7 @@ fn is_ip_url(text: &str) -> bool {
         .next()
         .unwrap_or(text);
 
-    // IPv6 in URLs: http://[::1]:8080/path
+    // IPv6: http://[::1]:8080/path
     if let Some(bracketed) = authority.strip_prefix('[') {
         return bracketed.split(']').next().is_some_and(|h| {
             h.parse::<std::net::Ipv6Addr>()
@@ -410,7 +400,7 @@ fn is_ip_url(text: &str) -> bool {
         });
     }
 
-    // IPv4: strip port
+    // IPv4 (strip port if present)
     authority
         .split(':')
         .next()

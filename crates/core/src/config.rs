@@ -101,7 +101,7 @@ impl Config {
 }
 
 fn custom_models_path() -> Option<std::path::PathBuf> {
-    dirs::home_dir().map(|p| p.join(".config").join("parry-guard").join("models.toml"))
+    dirs::config_dir().map(|p| p.join("parry-guard").join("models.toml"))
 }
 
 fn load_custom_models() -> crate::Result<Vec<ModelDef>> {

@@ -1,6 +1,6 @@
 # Contributing to Parry
 
-Thanks for your interest in contributing to Parry! This guide will help you get started.
+Thanks for contributing to Parry.
 
 > **Note:** Parry is in alpha. False positives are expected — if you encounter one, please open an issue so we can improve detection.
 
@@ -15,7 +15,7 @@ Open an issue with:
 
 ### Suggesting Features
 
-Open an issue describing the use case and why it would be valuable. Discussion before implementation saves everyone's time.
+Open an issue describing the use case. Discussion before implementation saves time.
 
 ### Submitting Pull Requests
 

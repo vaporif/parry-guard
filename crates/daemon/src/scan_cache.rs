@@ -72,7 +72,6 @@ impl ScanCache {
 
         match redb::Database::create(&path) {
             Ok(db) => {
-                // Drop the old u64-keyed table if it exists
                 if let Ok(txn) = db.begin_write() {
                     let _ = txn.delete_table(OLD_TABLE);
                     let _ = txn.commit();
@@ -131,6 +130,7 @@ impl ScanCache {
         let now = now_secs();
         let expired: Vec<[u8; 32]> = table
             .iter()
+            .ok()
             .into_iter()
             .flatten()
             .filter_map(|entry| {
@@ -151,7 +151,7 @@ impl ScanCache {
 /// Background task that periodically prunes expired cache entries.
 pub async fn prune_task(cache: &ScanCache) {
     let mut interval = tokio::time::interval(PRUNE_INTERVAL);
-    // First tick fires immediately — skip it so we don't prune right at startup.
+    // first tick fires immediately - skip it, no need to prune right at startup
     interval.tick().await;
 
     loop {

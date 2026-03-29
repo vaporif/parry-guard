@@ -22,15 +22,13 @@ pub fn decode_variants(text: &str) -> Vec<String> {
     let mut variants = Vec::with_capacity(MAX_VARIANTS);
     let normalized = normalize(text);
 
-    // Always include the normalized form
+    // normalized form goes in first
     variants.push(normalized.clone());
 
-    // Run decoders on normalized text
     collect_decoded(&normalized, 0, &mut variants);
-    // Also run decoders on raw input (normalization may alter encoding markers)
+    // raw input too - normalization can mangle encoding markers
     collect_decoded(text, 0, &mut variants);
 
-    // Normalize all decoded variants
     let mut final_variants: Vec<String> = variants.into_iter().map(|v| normalize(&v)).collect();
 
     dedup(&mut final_variants);
@@ -43,16 +41,16 @@ fn collect_decoded(text: &str, depth: usize, variants: &mut Vec<String>) {
         return;
     }
 
-    // Try base64/hex on the full text first (fail gracefully on non-encoded input)
+    // full-text base64/hex (silently skips non-encoded input)
     for decoded in [try_base64(text), try_hex(text)].into_iter().flatten() {
         if variants.len() >= MAX_VARIANTS {
             return;
         }
-        variants.push(decoded.clone());
         collect_decoded(&decoded, depth + 1, variants);
+        variants.push(decoded);
     }
 
-    // Also try on high-entropy sub-regions (for mixed text with embedded encoded parts)
+    // high-entropy sub-regions - catches encoded blobs embedded in plain text
     for region in find_high_entropy_regions(text) {
         if region.len() == text.len() {
             continue; // already tried full text above
@@ -61,12 +59,12 @@ fn collect_decoded(text: &str, depth: usize, variants: &mut Vec<String>) {
             if variants.len() >= MAX_VARIANTS {
                 return;
             }
-            variants.push(decoded.clone());
             collect_decoded(&decoded, depth + 1, variants);
+            variants.push(decoded);
         }
     }
 
-    // Pattern-based decoders on the full text
+    // pattern-based decoders (url-percent, html entities, rot13)
     for decoded in [
         try_url_percent(text),
         try_html_entities(text),
@@ -78,8 +76,8 @@ fn collect_decoded(text: &str, depth: usize, variants: &mut Vec<String>) {
         if variants.len() >= MAX_VARIANTS {
             return;
         }
-        variants.push(decoded.clone());
         collect_decoded(&decoded, depth + 1, variants);
+        variants.push(decoded);
     }
 }
 
@@ -110,11 +108,11 @@ fn find_high_entropy_regions(text: &str) -> Vec<&str> {
         };
     }
 
-    // Mark byte positions that fall in high-entropy windows
+    // flag byte positions inside high-entropy windows
     let bytes = text.as_bytes();
     let mut high = vec![false; bytes.len()];
 
-    // Only start windows at char boundaries and use char-count windows
+    // windows must start at char boundaries (multi-byte safe)
     let char_indices: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
     if char_indices.len() < ENTROPY_WINDOW {
         return if shannon_entropy(text) >= ENTROPY_THRESHOLD {
@@ -139,7 +137,7 @@ fn find_high_entropy_regions(text: &str) -> Vec<&str> {
         }
     }
 
-    // Merge contiguous marked regions
+    // collapse adjacent marked bytes into contiguous regions
     let mut regions = Vec::new();
     let mut start = None;
     for (i, &h) in high.iter().enumerate() {
@@ -180,13 +178,13 @@ fn shannon_entropy(s: &str) -> f64 {
 }
 
 fn try_base64(text: &str) -> Option<String> {
-    // Strip internal whitespace for base64
+    // base64 often has line breaks
     let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
     if cleaned.len() < 8 {
         return None;
     }
 
-    // Try standard base64, then URL-safe
+    // standard, then URL-safe variants
     let decoded = data_encoding::BASE64
         .decode(cleaned.as_bytes())
         .or_else(|_| data_encoding::BASE64_NOPAD.decode(cleaned.as_bytes()))
@@ -222,7 +220,7 @@ fn try_hex(text: &str) -> Option<String> {
 }
 
 fn try_url_percent(text: &str) -> Option<String> {
-    // Only attempt if there are enough percent-encoded sequences
+    // skip if too few %-sequences to be meaningful
     let pct_count = text.matches('%').count();
     if pct_count < MIN_PERCENT_SEQUENCES {
         return None;
@@ -251,7 +249,7 @@ fn try_html_entities(text: &str) -> Option<String> {
 }
 
 fn try_rot13(text: &str) -> Option<String> {
-    // Only attempt on mostly-alphabetic text
+    // only worth trying on mostly-alpha text
     let alpha_count = text.chars().filter(char::is_ascii_alphabetic).count();
     if alpha_count < 8 || alpha_count * 2 < text.len() {
         return None;

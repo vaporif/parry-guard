@@ -90,7 +90,7 @@ fn expand_tilde(path: &str) -> String {
 }
 
 /// Resolve a potentially relative path against CWD using lexical normalization.
-/// Does NOT follow symlinks — avoids macOS `/private` prefix issues.
+/// Does NOT follow symlinks -avoids macOS `/private` prefix issues.
 fn resolve_path(path: &str, cwd: &str) -> PathBuf {
     let expanded = expand_tilde(path);
     let p = Path::new(&expanded);
@@ -136,29 +136,25 @@ fn is_under_cwd(resolved: &Path, cwd: &Path) -> bool {
 
 /// Check if a resolved path matches any protected prefix (including user-configured extras).
 fn matches_protected_prefix(resolved_str: &str) -> Option<String> {
-    // Check user-configured extra protected paths first
+    let resolved_with_slash = ensure_trailing_slash(resolved_str);
+
     let config = &crate::commands::CONFIG;
-    let resolved_with_slash_for_config = ensure_trailing_slash(resolved_str);
     for extra in &config.extra_paths {
         let expanded = expand_tilde(extra);
-        if resolved_with_slash_for_config.starts_with(&expanded) {
-            // Check it's not been removed
-            if !config.removed_paths.iter().any(|r| r == extra) {
-                return Some(extra.clone());
-            }
+        if resolved_with_slash.starts_with(&expanded)
+            && !config.removed_paths.iter().any(|r| r == extra)
+        {
+            return Some(extra.clone());
         }
     }
 
-    let resolved_with_slash = ensure_trailing_slash(resolved_str);
-
-    // Check all platform-specific lists
     for &prefix in MACOS_SYSTEM.iter().chain(LINUX_SYSTEM).chain(NIX_SYSTEM) {
         if !prefix.starts_with('~') && resolved_with_slash.starts_with(prefix) {
             return Some(prefix.to_string());
         }
     }
 
-    // Home-relative paths (need tilde expansion)
+    // home-relative (need tilde expansion)
     let home_prefixes = MACOS_USER
         .iter()
         .chain(LINUX_USER)
@@ -173,7 +169,7 @@ fn matches_protected_prefix(resolved_str: &str) -> Option<String> {
         }
     }
 
-    // WSL drive paths
+    // WSL
     if WSL_DRIVE.is_match(resolved_str) {
         let after_drive = &resolved_str[7..];
 
@@ -183,7 +179,7 @@ fn matches_protected_prefix(resolved_str: &str) -> Option<String> {
             }
         }
 
-        // WSL user paths: /mnt/c/Users/*/...
+        // /mnt/c/Users/*/...
         if let Some(after_users) = after_drive.strip_prefix("Users/") {
             if let Some(slash_pos) = after_users.find('/') {
                 let after_username = &after_users[slash_pos + 1..];
@@ -195,7 +191,7 @@ fn matches_protected_prefix(resolved_str: &str) -> Option<String> {
             }
         }
 
-        // The drive root itself
+        // drive root itself
         if after_drive.is_empty() || after_drive == "/" {
             return Some("WSL drive root".to_string());
         }
