@@ -24,9 +24,8 @@ impl CheckResult {
 
 /// Check all CLAUDE.md files from cwd to repo root for injection.
 ///
-/// All detections (fast scan + ML) return `Ask` for user confirmation.
-/// Results are cached per content hash - user is only asked once per unique content.
-/// ML errors are not cached so they retry on the next invocation.
+/// Detections return `Ask`; only clean results are cached.
+/// ML errors retry on next invocation.
 #[must_use]
 #[instrument(skip(config, db, repo_path))]
 pub fn check(config: &Config, db: Option<&RepoDb>, repo_path: Option<&str>) -> CheckResult {
@@ -60,11 +59,10 @@ pub fn check(config: &Config, db: Option<&RepoDb>, repo_path: Option<&str>) -> C
             }
         }
 
-        // fast scan - ask on match, cache to avoid re-prompting
+        // fast scan - ask on match, do NOT cache until user approves
         let fast = parry_guard_core::scan_text_fast(&content);
         if !fast.is_clean() {
             debug!(path = %path.display(), "fast scan detected injection in CLAUDE.md");
-            cache_hash(db, repo_path, &key, hash);
             return CheckResult::Ask(format!(
                 "Prompt injection detected in {} - please verify",
                 path.display()
@@ -75,7 +73,6 @@ pub fn check(config: &Config, db: Option<&RepoDb>, repo_path: Option<&str>) -> C
         match crate::scan_text_with_threshold(&content, config, config.claude_md_threshold) {
             Ok(result) if !result.is_clean() => {
                 debug!(path = %path.display(), "ML flagged CLAUDE.md");
-                cache_hash(db, repo_path, &key, hash);
                 return CheckResult::Ask(format!(
                     "ML flagged potential injection in {} - please verify",
                     path.display()
@@ -183,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn injected_claude_md_cached_after_first_ask() {
+    fn injected_claude_md_not_cached_on_detection() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("CLAUDE.md"),
@@ -198,9 +195,9 @@ mod tests {
         let result = check(&config, Some(&db), Some(rp));
         assert!(!result.is_clean(), "first check should ask");
 
-        // Second check with same content should be cached
+        // Second check should STILL ask - detections are never cached
         let result = check(&config, Some(&db), Some(rp));
-        assert!(result.is_clean(), "second check should be clean (cached)");
+        assert!(!result.is_clean(), "second check should still ask");
     }
 
     #[test]

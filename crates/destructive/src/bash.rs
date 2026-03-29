@@ -297,6 +297,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
 
     match subcmd {
         "push" => check_git_push(&args, &path_args),
+        "remote" => check_git_remote(&path_args),
         "reset" => {
             if has_flag(&args, "--hard") {
                 Some("'git reset --hard' discards uncommitted changes".into())
@@ -379,7 +380,37 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
         }
     }
 
+    for arg in path_args.iter().skip(1) {
+        if looks_like_remote_url(arg) {
+            return Some(format!(
+                "'git push' to URL '{arg}' may exfiltrate repository"
+            ));
+        }
+    }
+
     None
+}
+
+fn check_git_remote(path_args: &[&str]) -> Option<String> {
+    let sub = path_args.get(1).copied().unwrap_or("");
+    if sub == "add" || sub == "set-url" {
+        let url = path_args.get(3).copied().unwrap_or("");
+        if !url.is_empty() {
+            return Some(format!(
+                "'git remote {sub}' with URL '{url}' - verify remote is trusted"
+            ));
+        }
+    }
+    None
+}
+
+fn looks_like_remote_url(s: &str) -> bool {
+    s.starts_with("http://")
+        || s.starts_with("https://")
+        || s.starts_with("git://")
+        || s.starts_with("ssh://")
+        || s.contains("://")
+        || (s.contains('@') && (s.contains(':') || s.contains('/')))
 }
 
 fn check_database(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
