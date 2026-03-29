@@ -110,6 +110,7 @@
         "rustfmt"
         "rust-src"
         "rust-analyzer"
+        "llvm-tools"
       ];
 
       # Extended toolchain for the dev shell — adds cross targets
@@ -123,6 +124,7 @@
             fenixPkgs.stable.rustfmt
             fenixPkgs.stable.rust-src
             fenixPkgs.stable.rust-analyzer
+            fenixPkgs.stable.llvm-tools
             fenixPkgs.targets."x86_64-unknown-linux-musl".stable.rust-std
             fenixPkgs.targets."aarch64-unknown-linux-musl".stable.rust-std
           ]
@@ -135,6 +137,7 @@
             fenixPkgs.stable.rustfmt
             fenixPkgs.stable.rust-src
             fenixPkgs.stable.rust-analyzer
+            fenixPkgs.stable.llvm-tools
             fenixPkgs.targets."x86_64-apple-darwin".stable.rust-std
           ]
         else toolchain;
@@ -250,8 +253,10 @@
             pkgs.just
             pkgs.taplo
             pkgs.typos
+            pkgs.alejandra
             pkgs.actionlint
             pkgs.cargo-nextest
+            pkgs.cargo-llvm-cov
             pkgs.maturin
             pkgs.python3
           ]
