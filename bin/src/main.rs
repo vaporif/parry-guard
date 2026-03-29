@@ -286,7 +286,7 @@ fn run_audit(
         let message = parry_guard_hook::project_audit::format_opt_in_message(
             &warnings,
             rp_display,
-            &cmd,
+            cmd,
             ml_unavailable,
         );
         let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);

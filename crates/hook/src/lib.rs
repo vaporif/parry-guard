@@ -198,14 +198,14 @@ pub(crate) mod test_util {
         }
     }
 
-    pub(crate) fn test_config_with_dir(dir: &Path) -> parry_guard_core::Config {
+    pub fn test_config_with_dir(dir: &Path) -> parry_guard_core::Config {
         parry_guard_core::Config {
             runtime_dir: Some(dir.to_path_buf()),
             ..parry_guard_core::Config::default()
         }
     }
 
-    pub(crate) fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
+    pub fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
         parry_guard_core::repo_db::RepoDb::open(Some(dir)).unwrap()
     }
 }

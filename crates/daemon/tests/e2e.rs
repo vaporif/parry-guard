@@ -112,10 +112,9 @@ async fn daemon_e2e() {
 
         eprintln!("[scan] clean text...");
         let result = scan_with_retry("The weather is nice today.", &config).await;
-        match &result {
-            Ok(r) => assert!(r.is_clean(), "expected clean, got: {r:?}"),
-            Err(_) => {} // fail-closed without ML model -expected in CI
-        }
+        if let Ok(r) = &result {
+            assert!(r.is_clean(), "expected clean, got: {r:?}");
+        } // fail-closed without ML model - expected in CI
         eprintln!("[scan] clean text ok ({:?})", t.elapsed());
 
         eprintln!("[scan] injection (fast scan)...");
@@ -136,7 +135,7 @@ async fn daemon_e2e() {
     {
         let dir = tempfile::tempdir().unwrap();
         let config = fast_config(dir.path());
-        let _handle = start_daemon_with(dir.path(), config, Duration::from_secs(1)).await;
+        let handle = start_daemon_with(dir.path(), config, Duration::from_secs(1)).await;
 
         let rd = dir.path().to_path_buf();
         let running =
@@ -154,13 +153,13 @@ async fn daemon_e2e() {
                 .await
                 .unwrap();
         assert!(!running);
-        let _ = _handle.await; // ensure daemon cleanup completes before TempDir drop
+        let _ = handle.await; // ensure daemon cleanup completes before TempDir drop
         eprintln!("[idle] ok ({:?})", t.elapsed());
     }
 }
 
 /// Requires HF token + model downloads. Run with: `cargo test -- --ignored`
-#[ignore]
+#[ignore = "requires HF token and model downloads"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ml_model_e2e() {
     let t = Instant::now();
