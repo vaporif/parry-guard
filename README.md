@@ -8,7 +8,7 @@ Prompt injection scanner for Claude Code hooks. Catches injection attacks, leake
 
 ## Prerequisites
 
-The ML models are gated on HuggingFace. Before installing:
+The ML models are gated on HuggingFace, so you need to accept licenses before installing:
 
 1. Create an account at [huggingface.co](https://huggingface.co)
 2. Accept the [DeBERTa v3 license](https://huggingface.co/ProtectAI/deberta-v3-small-prompt-injection-v2) (required for all modes)
@@ -110,18 +110,16 @@ cargo install --path crates/cli --no-default-features --features candle
 
 ## Setup
 
-### 1. Configure HuggingFace token
+### HuggingFace token
 
-One of (first match wins):
+Provide your token via one of (first match wins):
 ```bash
 export HF_TOKEN="hf_..."                          # direct value
 export HF_TOKEN_PATH="/path/to/token"              # file path
 # or place token at /run/secrets/hf-token-scan-injection
 ```
 
-The daemon starts itself on the first scan, downloads the model on the first run, and shuts down after 30 minutes of inactivity.
-
-> **Note (non-Nix users):** The Nix home-manager module wraps the binary with all config baked in via env vars. Without Nix, set env vars in your shell profile (e.g. `HF_TOKEN`, `PARRY_IGNORE_DIRS`, `PARRY_SCAN_MODE`) — the hook command inherits them. You can also pass flags directly: `parry-guard --hf-token-path ~/.hf-token --ignore-dirs /home/user/trusted hook`. See [Config](#config) for all options.
+The daemon starts on the first scan, downloads the model on the first run, and shuts down after 30 minutes idle. Non-Nix users: set env vars in your shell profile or pass flags directly (see [Config](#config)).
 
 ### Project scanning
 
@@ -129,7 +127,7 @@ By default, parry auto-monitors every new project - scanning is active from the 
 
 To get ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProject = true` in Nix). See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
 
-| Command | What it does |
+| Command | Effect |
 |---------|-------------|
 | `parry-guard monitor [path]` | Turn on scanning for a repo |
 | `parry-guard ignore [path]` | Turn off scanning for a repo |
@@ -137,7 +135,7 @@ To get ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProj
 | `parry-guard status [path]` | Show current repo state and findings |
 | `parry-guard repos` | List all known repos and their states |
 
-All commands default to the current directory if `path` is omitted.
+`path` defaults to the current directory.
 
 ### What each hook does
 
@@ -180,7 +178,7 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 
 ### Global flags
 
-| Flag | Env | Default | What it does |
+| Flag | Env | Default | Effect |
 |------|-----|---------|-------------|
 | `--threshold` | `PARRY_THRESHOLD` | 0.7 | ML detection threshold (0.0-1.0) |
 | `--claude-md-threshold` | `PARRY_CLAUDE_MD_THRESHOLD` | 0.9 | ML threshold for CLAUDE.md scanning (0.0-1.0) |
@@ -192,7 +190,7 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 
 ### Subcommand flags
 
-| Flag | Env | Default | What it does |
+| Flag | Env | Default | Effect |
 |------|-----|---------|-------------|
 | `serve --idle-timeout` | `PARRY_IDLE_TIMEOUT` | 1800 | Daemon idle timeout in seconds |
 | `diff --full` | | false | Use ML scan instead of fast-only |
@@ -200,7 +198,7 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 
 ### Env-only
 
-| Env | Default | What it does |
+| Env | Default | Effect |
 |-----|---------|-------------|
 | `PARRY_LOG` | warn | Tracing filter (`trace`, `debug`, `info`, `warn`, `error`) |
 | `PARRY_LOG_FILE` | `~/.parry-guard/parry-guard.log` | Override log file path |
@@ -212,17 +210,12 @@ Custom models: `~/.config/parry-guard/models.toml` (used with `--scan-mode custo
 
 One backend is always required (enforced at compile time). Nix defaults to ONNX on x86_64-linux, aarch64-linux, and aarch64-darwin. Use the `candle` package on other platforms.
 
-| Feature | What it is |
+| Feature | |
 |---------|------------|
 | `onnx-fetch` | ONNX, statically linked (downloads ORT at build time). Default. |
 | `candle` | Pure Rust ML. Portable, no native deps. About 5-6x slower. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
-
-```bash
-# Build with Candle instead of ONNX
-cargo build --no-default-features --features candle
-```
 
 ## Performance
 
@@ -237,12 +230,9 @@ Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is about 5-6
 | Fast scan short-circuit | ~7ms | ~7ms |
 | Cached result | ~8ms | ~8ms |
 
-> Llama Prompt Guard 2 doesn't have an ONNX export, so `full` mode needs the `candle` backend.
-
-
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commands, and contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 
