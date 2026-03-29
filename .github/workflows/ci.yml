@@ -112,6 +112,27 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
+  docker:
+    name: Docker (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [onnx-fetch, candle]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: BACKEND=${{ matrix.backend }}
+          cache-from: type=gha,scope=${{ matrix.backend }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.backend }}
+
   audit:
     name: Audit
     runs-on: ubuntu-latest
