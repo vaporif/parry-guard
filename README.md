@@ -62,10 +62,10 @@ Add to `~/.claude/settings.json`:
 
 ```bash
 # Default (ONNX backend - statically linked, 5-6x faster than Candle)
-cargo install --path crates/cli
+cargo install --path bin
 
 # Candle backend (pure Rust, no native deps, portable)
-cargo install --path crates/cli --no-default-features --features candle
+cargo install --path bin --no-default-features --features candle
 ```
 
 ### Nix (home-manager)

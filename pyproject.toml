@@ -21,7 +21,7 @@ classifiers = [
 Repository = "https://github.com/vaporif/parry"
 
 [tool.maturin]
-manifest-path = "crates/cli/Cargo.toml"
+manifest-path = "bin/Cargo.toml"
 bindings = "bin"
 features = ["candle"]
 no-default-features = true

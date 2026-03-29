@@ -6,11 +6,12 @@
 //! Tests that need Monitored state use `monitored_dir()` which creates an
 //! isolated runtime dir per test to avoid redb lock contention.
 
+use assert_cmd::cargo::CommandCargoExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_parry-guard"));
+    let mut cmd = Command::cargo_bin("parry-guard").expect("parry-guard binary not found");
     cmd.env("PARRY_LOG", "off");
     if let Some(rd) = runtime_dir {
         cmd.env("PARRY_RUNTIME_DIR", rd);
