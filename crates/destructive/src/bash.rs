@@ -200,7 +200,6 @@ fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<St
 
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "command_name" => {}
             "string" | "raw_string" => {
                 let inner = node_text(child, source);
                 let inner = inner
