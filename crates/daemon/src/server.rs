@@ -52,6 +52,14 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     let mut ml_state = MlState::NotLoaded;
     let cache = ScanCache::open(rd).map(Arc::new);
 
+    let model_fingerprint = config
+        .resolve_models()
+        .map(|models| {
+            let repos: Vec<String> = models.into_iter().map(|m| m.repo).collect();
+            scan_cache::model_fingerprint(&repos)
+        })
+        .unwrap_or([0u8; 32]);
+
     let cache_status = if cache.is_some() { "loaded" } else { "off" };
     info!(
         pid = std::process::id(),
@@ -73,7 +81,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
                 match result {
                     Ok(stream) => {
                         debug!("accepted connection");
-                        handle_connection(stream, &mut ml_state, config, cache.as_deref()).await;
+                        handle_connection(stream, &mut ml_state, config, cache.as_deref(), &model_fingerprint).await;
                         deadline = Instant::now() + idle_timeout;
                     }
                     Err(e) => {
@@ -114,6 +122,7 @@ async fn handle_connection(
     ml_state: &mut MlState,
     config: &Config,
     cache: Option<&ScanCache>,
+    model_fingerprint: &[u8; 32],
 ) {
     let mut framed = Framed::new(stream, DaemonCodec);
 
@@ -154,7 +163,7 @@ async fn handle_connection(
                 MlState::Loaded(ref mut s) => Some(s),
                 _ => None,
             };
-            handle_request(&req, scanner, cache)
+            handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
     let _ = framed.send(resp).await;
@@ -164,6 +173,7 @@ fn handle_request(
     req: &ScanRequest,
     ml_scanner: Option<&mut MlScanner>,
     cache: Option<&ScanCache>,
+    model_fingerprint: &[u8; 32],
 ) -> ScanResponse {
     debug!(
         text_len = req.text.len(),
@@ -171,7 +181,8 @@ fn handle_request(
         "handling full scan request"
     );
     if let Some(c) = cache {
-        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold);
+        let hash =
+            scan_cache::hash_content_with_threshold(&req.text, req.threshold, model_fingerprint);
 
         if let Some(cached) = c.get(&hash) {
             debug!(?cached, "cache hit");

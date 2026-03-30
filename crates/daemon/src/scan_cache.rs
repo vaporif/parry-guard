@@ -21,16 +21,28 @@ pub fn hash_content(text: &str) -> [u8; 32] {
     blake3::hash(text.as_bytes()).into()
 }
 
-/// Hash text content with threshold included in the digest.
-///
-/// Different thresholds produce different cache keys to avoid
-/// returning stale results when scanning the same content at
-/// different confidence levels (e.g. CLAUDE.md vs content injection).
+/// Hash text content with threshold and model fingerprint included in the digest.
 #[must_use]
-pub fn hash_content_with_threshold(text: &str, threshold: f32) -> [u8; 32] {
+pub fn hash_content_with_threshold(
+    text: &str,
+    threshold: f32,
+    model_fingerprint: &[u8; 32],
+) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     hasher.update(text.as_bytes());
     hasher.update(&threshold.to_le_bytes());
+    hasher.update(model_fingerprint);
+    hasher.finalize().into()
+}
+
+/// Compute a fingerprint from the model repo IDs used for scanning.
+#[must_use]
+pub fn model_fingerprint(model_repos: &[String]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    for repo in model_repos {
+        hasher.update(repo.as_bytes());
+        hasher.update(b"\0");
+    }
     hasher.finalize().into()
 }
 
@@ -221,19 +233,41 @@ mod tests {
         assert!(cache.get(&hash).is_none(), "expired entry should be a miss");
     }
 
+    const TEST_FP: [u8; 32] = [0u8; 32];
+
     #[test]
     fn different_thresholds_produce_different_cache_keys() {
         let text = "some CLAUDE.md content";
-        let hash_low = hash_content_with_threshold(text, 0.7);
-        let hash_high = hash_content_with_threshold(text, 0.9);
+        let hash_low = hash_content_with_threshold(text, 0.7, &TEST_FP);
+        let hash_high = hash_content_with_threshold(text, 0.9, &TEST_FP);
         assert_ne!(
             hash_low, hash_high,
             "different thresholds must produce different hashes"
         );
 
         // Same threshold produces same hash
-        let hash_same = hash_content_with_threshold(text, 0.7);
+        let hash_same = hash_content_with_threshold(text, 0.7, &TEST_FP);
         assert_eq!(hash_low, hash_same);
+    }
+
+    #[test]
+    fn different_models_produce_different_cache_keys() {
+        let text = "some content";
+        let fp_a = model_fingerprint(&["model-a".into()]);
+        let fp_b = model_fingerprint(&["model-b".into()]);
+        let hash_a = hash_content_with_threshold(text, 0.7, &fp_a);
+        let hash_b = hash_content_with_threshold(text, 0.7, &fp_b);
+        assert_ne!(
+            hash_a, hash_b,
+            "different models must produce different hashes"
+        );
+    }
+
+    #[test]
+    fn model_fingerprint_is_order_sensitive() {
+        let fp1 = model_fingerprint(&["a".into(), "b".into()]);
+        let fp2 = model_fingerprint(&["b".into(), "a".into()]);
+        assert_ne!(fp1, fp2, "model order should affect fingerprint");
     }
 
     #[test]
@@ -242,8 +276,8 @@ mod tests {
         let cache = make_cache(dir.path());
 
         let text = "instruction-like text";
-        let hash_low = hash_content_with_threshold(text, 0.7);
-        let hash_high = hash_content_with_threshold(text, 0.9);
+        let hash_low = hash_content_with_threshold(text, 0.7, &TEST_FP);
+        let hash_high = hash_content_with_threshold(text, 0.9, &TEST_FP);
 
         // Cache injection at low threshold
         cache.put(&hash_low, ScanResult::Injection);

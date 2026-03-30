@@ -8,8 +8,8 @@ use tree_sitter::Node;
 use crate::interpreter::{check_interpreter_inline_code, check_shell_inline_code};
 use crate::patterns;
 use crate::util::{
-    get_command_name, has_sensitive_path, is_interpreter, is_network_sink, is_sensitive_source_cmd,
-    is_shell_interpreter, node_text,
+    get_command_name, has_sensitive_path, has_sensitive_path_expanded, is_interpreter,
+    is_network_sink, is_sensitive_source_cmd, is_shell_interpreter, node_text,
 };
 
 pub fn check_node(node: Node, source: &[u8]) -> Option<String> {
@@ -203,9 +203,18 @@ fn check_file_redirect(node: Node, source: &[u8], has_sensitive: &mut bool) {
         if text == "<" {
             is_input = true;
         }
-        if is_input && child.kind() == "word" && has_sensitive_path(text) {
-            *has_sensitive = true;
-            return;
+        if is_input {
+            let matched = match child.kind() {
+                "word" => has_sensitive_path(text),
+                "concatenation" | "simple_expansion" | "expansion" => {
+                    has_sensitive_path(text) || has_sensitive_path_expanded(text)
+                }
+                _ => false,
+            };
+            if matched {
+                *has_sensitive = true;
+                return;
+            }
         }
     }
 }
@@ -329,10 +338,13 @@ fn check_wget_post_file(node: Node, source: &[u8]) -> Option<String> {
 fn check_at_file_args(node: Node, source: &[u8], cmd_name: &str) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "word" || child.kind() == "concatenation" {
+        if matches!(
+            child.kind(),
+            "word" | "concatenation" | "simple_expansion" | "expansion"
+        ) {
             let text = node_text(child, source);
             if let Some(path) = text.strip_prefix('@') {
-                if has_sensitive_path(path) {
+                if has_sensitive_path(path) || has_sensitive_path_expanded(path) {
                     return Some(format!(
                         "Network sink '{cmd_name}' reading sensitive file via @-prefix"
                     ));
@@ -356,10 +368,19 @@ fn check_node_nested(node: Node, source: &[u8]) -> Option<String> {
 fn command_has_sensitive_path(node: Node, source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if matches!(child.kind(), "word" | "string" | "raw_string")
-            && has_sensitive_path(node_text(child, source))
-        {
-            return true;
+        let text = node_text(child, source);
+        match child.kind() {
+            "word" | "string" | "raw_string" => {
+                if has_sensitive_path(text) {
+                    return true;
+                }
+            }
+            "concatenation" | "simple_expansion" | "expansion" => {
+                if has_sensitive_path(text) || has_sensitive_path_expanded(text) {
+                    return true;
+                }
+            }
+            _ => {}
         }
     }
     false

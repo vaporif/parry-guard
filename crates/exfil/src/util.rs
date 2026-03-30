@@ -49,6 +49,26 @@ pub fn has_sensitive_path(text: &str) -> bool {
     crate::patterns::has_sensitive_path(text)
 }
 
+/// Like `has_sensitive_path` but expands `$HOME`, `${HOME}`, and `~` first.
+pub fn has_sensitive_path_expanded(text: &str) -> bool {
+    let expanded = expand_shell_vars(text);
+    expanded != text && has_sensitive_path(&expanded)
+}
+
+fn expand_shell_vars(text: &str) -> String {
+    const DUMMY_HOME: &str = "/home/user";
+
+    let mut s = text.to_string();
+    s = s.replace("${HOME}", DUMMY_HOME);
+    s = s.replace("$HOME", DUMMY_HOME);
+
+    if s == "~" || s.starts_with("~/") {
+        s = format!("{DUMMY_HOME}{}", &s[1..]);
+    }
+
+    s
+}
+
 pub fn contains_ip_url(text: &str) -> bool {
     for prefix in &["http://", "https://"] {
         let mut search = text;
