@@ -64,39 +64,26 @@ fn try_ast_detection(code: &str, cmd_name: &str) -> Option<String> {
         .to_lowercase();
 
     match base.as_str() {
-        // Python
         "python" | "python2" | "python3" | "pypy" | "pypy3" => {
             detect_exfil_in_code(code, &PythonDetector, cmd_name)
         }
-        // JavaScript/TypeScript
         "node" | "nodejs" | "deno" | "bun" => {
             detect_exfil_in_code(code, &JavaScriptDetector, cmd_name)
         }
-        // Ruby
         "ruby" | "jruby" => detect_exfil_in_code(code, &RubyDetector, cmd_name),
-        // PHP
         "php" | "php-cgi" => detect_exfil_in_code(code, &PhpDetector, cmd_name),
-        // Perl
         "perl" => detect_exfil_in_code(code, &PerlDetector, cmd_name),
-        // Lua
         "lua" => detect_exfil_in_code(code, &LuaDetector, cmd_name),
-        // PowerShell
         "pwsh" | "powershell" => detect_exfil_in_code(code, &PowerShellDetector, cmd_name),
-        // R
         "r" | "rscript" => detect_exfil_in_code(code, &RDetector, cmd_name),
-        // Elixir
         "elixir" => detect_exfil_in_code(code, &ElixirDetector, cmd_name),
-        // Julia
         "julia" => detect_exfil_in_code(code, &JuliaDetector, cmd_name),
-        // JVM scripting
         "groovy" => detect_exfil_in_code(code, &GroovyDetector, cmd_name),
         "scala" => detect_exfil_in_code(code, &ScalaDetector, cmd_name),
         "kotlin" | "kotlinc" => detect_exfil_in_code(code, &KotlinDetector, cmd_name),
-        // Nix
         "nix" | "nix-shell" | "nix-build" | "nix-instantiate" => {
             detect_exfil_in_code(code, &NixDetector, cmd_name)
         }
-        // No AST support: jshell, tclsh, wish, osascript, awk, sed - fall through to keyword matching
         _ => None,
     }
 }
