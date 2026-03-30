@@ -72,6 +72,10 @@ pub const INTERPRETERS: &[&str] = &[
     "elixir",
     // Julia
     "julia",
+    // Swift
+    "swift",
+    // Crystal
+    "crystal",
     // Tcl
     "tclsh",
     "wish",

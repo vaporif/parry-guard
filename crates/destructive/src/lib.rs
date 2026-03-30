@@ -782,4 +782,52 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(is_protected_path("~/.config/app/config.toml", cwd).is_some());
     }
+
+    // === eval / source bypass (4.6) ===
+
+    #[test]
+    fn eval_string_literal_destructive_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(detect_destructive(r#"eval "rm -rf /""#, cwd).is_some());
+    }
+
+    #[test]
+    fn eval_single_quoted_destructive_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(detect_destructive("eval 'sudo rm -rf /'", cwd).is_some());
+    }
+
+    #[test]
+    fn eval_variable_expansion_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let result = detect_destructive(r#"CMD="rm -rf /"; eval $CMD"#, cwd);
+        assert!(result.is_some(), "eval with variable should be flagged");
+    }
+
+    #[test]
+    fn source_with_variable_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(detect_destructive("source $SCRIPT", cwd).is_some());
+    }
+
+    #[test]
+    fn eval_safe_command_allowed() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(r#"eval "echo hello""#, cwd).is_none(),
+            "eval with safe command should pass"
+        );
+    }
+
+    #[test]
+    fn eval_unquoted_destructive_blocked() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(detect_destructive("eval rm -rf /", cwd).is_some());
+    }
 }
