@@ -42,53 +42,40 @@ pub const SENSITIVE_SOURCES: &[&str] = &[
 ];
 
 pub const INTERPRETERS: &[&str] = &[
-    // Python
     "python",
     "python2",
     "python3",
     "pypy",
     "pypy3",
-    // JavaScript/TypeScript
     "node",
     "nodejs",
     "deno",
     "bun",
-    // Ruby
     "ruby",
     "jruby",
-    // Perl
     "perl",
-    // PHP
     "php",
     "php-cgi",
-    // Lua
     "lua",
-    // PowerShell
     "pwsh",
     "powershell",
-    // R
     "Rscript",
-    // Elixir/Erlang
     "elixir",
-    // Julia
     "julia",
-    // Tcl
+    "swift",
+    "crystal",
     "tclsh",
     "wish",
-    // JVM scripting
     "groovy",
     "scala",
     "kotlin",
     "kotlinc",
     "jshell",
-    // macOS
     "osascript",
-    // Nix
     "nix",
     "nix-shell",
     "nix-build",
     "nix-instantiate",
-    // Text processing
     "awk",
     "gawk",
     "mawk",
