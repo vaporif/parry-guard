@@ -107,6 +107,10 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         return check_docker(node, source);
     }
 
+    if matches!(cmd_name, "eval" | "source" | ".") {
+        return check_eval(cmd_name, node, source, cwd);
+    }
+
     // nested structures (command substitutions, etc.)
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -187,6 +191,55 @@ fn get_path_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
         .filter(|a| !a.starts_with('-'))
         .copied()
         .collect()
+}
+
+fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let mut has_variable = false;
+    let mut words = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "string" | "raw_string" => {
+                let inner = node_text(child, source);
+                let inner = inner
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .or_else(|| inner.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+                    .unwrap_or(inner);
+                if let Some(reason) = crate::detect_destructive(inner, cwd) {
+                    return Some(format!(
+                        "'{cmd_name}' wrapping destructive command: {reason}"
+                    ));
+                }
+            }
+            "simple_expansion" | "expansion" | "concatenation" => {
+                has_variable = true;
+            }
+            "word" => {
+                words.push(node_text(child, source));
+            }
+            _ => {}
+        }
+    }
+
+    if has_variable {
+        return Some(format!(
+            "'{cmd_name}' with variable expansion - cannot verify safety"
+        ));
+    }
+
+    // unquoted args: rejoin and re-parse as a command
+    if !words.is_empty() {
+        let joined = words.join(" ");
+        if let Some(reason) = crate::detect_destructive(&joined, cwd) {
+            return Some(format!(
+                "'{cmd_name}' wrapping destructive command: {reason}"
+            ));
+        }
+    }
+
+    None
 }
 
 fn check_function_body(node: Node, source: &[u8], cwd: &str) -> Option<String> {
@@ -297,6 +350,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
 
     match subcmd {
         "push" => check_git_push(&args, &path_args),
+        "remote" => check_git_remote(&path_args),
         "reset" => {
             if has_flag(&args, "--hard") {
                 Some("'git reset --hard' discards uncommitted changes".into())
@@ -379,7 +433,37 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
         }
     }
 
+    for arg in path_args.iter().skip(1) {
+        if looks_like_remote_url(arg) {
+            return Some(format!(
+                "'git push' to URL '{arg}' may exfiltrate repository"
+            ));
+        }
+    }
+
     None
+}
+
+fn check_git_remote(path_args: &[&str]) -> Option<String> {
+    let sub = path_args.get(1).copied().unwrap_or("");
+    if sub == "add" || sub == "set-url" {
+        let url = path_args.get(3).copied().unwrap_or("");
+        if !url.is_empty() {
+            return Some(format!(
+                "'git remote {sub}' with URL '{url}' - verify remote is trusted"
+            ));
+        }
+    }
+    None
+}
+
+fn looks_like_remote_url(s: &str) -> bool {
+    s.starts_with("http://")
+        || s.starts_with("https://")
+        || s.starts_with("git://")
+        || s.starts_with("ssh://")
+        || s.contains("://")
+        || (s.contains('@') && (s.contains(':') || s.contains('/')))
 }
 
 fn check_database(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
