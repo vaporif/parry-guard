@@ -71,11 +71,12 @@ impl Pattern {
             }
         }
         if text.ends_with(&self.lower) {
-            let prefix_len = text.len() - self.lower.len();
-            if prefix_len == 0 {
+            let prefix_byte_len = text.len() - self.lower.len();
+            if prefix_byte_len == 0 {
                 return true;
             }
-            let prev_char = text.chars().nth(prefix_len - 1);
+            // safe: ends_with guarantees this is a char boundary
+            let prev_char = text[..prefix_byte_len].chars().next_back();
             if prev_char == Some('/') || prev_char == Some('\\') {
                 return true;
             }
@@ -439,6 +440,14 @@ mod tests {
         let p = Pattern::suffix("/id_rsa");
         assert!(p.matches("/home/user/.ssh/id_rsa"));
         assert!(p.matches("~/.ssh/id_rsa"));
+    }
+
+    #[test]
+    fn path_segment_multibyte_utf8() {
+        let p = Pattern::new(".env", MatchKind::PathSegment);
+        assert!(p.matches("café/.env"));
+        assert!(p.matches("données/.env"));
+        assert!(!p.matches("caféx.env")); // no separator before .env
     }
 
     #[test]

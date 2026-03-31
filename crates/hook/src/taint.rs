@@ -33,11 +33,12 @@ impl TaintContext<'_> {
     }
 }
 
-/// Mark the current project as tainted with context about what triggered it. Fail-silent.
-pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) {
+/// Mark the current project as tainted with context about what triggered it.
+/// Returns `true` if the taint file was written successfully.
+pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) -> bool {
     use std::fmt::Write;
     let Some(path) = taint_file(runtime_dir) else {
-        return;
+        return false;
     };
 
     let timestamp = epoch_secs();
@@ -53,7 +54,9 @@ pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) {
 
     if let Err(e) = std::fs::write(&path, body) {
         tracing::warn!(path = %path.display(), %e, "failed to write taint file");
+        return false;
     }
+    true
 }
 
 fn epoch_secs() -> u64 {

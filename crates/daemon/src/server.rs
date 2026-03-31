@@ -1,5 +1,6 @@
 //! Async daemon server.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,6 +29,19 @@ pub struct DaemonConfig {
     pub idle_timeout: Duration,
 }
 
+/// RAII cleanup for PID file and socket.
+struct CleanupGuard {
+    pid_path: PathBuf,
+    runtime_dir: Option<PathBuf>,
+}
+
+impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.pid_path);
+        crate::transport::cleanup_stale_state(self.runtime_dir.as_deref());
+    }
+}
+
 /// Run the daemon server. ML model loads lazily on first scan request.
 ///
 /// # Errors
@@ -46,7 +60,13 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     let listener = transport::bind_async(rd)?;
 
     let pid_path = transport::pid_file_path(rd)?;
+    // PID file is informational; socket bind is the real mutual exclusion
     std::fs::write(&pid_path, std::process::id().to_string())?;
+
+    let _cleanup = CleanupGuard {
+        pid_path: pid_path.clone(),
+        runtime_dir: rd.map(std::path::Path::to_path_buf),
+    };
 
     // ML loads lazily on first scan so pings work immediately
     let mut ml_state = MlState::NotLoaded;
@@ -67,13 +87,16 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
         "daemon started, ML loads on first scan"
     );
 
-    if let Some(ref c) = cache {
+    let prune_handle = cache.as_ref().map(|c| {
         let c = Arc::clone(c);
-        tokio::spawn(async move { scan_cache::prune_task(&c).await });
-    }
+        tokio::spawn(async move { scan_cache::prune_task(&c).await })
+    });
 
     let idle_timeout = daemon_config.idle_timeout;
     let mut deadline = Instant::now() + idle_timeout;
+
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to register SIGTERM handler");
 
     loop {
         tokio::select! {
@@ -93,13 +116,21 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
                 info!("idle timeout, shutting down");
                 break;
             }
+            _ = tokio::signal::ctrl_c() => {
+                info!("received SIGINT, shutting down");
+                break;
+            }
+            _ = sigterm.recv() => {
+                info!("received SIGTERM, shutting down");
+                break;
+            }
         }
     }
 
+    if let Some(handle) = prune_handle {
+        handle.abort();
+    }
     drop(listener);
-    let _ = std::fs::remove_file(&pid_path);
-    crate::transport::cleanup_stale_state(rd);
-
     Ok(())
 }
 

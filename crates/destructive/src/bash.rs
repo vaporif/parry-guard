@@ -382,8 +382,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
         }
         "restore" => {
             // only the wildcard form, not specific files
-            let mut rest = path_args.iter().skip(1);
-            if rest.clone().count() == 1 && rest.next().copied() == Some(".") {
+            if path_args.len() == 2 && path_args.get(1).copied() == Some(".") {
                 Some("'git restore .' discards all unstaged changes".into())
             } else {
                 None
