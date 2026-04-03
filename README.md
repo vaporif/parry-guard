@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/parry.svg" width="200" alt="Parry Guard">
+</p>
+
 # Parry-guard
 [![ci](https://github.com/vaporif/parry/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaporif/parry/actions/workflows/ci.yml)
 [![audit](https://github.com/vaporif/parry/actions/workflows/audit.yml/badge.svg?branch=main)](https://github.com/vaporif/parry/actions/workflows/audit.yml)
