@@ -1,4 +1,4 @@
-# <img src=".github/parry.svg" height="32" alt="Parry Guard"> Parry-guard
+# <img src=".github/parry.svg" height="64" alt="Parry Guard"> Parry-guard
 
 [![ci](https://github.com/vaporif/parry-guard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaporif/parry-guard/actions/workflows/ci.yml)
 [![audit](https://github.com/vaporif/parry-guard/actions/workflows/audit.yml/badge.svg?branch=main)](https://github.com/vaporif/parry-guard/actions/workflows/audit.yml)
