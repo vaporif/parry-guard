@@ -95,8 +95,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     let idle_timeout = daemon_config.idle_timeout;
     let mut deadline = Instant::now() + idle_timeout;
 
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .expect("failed to register SIGTERM handler");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
     loop {
         tokio::select! {
