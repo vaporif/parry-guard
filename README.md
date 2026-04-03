@@ -1,15 +1,11 @@
-<p align="center">
-  <img src=".github/parry.svg" width="200" alt="Parry Guard">
-</p>
+# <img src=".github/parry.svg" height="32" alt="Parry Guard"> Parry-guard
 
-# Parry-guard
 [![ci](https://github.com/vaporif/parry-guard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaporif/parry-guard/actions/workflows/ci.yml)
 [![audit](https://github.com/vaporif/parry-guard/actions/workflows/audit.yml/badge.svg?branch=main)](https://github.com/vaporif/parry-guard/actions/workflows/audit.yml)
 [![codecov](https://codecov.io/gh/vaporif/parry-guard/branch/main/graph/badge.svg)](https://codecov.io/gh/vaporif/parry-guard)
-
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
-Prompt injection scanner for Claude Code hooks. Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs.
+**Prompt injection scanner for Claude Code hooks.** Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs.
 
 > **Early development** - bugs and false positives happen. Tested on Linux and macOS.
 
@@ -169,7 +165,8 @@ The scanner is fail-closed: if it can't tell whether something is safe, it treat
 5. **Bash exfiltration** tree-sitter AST analysis for data exfil: network sinks, command substitution, obfuscation (base64, hex, ROT13), DNS tunneling, cloud storage, 60+ sensitive paths, 40+ exfil domains
 6. **Script exfiltration** same source-to-sink analysis for script files across 16 languages
 
-### Scan modes
+<details>
+<summary>Scan modes</summary>
 
 | Mode | Models | Latency per chunk | Backend |
 |------|--------|-------------------|---------|
@@ -181,9 +178,12 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 
 > **Note:** `full` mode needs the `candle` backend because Llama Prompt Guard 2 doesn't have an ONNX export. Build with `--features candle --no-default-features`.
 
+</details>
+
 ## Config
 
-### Global flags
+<details>
+<summary>Global flags</summary>
 
 | Flag | Env | Default | Effect |
 |------|-----|---------|-------------|
@@ -195,7 +195,10 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 | `--ask-on-new-project` | `PARRY_ASK_ON_NEW_PROJECT` | false | Ask before monitoring new projects (default: auto-monitor) |
 | `--ignore-dirs` | `PARRY_IGNORE_DIRS` | | Parent directories to ignore, comma-separated. All repos under these paths get skipped. |
 
-### Subcommand flags
+</details>
+
+<details>
+<summary>Subcommand flags</summary>
 
 | Flag | Env | Default | Effect |
 |------|-----|---------|-------------|
@@ -203,17 +206,23 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 | `diff --full` | | false | Use ML scan instead of fast-only |
 | `diff -e, --extensions` | | | Filter by file extension (comma-separated) |
 
-### Env-only
+</details>
+
+<details>
+<summary>Environment-only variables</summary>
 
 | Env | Default | Effect |
 |-----|---------|-------------|
 | `PARRY_LOG` | warn | Tracing filter (`trace`, `debug`, `info`, `warn`, `error`) |
 | `PARRY_LOG_FILE` | `~/.parry-guard/parry-guard.log` | Override log file path |
 
+</details>
+
 Custom patterns: `~/.config/parry-guard/patterns.toml` (add/remove sensitive paths, exfil domains, secret patterns).
 Custom models: `~/.config/parry-guard/models.toml` (used with `--scan-mode custom`, see `examples/models.toml`).
 
-## ML backends
+<details>
+<summary><h2>ML backends</h2></summary>
 
 One backend is always required (enforced at compile time). Nix defaults to ONNX on x86_64-linux, aarch64-linux, and aarch64-darwin. Use the `candle` package on other platforms.
 
@@ -224,7 +233,10 @@ One backend is always required (enforced at compile time). Nix defaults to ONNX 
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
 | `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
 
-## Performance
+</details>
+
+<details>
+<summary><h2>Performance</h2></summary>
 
 Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is about 5-6x slower than ONNX. Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
 
@@ -236,6 +248,8 @@ Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is about 5-6
 | Cold start (daemon + model load) | ~580ms | ~1s |
 | Fast scan short-circuit | ~7ms | ~7ms |
 | Cached result | ~8ms | ~8ms |
+
+</details>
 
 ## Contributing
 
