@@ -136,6 +136,77 @@ mod tests {
     }
 
     #[test]
+    fn rm_taint_file_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("rm .parry-tainted", cwd).is_some(),
+            "rm .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn rm_taint_file_relative_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("rm ./.parry-tainted", cwd).is_some(),
+            "rm ./.parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn rm_taint_file_with_flags_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("rm -f .parry-tainted", cwd).is_some(),
+            "rm -f .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn rm_taint_file_absolute_path_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        let cmd = format!("rm {cwd}/.parry-tainted");
+        assert!(
+            detect_destructive(&cmd, cwd).is_some(),
+            "rm with absolute path to .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn unlink_taint_file_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("unlink .parry-tainted", cwd).is_some(),
+            "unlink .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn mv_taint_file_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("mv .parry-tainted /tmp/gone", cwd).is_some(),
+            "mv .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
+    fn cp_over_taint_file_blocked() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert!(
+            detect_destructive("cp /dev/null .parry-tainted", cwd).is_some(),
+            "cp /dev/null .parry-tainted should be blocked"
+        );
+    }
+
+    #[test]
     fn rm_rf_dot_blocked() {
         let dir = make_cwd();
         let cwd = dir.path().to_str().unwrap();
