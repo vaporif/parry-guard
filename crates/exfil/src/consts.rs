@@ -37,8 +37,8 @@ pub const DNS_EXFIL_TOOLS: &[&str] = &[
 ];
 
 pub const SENSITIVE_SOURCES: &[&str] = &[
-    "cat", "head", "tail", "less", "more", "env", "printenv", "whoami", "id", "hostname", "aws",
-    "gcloud", "az", "pass", "gpg", "security", "kubectl",
+    "cat", "head", "tail", "less", "more", "tee", "env", "printenv", "whoami", "id", "hostname",
+    "aws", "gcloud", "az", "pass", "gpg", "security", "kubectl",
 ];
 
 pub const INTERPRETERS: &[&str] = &[

@@ -34,7 +34,7 @@ pub fn process(input: &HookInput, config: &Config, repo_state: RepoState) -> Opt
         match parry_guard_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {
                 debug!("ML confirmed injection, tainting");
-                crate::taint::mark(
+                let _ = crate::taint::mark(
                     &crate::taint::TaintContext {
                         tool_name: input.tool_name.as_deref().unwrap_or("unknown"),
                         session_id: input.session_id.as_deref(),
