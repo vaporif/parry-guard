@@ -158,7 +158,10 @@ fn load_ml_scanner(config: &Config) -> Option<MlScanner> {
             None
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            warn!("ML scanner load timed out after {}s", ML_LOAD_TIMEOUT.as_secs());
+            warn!(
+                "ML scanner load timed out after {}s",
+                ML_LOAD_TIMEOUT.as_secs()
+            );
             None
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
