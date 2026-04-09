@@ -1,5 +1,7 @@
 //! AST-based bash command analysis for destructive operations.
 
+use std::path::Path;
+
 use tree_sitter::Node;
 
 use crate::commands::CONFIG;
@@ -62,9 +64,16 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         return Some(reason);
     }
 
-    // rm / rmdir - needs path analysis
-    if cmd_name == "rm" || cmd_name == "rmdir" {
+    // rm / rmdir / unlink - needs path analysis
+    if matches!(cmd_name, "rm" | "rmdir" | "unlink") {
         return check_rm(cmd_name, node, source, cwd);
+    }
+
+    // mv/cp - taint file protection
+    if matches!(cmd_name, "mv" | "cp") {
+        if let Some(reason) = check_taint_file_in_args(cmd_name, node, source) {
+            return Some(reason);
+        }
     }
 
     // permissions on protected paths
@@ -134,6 +143,10 @@ fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<&'a str> {
         }
     }
     None
+}
+
+fn strip_quotes(s: &str) -> &str {
+    s.trim_matches(|c| c == '\'' || c == '"')
 }
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -254,13 +267,36 @@ fn check_function_body(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 
 // --- category checks ---
 
+const TAINT_FILE: &str = ".parry-tainted";
+
+fn is_taint_file(path: &str) -> bool {
+    let clean = strip_quotes(path);
+    Path::new(clean).file_name().and_then(|f| f.to_str()) == Some(TAINT_FILE)
+}
+
+fn taint_file_reason(cmd_name: &str) -> String {
+    format!("'{cmd_name}' targets parry-guard safety file '{TAINT_FILE}'")
+}
+
+fn check_taint_file_in_args(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
+    let args = get_args(node, source);
+    let path_args = get_path_args(&args);
+    if path_args.iter().any(|p| is_taint_file(p)) {
+        return Some(taint_file_reason(cmd_name));
+    }
+    None
+}
+
 fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let args = get_args(node, source);
     let path_args = get_path_args(&args);
 
     for path in &path_args {
-        // strip quotes around paths
-        let clean = path.trim_matches(|c| c == '\'' || c == '"');
+        if is_taint_file(path) {
+            return Some(taint_file_reason(cmd_name));
+        }
+
+        let clean = strip_quotes(path);
 
         // rm -rf . / rm -rf ./ - nuking the project dir
         if paths::is_cwd_itself(clean, cwd) {
@@ -282,7 +318,7 @@ fn check_permissions(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Op
     let path_args = get_path_args(&args);
 
     for path in &path_args {
-        let clean = path.trim_matches(|c| c == '\'' || c == '"');
+        let clean = strip_quotes(path);
         if let Some(reason) = paths::check_protected(clean, cwd) {
             return Some(format!("'{cmd_name}' on protected path: {reason}"));
         }

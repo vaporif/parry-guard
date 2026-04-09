@@ -14,6 +14,8 @@ use parry_guard_core::{Config, ScanResult};
 use parry_guard_ml::MlScanner;
 
 const MAX_ML_RETRIES: u8 = 3;
+const IO_TIMEOUT: Duration = Duration::from_secs(5);
+const ML_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 enum MlState {
     NotLoaded,
@@ -133,15 +135,37 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     Ok(())
 }
 
+/// On timeout the background thread is left running — `MlState::Failed`
+/// prevents piling up concurrent loads.
 fn load_ml_scanner(config: &Config) -> Option<MlScanner> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| MlScanner::load(config))) {
-        Ok(Ok(scanner)) => Some(scanner),
-        Ok(Err(e)) => {
+    let config = config.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| MlScanner::load(&config)));
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(ML_LOAD_TIMEOUT) {
+        Ok(Ok(Ok(scanner))) => Some(scanner),
+        Ok(Ok(Err(e))) => {
             warn!(%e, "ML scanner failed to load");
             None
         }
-        Err(_) => {
+        Ok(Err(_)) => {
             warn!("ML scanner panicked during load");
+            None
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            warn!(
+                "ML scanner load timed out after {}s",
+                ML_LOAD_TIMEOUT.as_secs()
+            );
+            None
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            warn!("ML scanner load thread terminated unexpectedly");
             None
         }
     }
@@ -156,8 +180,16 @@ async fn handle_connection(
 ) {
     let mut framed = Framed::new(stream, DaemonCodec);
 
-    let Some(Ok(req)) = framed.next().await else {
-        return;
+    let req = match tokio::time::timeout(IO_TIMEOUT, framed.next()).await {
+        Ok(Some(Ok(req))) => req,
+        Ok(Some(Err(e))) => {
+            warn!(%e, "client read error");
+            return;
+        }
+        Ok(None) | Err(_) => {
+            debug!("client disconnected or read timed out");
+            return;
+        }
     };
 
     let resp = match req.scan_type {
@@ -196,7 +228,11 @@ async fn handle_connection(
             handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
-    let _ = framed.send(resp).await;
+    match tokio::time::timeout(IO_TIMEOUT, framed.send(resp)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => warn!(%e, "response send failed"),
+        Err(_) => warn!("response send timed out"),
+    }
 }
 
 fn handle_request(
