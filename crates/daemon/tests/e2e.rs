@@ -72,7 +72,6 @@ async fn scan_with_retry(
             .unwrap();
         match result {
             Ok(r) => return Ok(r),
-            Err(parry_guard_core::ScanError::DaemonScanFailed) if attempt < 2 => {}
             Err(_) if attempt < 2 => {}
             Err(_) => return result,
         }
@@ -169,7 +168,7 @@ async fn ml_model_e2e() {
     {
         let dir = tempfile::tempdir().unwrap();
         let config = fast_config(dir.path());
-        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(60)).await;
+        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_mins(1)).await;
         eprintln!("[fast] daemon ready ({:?})", t.elapsed());
 
         for prompt in [
@@ -205,7 +204,7 @@ async fn ml_model_e2e() {
         eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");
         let dir = tempfile::tempdir().unwrap();
         let config = full_config(dir.path());
-        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_secs(120)).await;
+        let handle = start_daemon_with(dir.path(), config.clone(), Duration::from_mins(2)).await;
         eprintln!("[full] daemon ready ({:?})", t.elapsed());
 
         for prompt in [

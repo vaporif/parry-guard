@@ -4,7 +4,7 @@
 //!   cargo bench -p parry-ml --bench inference                                              # candle
 //!   cargo bench -p parry-ml --bench inference --no-default-features --features onnx-fetch   # onnx
 //!
-//! Requires HF_TOKEN env var for gated model downloads.
+//! Requires `HF_TOKEN` env var for gated model downloads.
 
 use std::time::Duration;
 
@@ -71,7 +71,7 @@ fn bench_fast(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("scan", format!("{name}/{} chars", text.len())),
             &text,
-            |b, text| b.iter(|| scanner.scan_chunked(text)),
+            |b, text| b.iter(|| scanner.scan_chunked(text, 0.5)),
         );
     }
     group.finish();
@@ -101,7 +101,7 @@ fn bench_full(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("scan", format!("{name}/{} chars", text.len())),
             &text,
-            |b, text| b.iter(|| scanner.scan_chunked(text)),
+            |b, text| b.iter(|| scanner.scan_chunked(text, 0.5)),
         );
     }
     group.finish();

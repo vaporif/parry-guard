@@ -15,7 +15,7 @@ use parry_guard_ml::MlScanner;
 
 const MAX_ML_RETRIES: u8 = 3;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
-const ML_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const ML_LOAD_TIMEOUT: Duration = Duration::from_mins(2);
 
 enum MlState {
     NotLoaded,
@@ -74,13 +74,10 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     let mut ml_state = MlState::NotLoaded;
     let cache = ScanCache::open(rd).map(Arc::new);
 
-    let model_fingerprint = config
-        .resolve_models()
-        .map(|models| {
-            let repos: Vec<String> = models.into_iter().map(|m| m.repo).collect();
-            scan_cache::model_fingerprint(&repos)
-        })
-        .unwrap_or([0u8; 32]);
+    let model_fingerprint = config.resolve_models().map_or([0u8; 32], |models| {
+        let repos: Vec<String> = models.into_iter().map(|m| m.repo).collect();
+        scan_cache::model_fingerprint(&repos)
+    });
 
     let cache_status = if cache.is_some() { "loaded" } else { "off" };
     info!(

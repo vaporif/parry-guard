@@ -370,15 +370,11 @@ fn command_has_sensitive_path(node: Node, source: &[u8]) -> bool {
     for child in node.children(&mut cursor) {
         let text = node_text(child, source);
         match child.kind() {
-            "word" | "string" | "raw_string" => {
-                if has_sensitive_path(text) {
-                    return true;
-                }
-            }
-            "concatenation" | "simple_expansion" | "expansion" => {
-                if has_sensitive_path(text) || has_sensitive_path_expanded(text) {
-                    return true;
-                }
+            "word" | "string" | "raw_string" if has_sensitive_path(text) => return true,
+            "concatenation" | "simple_expansion" | "expansion"
+                if has_sensitive_path(text) || has_sensitive_path_expanded(text) =>
+            {
+                return true;
             }
             _ => {}
         }

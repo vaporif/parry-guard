@@ -431,7 +431,7 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                         .remote
                         .as_deref()
                         .map_or(String::new(), |r| format!("  ({r})"));
-                    println!("{:<40} {:<12}{remote}", entry.path, entry.state.as_str(),);
+                    println!("{:<40} {:<12}{remote}", entry.path, entry.state.as_str());
                 }
             }
             ExitCode::SUCCESS
