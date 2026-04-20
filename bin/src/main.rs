@@ -427,17 +427,25 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 println!("No known repos.");
             } else {
                 for entry in &repos {
-                    let remote = entry
-                        .remote
-                        .as_deref()
-                        .map_or(String::new(), |r| format!("  ({r})"));
-                    println!("{:<40} {:<12}{remote}", entry.path, entry.state.as_str());
+                    println!(
+                        "{}",
+                        format_repo_entry(
+                            &entry.path,
+                            entry.state.as_str(),
+                            entry.remote.as_deref()
+                        )
+                    );
                 }
             }
             ExitCode::SUCCESS
         }
         _ => unreachable!(),
     }
+}
+
+fn format_repo_entry(path: &str, state: &str, remote: Option<&str>) -> String {
+    let remote_suffix = remote.map_or(String::new(), |r| format!("  ({r})"));
+    format!("{path:<40} {state:<12}{remote_suffix}")
 }
 
 fn run_diff(config: &Config, git_ref: &str, extensions: Option<&str>, full: bool) -> ExitCode {
@@ -562,5 +570,30 @@ fn run_serve(config: &Config, idle_timeout: u64) -> ExitCode {
             warn!(%e, "daemon error");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_repo_entry_without_remote() {
+        let line = format_repo_entry("/home/user/project", "monitored", None);
+        assert!(line.contains("/home/user/project"));
+        assert!(line.contains("monitored"));
+        assert!(!line.contains("("));
+    }
+
+    #[test]
+    fn format_repo_entry_with_remote() {
+        let line = format_repo_entry(
+            "/home/user/project",
+            "monitored",
+            Some("git@github.com:a/b"),
+        );
+        assert!(line.contains("/home/user/project"));
+        assert!(line.contains("monitored"));
+        assert!(line.contains("(git@github.com:a/b)"));
     }
 }
