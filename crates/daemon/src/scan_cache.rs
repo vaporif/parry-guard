@@ -13,7 +13,7 @@ const DB_FILE: &str = "scan-cache.redb";
 const TABLE: redb::TableDefinition<&[u8; 32], (u8, u64)> = redb::TableDefinition::new("scan_cache");
 const OLD_TABLE: redb::TableDefinition<u64, (u8, u64)> = redb::TableDefinition::new("scan_cache");
 const TTL_SECS: u64 = 30 * 24 * 60 * 60; // 30 days
-const PRUNE_INTERVAL: Duration = Duration::from_secs(60 * 60); // 1 hour
+const PRUNE_INTERVAL: Duration = Duration::from_hours(1);
 
 /// Hash text content to a blake3 digest.
 #[must_use]

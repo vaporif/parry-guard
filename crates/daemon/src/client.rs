@@ -13,7 +13,7 @@ use crate::transport::Stream;
 const PING_TIMEOUT: Duration = Duration::from_millis(50);
 
 /// Timeout for scan requests (model loading on first call can take tens of seconds).
-const SCAN_TIMEOUT: Duration = Duration::from_secs(120);
+const SCAN_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// Run a full scan (with ML) via the daemon.
 ///
