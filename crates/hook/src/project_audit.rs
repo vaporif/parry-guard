@@ -174,9 +174,16 @@ pub fn scan(
     check_hooks(&state, &mut warnings);
     check_settings_permissions(&state, &mut warnings);
 
-    if let (Some(db), Some(rp)) = (db, repo_path) {
-        db.mark_audit_scanned(rp, hash);
-        debug!(warning_count = warnings.len(), "audit state cached");
+    if warnings.is_empty() {
+        if let (Some(db), Some(rp)) = (db, repo_path) {
+            db.mark_audit_scanned(rp, hash);
+            debug!("audit state cached (clean)");
+        }
+    } else {
+        debug!(
+            warning_count = warnings.len(),
+            "warnings found, not caching"
+        );
     }
 
     Ok(warnings)
@@ -288,7 +295,7 @@ fn check_text_content(
             ScanResult::Clean => {}
         }
         if is_code_file(path) {
-            if let Some(reason) = parry_guard_exfil::detect_exfiltration(content) {
+            if let Ok(Some(reason)) = parry_guard_exfil::detect_exfiltration(content) {
                 warnings.push(AuditWarning {
                     category: "EXFIL",
                     message: format!("{} contains exfiltration pattern: {reason}", name.display()),
@@ -370,7 +377,7 @@ fn check_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
             });
         }
 
-        if let Some(reason) = parry_guard_exfil::detect_exfiltration(content) {
+        if let Ok(Some(reason)) = parry_guard_exfil::detect_exfiltration(content) {
             warnings.push(AuditWarning {
                 category: "HOOKS",
                 message: format!(".claude/hooks/{name} contains exfiltration pattern: {reason}"),
@@ -685,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_suppresses_repeated_warnings() {
+    fn cache_does_not_suppress_warnings() {
         let dir = tempfile::tempdir().unwrap();
         let claude_dir = dir.path().join(".claude");
         std::fs::create_dir_all(&claude_dir).unwrap();
@@ -701,7 +708,10 @@ mod tests {
         let w1 = scan(dir.path(), &config, Some(&db), Some(rp)).unwrap();
         assert!(!w1.is_empty(), "first scan should produce warnings");
         let w2 = scan(dir.path(), &config, Some(&db), Some(rp)).unwrap();
-        assert!(w2.is_empty(), "second scan should be cached");
+        assert!(
+            !w2.is_empty(),
+            "second scan should STILL produce warnings (not cached)"
+        );
     }
 
     #[test]
