@@ -104,7 +104,16 @@ pub fn scan_injection_only(text: &str) -> ScanResult {
 pub fn runtime_path(runtime_dir: Option<&std::path::Path>, filename: &str) -> Option<PathBuf> {
     runtime_dir
         .map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok())
+        .or_else(|| {
+            let cwd = std::env::current_dir().ok();
+            if cwd.is_some() {
+                tracing::debug!(
+                    filename,
+                    "runtime_dir not configured, falling back to process CWD for runtime file"
+                );
+            }
+            cwd
+        })
         .map(|d| d.join(filename))
 }
 
