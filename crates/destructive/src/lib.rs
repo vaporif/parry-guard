@@ -39,9 +39,9 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
         }
     };
     if tree.root_node().has_error() {
-        debug!("AST contains errors, blocking unparseable command (fail-closed)");
+        debug!("AST contains errors, blocking unparsable command (fail-closed)");
         Err(
-            "command contains unparseable syntax -- blocked for safety (override if intended)"
+            "command contains unparsable syntax -- blocked for safety (override if intended)"
                 .to_string(),
         )
     } else {
@@ -836,13 +836,13 @@ mod tests {
     }
 
     #[test]
-    fn unparseable_command_blocked() {
+    fn unparsable_command_blocked() {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         let result = detect_destructive("((({{{", cwd);
         assert!(
             result.is_some(),
-            "unparseable commands should be blocked (fail-closed)"
+            "unparsable commands should be blocked (fail-closed)"
         );
     }
 

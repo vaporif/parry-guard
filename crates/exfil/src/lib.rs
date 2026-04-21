@@ -67,9 +67,9 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
         }
     };
     if tree.root_node().has_error() {
-        debug!("AST contains errors, blocking unparseable command (fail-closed)");
+        debug!("AST contains errors, blocking unparsable command (fail-closed)");
         Err(
-            "command contains unparseable syntax -- blocked for safety (override if intended)"
+            "command contains unparsable syntax -- blocked for safety (override if intended)"
                 .to_string(),
         )
     } else {
@@ -82,7 +82,7 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
 ///
 /// # Errors
 ///
-/// Returns `Err(String)` when the command contains unparseable syntax or the
+/// Returns `Err(String)` when the command contains unparsable syntax or the
 /// tree-sitter parser is unavailable (mutex poisoned, language init failed).
 /// Callers should treat parse errors as suspicious and prompt the user.
 #[instrument(skip(command), fields(command_len = command.len()))]
@@ -1414,11 +1414,11 @@ mod tests {
     }
 
     #[test]
-    fn unparseable_command_returns_err() {
+    fn unparsable_command_returns_err() {
         let result = detect_exfiltration("((({{{");
         assert!(
             result.is_err(),
-            "unparseable commands should return Err (fail-closed)"
+            "unparsable commands should return Err (fail-closed)"
         );
     }
 
