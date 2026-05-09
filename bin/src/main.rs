@@ -620,7 +620,7 @@ mod tests {
         let line = format_repo_entry("/home/user/project", "monitored", None);
         assert!(line.contains("/home/user/project"));
         assert!(line.contains("monitored"));
-        assert!(!line.contains("("));
+        assert!(!line.contains('('));
     }
 
     #[test]
