@@ -5,7 +5,7 @@
 [![codecov](https://codecov.io/gh/vaporif/parry-guard/branch/main/graph/badge.svg)](https://codecov.io/gh/vaporif/parry-guard)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
-**Prompt injection scanner for Claude Code hooks.** Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs.
+**Prompt injection scanner for AI coding tool hooks.** Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs. It is built for Claude Code hooks and can also be used with Codex or similar tools that run command hooks with compatible JSON input/output.
 
 > **Early development** - bugs and false positives happen. Tested on Linux and macOS.
 
@@ -19,6 +19,8 @@ The ML models are gated on HuggingFace, so you need to accept licenses before in
 4. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
 ## Usage
+
+### Claude Code
 
 Add to `~/.claude/settings.json`:
 
@@ -57,6 +59,40 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
+
+### Codex
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[[hooks.PreToolUse]]
+matcher = "Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|apply_patch|mcp__.*"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "parry-guard hook"
+timeout = 1
+
+[[hooks.PostToolUse]]
+matcher = "Bash|Read|WebFetch|Edit|apply_patch|mcp__.*"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "parry-guard hook"
+timeout = 5
+
+[[hooks.UserPromptSubmit]]
+matcher = ""
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "parry-guard hook"
+timeout = 2
+```
+
+### Other hook runners
+
+`parry-guard hook` reads one JSON hook payload from stdin and writes a JSON decision to stdout. Any tool with command hooks can integrate it if it sends Claude/Codex-style fields such as `hook_event_name`, `tool_name`, `tool_input`, `tool_response`, and `prompt`, then honors block/deny responses.
 
 <details>
 <summary>Other installation methods</summary>
