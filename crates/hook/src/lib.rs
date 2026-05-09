@@ -127,6 +127,11 @@ impl PreToolUseOutput {
     }
 
     #[must_use]
+    pub fn is_ask(&self) -> bool {
+        self.hook_specific_output.permission_decision == "ask"
+    }
+
+    #[must_use]
     pub fn reason(&self) -> &str {
         &self.hook_specific_output.permission_decision_reason
     }

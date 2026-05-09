@@ -1898,6 +1898,7 @@ dependencies = [
  "parry-guard-daemon",
  "parry-guard-hook",
  "parry-guard-ml",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
