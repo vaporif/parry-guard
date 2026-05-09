@@ -245,7 +245,7 @@ impl HookRunner {
         }
     }
 
-    fn blocks_ask_decisions(self) -> bool {
+    const fn blocks_ask_decisions(self) -> bool {
         matches!(self, Self::Codex)
     }
 }
