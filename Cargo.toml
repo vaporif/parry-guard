@@ -3,22 +3,22 @@ members = ["crates/*", "bin", "e2e"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.5"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/vaporif/parry"
 homepage = "https://github.com/vaporif/parry"
-keywords = ["prompt-injection", "security", "scanner", "llm", "claude"]
+keywords = ["prompt-injection", "security", "scanner", "llm", "claude", "codex"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 # Internal crates
-parry-guard-core = { path = "crates/core", version = "0.1.5", default-features = false }
-parry-guard-ml = { path = "crates/ml", version = "0.1.5", default-features = false }
-parry-guard-exfil = { path = "crates/exfil", version = "0.1.5" }
-parry-guard-daemon = { path = "crates/daemon", version = "0.1.5", default-features = false }
-parry-guard-destructive = { path = "crates/destructive", version = "0.1.5" }
-parry-guard-hook = { path = "crates/hook", version = "0.1.5", default-features = false }
+parry-guard-core = { path = "crates/core", version = "0.2.0", default-features = false }
+parry-guard-ml = { path = "crates/ml", version = "0.2.0", default-features = false }
+parry-guard-exfil = { path = "crates/exfil", version = "0.2.0" }
+parry-guard-daemon = { path = "crates/daemon", version = "0.2.0", default-features = false }
+parry-guard-destructive = { path = "crates/destructive", version = "0.2.0" }
+parry-guard-hook = { path = "crates/hook", version = "0.2.0", default-features = false }
 
 # Core dependencies
 eyre = "0.6"

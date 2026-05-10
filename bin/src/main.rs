@@ -126,13 +126,15 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
         return ExitCode::SUCCESS;
     }
 
-    let hook_input: parry_guard_hook::HookInput = match serde_json::from_str(input) {
+    let hook_envelope: HookEnvelope = match serde_json::from_str(input) {
         Ok(v) => v,
         Err(e) => {
             warn!(%e, "invalid hook JSON (fail-closed)");
             return ExitCode::FAILURE;
         }
     };
+    let hook_runner = hook_envelope.runner();
+    let hook_input = hook_envelope.input;
 
     let repo_path = hook_input
         .cwd
@@ -195,7 +197,7 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
                 db.as_ref(),
                 repo_path.as_deref(),
             ) {
-                if output.is_deny() {
+                if output.is_deny() || (hook_runner.blocks_ask_decisions() && output.is_ask()) {
                     info!(tool, "tool denied by PreToolUse");
                     eprintln!("{}", output.reason());
                     return ExitCode::from(2);
@@ -210,6 +212,42 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     }
 
     ExitCode::SUCCESS
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct HookEnvelope {
+    #[serde(flatten)]
+    input: parry_guard_hook::HookInput,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl HookEnvelope {
+    fn runner(&self) -> HookRunner {
+        HookRunner::from_extra_fields(&self.extra)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookRunner {
+    Claude,
+    Codex,
+}
+
+impl HookRunner {
+    fn from_extra_fields(extra: &serde_json::Map<String, serde_json::Value>) -> Self {
+        if extra.contains_key("turn_id")
+            && (extra.contains_key("tool_use_id") || extra.contains_key("permission_mode"))
+        {
+            Self::Codex
+        } else {
+            Self::Claude
+        }
+    }
+
+    const fn blocks_ask_decisions(self) -> bool {
+        matches!(self, Self::Codex)
+    }
 }
 
 fn run_audit(
@@ -582,7 +620,7 @@ mod tests {
         let line = format_repo_entry("/home/user/project", "monitored", None);
         assert!(line.contains("/home/user/project"));
         assert!(line.contains("monitored"));
-        assert!(!line.contains("("));
+        assert!(!line.contains('('));
     }
 
     #[test]

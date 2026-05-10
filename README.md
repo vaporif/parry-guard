@@ -94,6 +94,8 @@ timeout = 2
 
 `parry-guard hook` reads one JSON hook payload from stdin and writes a JSON decision to stdout. Any tool with command hooks can integrate it if it sends Claude/Codex-style fields such as `hook_event_name`, `tool_name`, `tool_input`, `tool_response`, and `prompt`, then honors block/deny responses.
 
+Note: Claude Code supports interactive `PreToolUse` `ask` decisions. Codex does not currently support that decision, so `parry-guard` maps review/ask results from Codex-shaped `PreToolUse` payloads to a blocking exit code with the reason on stderr.
+
 <details>
 <summary>Other installation methods</summary>
 

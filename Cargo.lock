@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "clap",
  "fork",
@@ -1898,6 +1898,7 @@ dependencies = [
  "parry-guard-daemon",
  "parry-guard-hook",
  "parry-guard-ml",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -1906,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-core"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1928,7 +1929,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-daemon"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "bytes",
@@ -1946,7 +1947,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-destructive"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "dirs",
  "regex",
@@ -1968,7 +1969,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-exfil"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "dirs",
  "regex",
@@ -1995,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-hook"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "parry-guard-core",
@@ -2011,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-ml"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "candle-core",
  "candle-nn",
