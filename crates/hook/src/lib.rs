@@ -269,4 +269,20 @@ mod tests {
         let result = scan_text("Normal markdown content", &config);
         assert!(result.is_err(), "clean text should error without daemon");
     }
+
+    #[test]
+    fn pre_tool_use_output_deny_predicates() {
+        let out = PreToolUseOutput::deny("nope");
+        assert!(out.is_deny());
+        assert!(!out.is_ask());
+        assert_eq!(out.reason(), "nope");
+    }
+
+    #[test]
+    fn pre_tool_use_output_ask_predicates() {
+        let out = PreToolUseOutput::ask("are you sure?");
+        assert!(out.is_ask());
+        assert!(!out.is_deny());
+        assert_eq!(out.reason(), "are you sure?");
+    }
 }
