@@ -219,9 +219,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.11.1"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "candle-core"
@@ -857,9 +857,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fork"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bcc4b4161e53d499e41af904acb23950adf85682c772921ef3957cf1ecc98b3"
+checksum = "412294c8d2e9224c4c462d478aa69e4c9c84204615957a1ce82bb9fa9541f3ab"
 dependencies = [
  "libc",
 ]
@@ -1855,9 +1855,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ort"
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a5df903c0d2c07b56950f1058104ab0c8557159f2741782223704de9be73c3c"
+checksum = "d7de3af33d24a745ffb8fab904b13478438d1cd52868e6f17735ef6e1f8bf133"
 dependencies = [
  "libloading",
  "ndarray",
@@ -1869,9 +1869,9 @@ dependencies = [
 
 [[package]]
 name = "ort-sys"
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06503bb33f294c5f1ba484011e053bfa6ae227074bdb841e9863492dc5960d4b"
+checksum = "d7b497d21a8b6fbb4b5a544f8fadb77e801a09ae0add9e411d31c6f89e3c1e90"
 dependencies = [
  "hmac-sha256",
  "lzma-rust2",
@@ -2317,9 +2317,9 @@ checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
 name = "redb"
-version = "3.1.3"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ba239c1c1693315d3cc0e601db3b3965543afbf48c41730fdca2f069f510f4a"
+checksum = "8e925444704b5f17d32bf42f5b6e2df050bceebc3dcd6e71cc73dafe8092e839"
 dependencies = [
  "libc",
 ]
@@ -2337,9 +2337,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.3"
+version = "1.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2360,9 +2360,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reqwest"
@@ -2582,9 +2582,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "indexmap",
  "itoa",
@@ -3166,9 +3166,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.26.8"
+version = "0.26.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "887bd495d0582c5e3e0d8ece2233666169fa56a9644d172fc22ad179ab2d0538"
+checksum = "4dab76d0b724ba557954125188cf0633a1ca43199ced82d95c7b9c32cc3de1f3"
 dependencies = [
  "cc",
  "regex",
@@ -3307,9 +3307,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-r"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "429133cbda9f8a46e03ef3aae6abb6c3d22875f8585cad472138101bfd517255"
+checksum = "ffc9954ec870dcad6cffdd302b405306c68cf031ed79a78cd9746f6740d9fe20"
 dependencies = [
  "cc",
  "tree-sitter-language",
