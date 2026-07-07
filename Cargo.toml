@@ -67,19 +67,19 @@ hf-hub = { version = "0.5", default-features = false, features = [
 
 # ONNX backend (optional)
 # TODO: unpin once ort 2.0.0-rc.13+ is released with VitisAI gating fix (pykeio/ort#546)
-ort = { version = "=2.0.0-rc.11", default-features = false, features = [
+ort = { version = "=2.0.0-rc.12", default-features = false, features = [
   "std",
   "ndarray",
 ] }
 ndarray = "0.17"
 
 # Candle backend (optional)
-candle-core = "0.10"
-candle-nn = "0.10"
-candle-transformers = "0.10"
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
 
 libc = "0.2"
-fork = "0.7"
+fork = "0.8"
 
 # Daemon/async
 bytes = "1"
@@ -90,7 +90,7 @@ interprocess = { version = "2", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "signal"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
-redb = "3"
+redb = "4"
 blake3 = "1"
 
 # Tracing
