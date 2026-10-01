@@ -19,4 +19,4 @@ pre-commit:
 pre-push:
   jobs:
     - name: check
-      run: just check
+      run: just check && just test

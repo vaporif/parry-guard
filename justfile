@@ -2,8 +2,14 @@
 default:
     @just --list
 
-# Run all checks
-check: clippy test check-fmt lint
+# Run checks (compile, clippy, fmt, lints)
+check: cargo-check clippy check-fmt lint
+
+alias c := check
+
+# Type-check workspace
+cargo-check:
+    cargo check --workspace
 
 # Lint all
 lint: lint-toml check-typos check-nix-fmt lint-actions
@@ -26,6 +32,8 @@ clippy:
 # Run tests
 test:
     cargo nextest run --workspace
+
+alias t := test
 
 # Generate coverage (lcov)
 coverage:
@@ -67,9 +75,9 @@ check-typos:
 lint-actions:
     actionlint
 
-# Run mutation testing (args go to cargo mutants, e.g. -p parry-guard-core)
-mutants *args:
-    cargo mutants {{args}}
+# Run mutation testing on the whole workspace
+mutants:
+    cargo mutants
 
 # Run mutation testing on lines changed vs main
 mutants-diff:

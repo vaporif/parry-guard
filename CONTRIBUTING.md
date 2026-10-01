@@ -23,7 +23,7 @@ Open an issue describing the use case. Discussion before implementation saves ti
 2. Branch from `main`
 3. Write tests for your changes
 4. Run `just fmt` to auto-format before committing
-5. Run `just check` (runs clippy, tests, formatting, lints, typos)
+5. Run `just c` and `just t` (checks, clippy, formatting, lints, typos, tests)
 6. Submit a PR to `main` — use the PR template checklist
 
 For minor fixes (typos, small bug fixes), a PR without an issue is fine.
@@ -50,15 +50,15 @@ This gives you: Rust stable toolchain (cargo, clippy, rustfmt, rust-analyzer), j
 ### Commands
 
 ```bash
-just check               # run all checks (clippy, test, fmt, lint, typos, audit)
+just check / just c      # cargo check, clippy, fmt, taplo, typos, nix fmt, actionlint
 just build               # build workspace (candle)
 just build-onnx          # build workspace (onnx-fetch)
-just test                # run tests
+just test / just t       # run tests
 just e2e                 # run ML e2e tests (requires HF_TOKEN, see below)
 just bench-candle        # benchmark ML inference, candle backend (requires HF_TOKEN)
 just bench-onnx          # benchmark ML inference, ONNX backend (requires HF_TOKEN)
 just clippy              # lint
-just mutants             # mutation testing (slow; pass -p <crate> to scope)
+just mutants             # mutation testing, all mutants (slow)
 just mutants-diff        # mutation testing on changes vs main
 just fmt                 # format all (rust + toml)
 just setup-hooks         # install git hooks (lefthook)
