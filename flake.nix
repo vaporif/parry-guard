@@ -23,16 +23,27 @@
         f {
           pkgs = nixpkgs.legacyPackages.${system};
           fenixPkgs = fenix.packages.${system};
-          craneLib =
-            (crane.mkLib nixpkgs.legacyPackages.${system}).overrideToolchain
-            fenix.packages.${system}.stable.toolchain;
         });
+
+    rustToolchain = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain;
+    # Hash of https://static.rust-lang.org/dist/channel-rust-<channel>.toml; update with the channel
+    rustToolchainSha256 = "sha256-zm3dyIY2T414ZRR3EhLOvptzG6gta4WZUcawzMUWtqI=";
 
     perSystem = forAllSystems ({
       pkgs,
       fenixPkgs,
-      craneLib,
     }: let
+      rustOf = fp:
+        fp.toolchainOf {
+          inherit (rustToolchain) channel;
+          sha256 = rustToolchainSha256;
+        };
+      rust = rustOf fenixPkgs;
+      targetStd = target: (rustOf fenixPkgs.targets.${target}).rust-std;
+
+      toolchain = rust.withComponents rustToolchain.components;
+      craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
+
       src = craneLib.cleanCargoSource ./.;
       onnxruntime-bin = pkgs.callPackage ./nix/onnxruntime.nix {};
       commonArgs = {
@@ -103,43 +114,15 @@
           inherit meta;
         };
 
-      toolchain = fenixPkgs.stable.withComponents [
-        "cargo"
-        "clippy"
-        "rustc"
-        "rustfmt"
-        "rust-src"
-        "rust-analyzer"
-        "llvm-tools"
-      ];
-
       # Extended toolchain for the dev shell — adds cross targets
-      devToolchain =
+      devToolchain = let
+        withTargets = targets:
+          fenixPkgs.combine (map (c: rust.${c}) rustToolchain.components ++ map targetStd targets);
+      in
         if pkgs.stdenv.isLinux
-        then
-          fenixPkgs.combine [
-            fenixPkgs.stable.cargo
-            fenixPkgs.stable.clippy
-            fenixPkgs.stable.rustc
-            fenixPkgs.stable.rustfmt
-            fenixPkgs.stable.rust-src
-            fenixPkgs.stable.rust-analyzer
-            fenixPkgs.stable.llvm-tools
-            fenixPkgs.targets."x86_64-unknown-linux-musl".stable.rust-std
-            fenixPkgs.targets."aarch64-unknown-linux-musl".stable.rust-std
-          ]
+        then withTargets ["x86_64-unknown-linux-musl" "aarch64-unknown-linux-musl"]
         else if pkgs.stdenv.isDarwin && pkgs.stdenv.isAarch64
-        then
-          fenixPkgs.combine [
-            fenixPkgs.stable.cargo
-            fenixPkgs.stable.clippy
-            fenixPkgs.stable.rustc
-            fenixPkgs.stable.rustfmt
-            fenixPkgs.stable.rust-src
-            fenixPkgs.stable.rust-analyzer
-            fenixPkgs.stable.llvm-tools
-            fenixPkgs.targets."x86_64-apple-darwin".stable.rust-std
-          ]
+        then withTargets ["x86_64-apple-darwin"]
         else toolchain;
 
       maturinVendorDir = craneLib.vendorCargoDeps {inherit src;};
