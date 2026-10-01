@@ -32,6 +32,9 @@ features = ["candle"]
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+interprocess.workspace = true
+tokio-util.workspace = true
+futures-util.workspace = true
 
 [lints]
 workspace = true

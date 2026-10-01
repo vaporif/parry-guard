@@ -213,6 +213,46 @@ pub(crate) mod test_util {
     pub fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
         parry_guard_core::repo_db::RepoDb::open(Some(dir)).unwrap()
     }
+
+    /// Text containing this marker is reported as injection by [`fake_daemon`].
+    pub const FAKE_ML_INJECTION: &str = "FAKE_ML_INJECTION_MARKER";
+
+    /// Serve the daemon protocol from `runtime_dir` without loading a model.
+    /// Answers `Injection` for text containing [`FAKE_ML_INJECTION`], `Clean` otherwise.
+    pub fn fake_daemon(runtime_dir: &Path) {
+        use futures_util::{SinkExt, StreamExt};
+        use interprocess::local_socket::traits::tokio::Listener as _;
+        use parry_guard_daemon::protocol::{DaemonCodec, ScanResponse, ScanType};
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()
+            .unwrap();
+        let listener = rt
+            .block_on(async { parry_guard_daemon::transport::bind_async(Some(runtime_dir)) })
+            .unwrap();
+        std::thread::spawn(move || {
+            rt.block_on(async move {
+                while let Ok(stream) = listener.accept().await {
+                    tokio::spawn(async move {
+                        let mut framed = tokio_util::codec::Framed::new(stream, DaemonCodec);
+                        while let Some(Ok(req)) = framed.next().await {
+                            let resp = match req.scan_type {
+                                ScanType::Ping => ScanResponse::Pong,
+                                ScanType::Full if req.text.contains(FAKE_ML_INJECTION) => {
+                                    ScanResponse::Injection
+                                }
+                                ScanType::Full => ScanResponse::Clean,
+                            };
+                            if framed.send(resp).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    }
 }
 
 #[cfg(test)]

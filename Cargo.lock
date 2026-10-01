@@ -1977,6 +1977,8 @@ name = "parry-guard-hook"
 version = "0.2.0"
 dependencies = [
  "blake3",
+ "futures-util",
+ "interprocess",
  "parry-guard-core",
  "parry-guard-daemon",
  "parry-guard-destructive",
@@ -1985,6 +1987,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
