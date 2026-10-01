@@ -10,15 +10,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
-    let mut dir = std::env::current_exe()
-        .expect("cannot resolve test binary path")
-        .parent()
-        .expect("no parent dir")
-        .to_path_buf();
-    if dir.ends_with("deps") {
-        dir.pop();
-    }
-    let mut cmd = Command::new(dir.join("parry-guard"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_parry-guard"));
     cmd.env("PARRY_LOG", "off");
     if let Some(rd) = runtime_dir {
         cmd.env("PARRY_RUNTIME_DIR", rd);

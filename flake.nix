@@ -168,12 +168,6 @@
           candle-nextest = craneLib.cargoNextest (candleArgs
             // {
               cargoArtifacts = candleArtifacts;
-              # Build the real binary before tests — nextest only builds test
-              # harnesses, leaving the stub from buildDepsOnly in place.
-              # E2E tests spawn `parry-guard` and need the actual binary.
-              preCheck = ''
-                cargo build --release --no-default-features --features candle -p parry-guard
-              '';
             });
 
           taplo =
@@ -240,9 +234,6 @@
           onnx-nextest = craneLib.cargoNextest (onnxArgs
             // {
               cargoArtifacts = onnxArtifacts;
-              preCheck = ''
-                cargo build --release --no-default-features --features onnx -p parry-guard
-              '';
             });
         };
 

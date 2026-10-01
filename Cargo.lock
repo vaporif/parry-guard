@@ -1883,6 +1883,7 @@ dependencies = [
  "parry-guard-ml",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1941,14 +1942,6 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "tree-sitter-bash",
-]
-
-[[package]]
-name = "parry-guard-e2e"
-version = "0.0.0"
-dependencies = [
- "serde_json",
- "tempfile",
 ]
 
 [[package]]
