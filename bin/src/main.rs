@@ -356,8 +356,10 @@ fn command_name() -> &'static str {
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::canonicalize(p).ok());
-    let path_str = exe.as_deref().and_then(|p| p.to_str()).unwrap_or("");
+    command_name_for(exe.as_deref().and_then(|p| p.to_str()).unwrap_or(""))
+}
 
+fn command_name_for(path_str: &str) -> &'static str {
     if path_str.contains("/.cache/uv/") || path_str.contains("/.local/share/uv/") {
         "uvx parry-guard"
     } else if path_str.contains("/.cache/rvx/") || path_str.contains("/.local/share/rvx/") {
@@ -369,13 +371,17 @@ fn command_name() -> &'static str {
 
 fn is_under_ignore_dirs(repo_path: &str, ignore_dirs: &[String]) -> bool {
     let repo = std::path::Path::new(repo_path);
-    ignore_dirs.iter().any(|dir| {
-        let canonical = std::fs::canonicalize(dir).ok();
-        let dir_path = canonical
-            .as_deref()
-            .unwrap_or_else(|| std::path::Path::new(dir));
-        repo.starts_with(dir_path)
-    })
+    // empty entries (e.g. trailing comma) would match every path via starts_with("")
+    ignore_dirs
+        .iter()
+        .filter(|d| !d.trim().is_empty())
+        .any(|dir| {
+            let canonical = std::fs::canonicalize(dir).ok();
+            let dir_path = canonical
+                .as_deref()
+                .unwrap_or_else(|| std::path::Path::new(dir));
+            repo.starts_with(dir_path)
+        })
 }
 
 fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode> {
@@ -633,5 +639,89 @@ mod tests {
         assert!(line.contains("/home/user/project"));
         assert!(line.contains("monitored"));
         assert!(line.contains("(git@github.com:a/b)"));
+    }
+
+    fn extra(keys: &[&str]) -> serde_json::Map<String, serde_json::Value> {
+        keys.iter()
+            .map(|k| ((*k).to_string(), serde_json::Value::Null))
+            .collect()
+    }
+
+    #[test]
+    fn hook_runner_detects_codex() {
+        assert_eq!(
+            HookRunner::from_extra_fields(&extra(&["turn_id", "tool_use_id"])),
+            HookRunner::Codex
+        );
+        assert_eq!(
+            HookRunner::from_extra_fields(&extra(&["turn_id", "permission_mode"])),
+            HookRunner::Codex
+        );
+    }
+
+    #[test]
+    fn hook_runner_defaults_to_claude() {
+        for keys in [
+            &[][..],
+            &["turn_id"],
+            &["tool_use_id"],
+            &["permission_mode"],
+            &["tool_use_id", "permission_mode"],
+        ] {
+            assert_eq!(
+                HookRunner::from_extra_fields(&extra(keys)),
+                HookRunner::Claude,
+                "keys: {keys:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hook_runner_ask_blocking() {
+        assert!(HookRunner::Codex.blocks_ask_decisions());
+        assert!(!HookRunner::Claude.blocks_ask_decisions());
+    }
+
+    #[test]
+    fn command_name_detects_installer() {
+        assert_eq!(
+            command_name_for("/home/u/.cache/uv/archive/bin/parry-guard"),
+            "uvx parry-guard"
+        );
+        assert_eq!(
+            command_name_for("/home/u/.local/share/uv/tools/bin/parry-guard"),
+            "uvx parry-guard"
+        );
+        assert_eq!(
+            command_name_for("/home/u/.cache/rvx/bin/parry-guard"),
+            "rvx parry-guard"
+        );
+        assert_eq!(
+            command_name_for("/home/u/.local/share/rvx/bin/parry-guard"),
+            "rvx parry-guard"
+        );
+        assert_eq!(
+            command_name_for("/usr/local/bin/parry-guard"),
+            "parry-guard"
+        );
+        assert_eq!(command_name_for(""), "parry-guard");
+    }
+
+    #[test]
+    fn ignore_dirs_matches_prefix_only() {
+        let dirs = vec!["/nonexistent/parent".to_string()];
+        assert!(is_under_ignore_dirs("/nonexistent/parent/repo", &dirs));
+        assert!(!is_under_ignore_dirs("/nonexistent/other/repo", &dirs));
+        assert!(!is_under_ignore_dirs("/nonexistent/parent/repo", &[]));
+    }
+
+    #[test]
+    fn ignore_dirs_skips_empty_entries() {
+        let dirs = vec![
+            String::new(),
+            "  ".to_string(),
+            "/nonexistent/a".to_string(),
+        ];
+        assert!(!is_under_ignore_dirs("/home/user/repo", &dirs));
     }
 }

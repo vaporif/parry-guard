@@ -179,4 +179,63 @@ mod tests {
         let cli = Cli::try_parse_from(["parry-guard", "--ignore-dirs", "/a,/b,/c"]).unwrap();
         assert_eq!(cli.ignore_dirs, vec!["/a", "/b", "/c"]);
     }
+
+    #[test]
+    fn threshold_accepts_bounds() {
+        assert!((threshold_in_range("0.0").unwrap() - 0.0).abs() < f32::EPSILON);
+        assert!((threshold_in_range("0.42").unwrap() - 0.42).abs() < f32::EPSILON);
+        assert!((threshold_in_range("1.0").unwrap() - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn threshold_rejects_out_of_range() {
+        assert!(threshold_in_range("-0.1").is_err());
+        assert!(threshold_in_range("1.01").is_err());
+        assert!(threshold_in_range("abc").is_err());
+    }
+
+    fn cli_with(hf_token: Option<&str>, hf_token_path: Option<PathBuf>) -> Cli {
+        let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        cli.hf_token = hf_token.map(String::from);
+        cli.hf_token_path = hf_token_path;
+        cli
+    }
+
+    #[test]
+    fn hf_token_direct_value_trimmed() {
+        let cli = cli_with(Some("  tok123\n"), None);
+        assert_eq!(cli.resolve_hf_token().as_deref(), Some("tok123"));
+    }
+
+    #[test]
+    fn hf_token_direct_wins_over_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "from-file").unwrap();
+        let cli = cli_with(Some("direct"), Some(path));
+        assert_eq!(cli.resolve_hf_token().as_deref(), Some("direct"));
+    }
+
+    #[test]
+    fn hf_token_blank_direct_falls_back_to_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "  from-file\n").unwrap();
+        let cli = cli_with(Some("   "), Some(path));
+        assert_eq!(cli.resolve_hf_token().as_deref(), Some("from-file"));
+    }
+
+    #[test]
+    fn read_token_file_cases() {
+        let dir = tempfile::tempdir().unwrap();
+        let tok = dir.path().join("tok");
+        std::fs::write(&tok, " abc \n").unwrap();
+        assert_eq!(read_token_file(&tok).as_deref(), Some("abc"));
+
+        let blank = dir.path().join("blank");
+        std::fs::write(&blank, " \n").unwrap();
+        assert_eq!(read_token_file(&blank), None);
+
+        assert_eq!(read_token_file(&dir.path().join("missing")), None);
+    }
 }
