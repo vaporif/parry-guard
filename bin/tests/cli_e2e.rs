@@ -1141,3 +1141,15 @@ fn status_reports_audit_findings() {
     assert!(s.contains("finding(s)"), "status output: {s}");
     assert!(!s.contains("clean"), "status output: {s}");
 }
+
+#[test]
+fn status_reports_clean_audit() {
+    let (dir, rt) = monitored_dir();
+    let out = run_parry_with_retry_rt(
+        &["status", dir.path().to_str().unwrap()],
+        dir.path(),
+        Some(rt.path()),
+    );
+    let s = stdout(&out);
+    assert!(s.contains("clean (no findings)"), "status output: {s}");
+}
