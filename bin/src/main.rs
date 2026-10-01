@@ -298,7 +298,7 @@ fn run_audit(
     let warnings = match parry_guard_hook::project_audit::scan(&dir, config, scan_db, scan_rp) {
         Ok(w) => w,
         Err(e) => {
-            if is_first_run && ask_on_new_project {
+            if audit_failure_is_soft(repo_state, ask_on_new_project) {
                 // soft-fail: unknown repos in prompt mode
                 warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
                 ml_unavailable = true;
@@ -348,6 +348,15 @@ fn run_audit(
     }
 
     ExitCode::SUCCESS
+}
+
+/// Only repos the user hasn't opted into yet (prompt mode) may proceed without ML;
+/// everything else fails closed.
+fn audit_failure_is_soft(
+    repo_state: parry_guard_core::repo_db::RepoState,
+    ask_on_new_project: bool,
+) -> bool {
+    repo_state == parry_guard_core::repo_db::RepoState::Unknown && ask_on_new_project
 }
 
 /// Detect the command prefix based on how the binary was installed.
@@ -705,6 +714,15 @@ mod tests {
             "parry-guard"
         );
         assert_eq!(command_name_for(""), "parry-guard");
+    }
+
+    #[test]
+    fn audit_failure_soft_only_for_unknown_in_prompt_mode() {
+        use parry_guard_core::repo_db::RepoState;
+        assert!(audit_failure_is_soft(RepoState::Unknown, true));
+        assert!(!audit_failure_is_soft(RepoState::Unknown, false));
+        assert!(!audit_failure_is_soft(RepoState::Monitored, true));
+        assert!(!audit_failure_is_soft(RepoState::Monitored, false));
     }
 
     #[test]

@@ -1095,33 +1095,6 @@ fn ignore_dirs_empty_entry_does_not_skip_all() {
 }
 
 #[test]
-fn monitored_repo_audit_fails_closed_with_ask_on_new_project() {
-    if std::env::var("NIX_BUILD_TOP").is_ok() {
-        return;
-    }
-    let (dir, rt) = monitored_dir();
-    let commands = dir.path().join(".claude/commands");
-    std::fs::create_dir_all(&commands).unwrap();
-    // clean text passes fast scan and needs ML, which is unavailable here
-    std::fs::write(commands.join("help.md"), "# Help\nNormal content.").unwrap();
-
-    let json = serde_json::json!({
-        "tool_name": null, "tool_input": {},
-        "hook_event_name": "UserPromptSubmit",
-        "cwd": dir.path().to_str().unwrap()
-    })
-    .to_string();
-    let out = run_hook_rt(
-        dir.path(),
-        &json,
-        Some(rt.path()),
-        &[("PARRY_ASK_ON_NEW_PROJECT", "true")],
-    );
-    assert!(!out.status.success(), "known repo must fail closed");
-    assert_context_contains(&out, "project audit failed");
-}
-
-#[test]
 fn status_reports_audit_findings() {
     let (dir, rt) = monitored_dir();
     let claude_dir = dir.path().join(".claude");
