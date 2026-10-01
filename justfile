@@ -67,6 +67,16 @@ check-typos:
 lint-actions:
     actionlint
 
+# Run mutation testing (args go to cargo mutants, e.g. -p parry-guard-core)
+mutants *args:
+    cargo mutants {{args}}
+
+# Run mutation testing on lines changed vs main
+mutants-diff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo mutants --in-diff <(git diff main...)
+
 # Run ML e2e tests (requires HF_TOKEN)
 e2e:
     cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
@@ -99,6 +109,6 @@ bump:
     sed "s/\(parry-[a-z]* = { path = \"[^\"]*\", version = \)\"[^\"]*\"/\1\"${new}\"/" Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
     echo "Bumped ${current} → ${new}"
 
-# Set up git hooks
+# Install git hooks
 setup-hooks:
-    git config core.hooksPath .githooks
+    lefthook install

@@ -32,6 +32,9 @@ tree-sitter-perl.workspace = true
 tree-sitter-r.workspace = true
 tree-sitter-nix.workspace = true
 
+[dev-dependencies]
+rstest.workspace = true
+
 [package.metadata.docs.rs]
 all-features = true
 

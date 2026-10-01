@@ -58,8 +58,10 @@ just e2e                 # run ML e2e tests (requires HF_TOKEN, see below)
 just bench-candle        # benchmark ML inference, candle backend (requires HF_TOKEN)
 just bench-onnx          # benchmark ML inference, ONNX backend (requires HF_TOKEN)
 just clippy              # lint
+just mutants             # mutation testing (slow; pass -p <crate> to scope)
+just mutants-diff        # mutation testing on changes vs main
 just fmt                 # format all (rust + toml)
-just setup-hooks         # configure git hooks
+just setup-hooks         # install git hooks (lefthook)
 ```
 
 ### ML end-to-end tests

@@ -255,8 +255,10 @@
             pkgs.typos
             pkgs.alejandra
             pkgs.actionlint
+            pkgs.lefthook
             pkgs.cargo-nextest
             pkgs.cargo-llvm-cov
+            pkgs.cargo-mutants
             pkgs.maturin
             pkgs.python3
           ]

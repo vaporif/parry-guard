@@ -49,31 +49,3 @@ impl LangExfilDetector for LuaDetector {
         "
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use tree_sitter::Query;
-
-    use super::*;
-
-    #[test]
-    fn network_sink_query_is_valid() {
-        let detector = LuaDetector;
-        let result = Query::new(&detector.language(), detector.network_sink_query());
-        assert!(result.is_ok(), "Query error: {:?}", result.err());
-    }
-
-    #[test]
-    fn file_source_query_is_valid() {
-        let detector = LuaDetector;
-        let result = Query::new(&detector.language(), detector.file_source_query());
-        assert!(result.is_ok(), "Query error: {:?}", result.err());
-    }
-
-    #[test]
-    fn string_literal_query_is_valid() {
-        let detector = LuaDetector;
-        let result = Query::new(&detector.language(), detector.string_literal_query());
-        assert!(result.is_ok(), "Query error: {:?}", result.err());
-    }
-}
