@@ -51,7 +51,7 @@ struct ModelsConfig {
 const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
 
 /// Runtime configuration for parry scanning.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub hf_token: Option<String>,
     pub threshold: f32,
@@ -65,6 +65,19 @@ pub struct Config {
     /// `None` means use default paths (`~/.parry-guard/` for daemon, cwd for hook files).
     /// Set in tests to avoid process-global env var mutation.
     pub runtime_dir: Option<PathBuf>,
+}
+
+// manual impl: Config is recorded by tracing spans, keep the token out of logs
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("hf_token", &self.hf_token.as_ref().map(|_| "<redacted>"))
+            .field("threshold", &self.threshold)
+            .field("claude_md_threshold", &self.claude_md_threshold)
+            .field("scan_mode", &self.scan_mode)
+            .field("runtime_dir", &self.runtime_dir)
+            .finish()
+    }
 }
 
 impl Config {
@@ -204,5 +217,16 @@ mod tests {
             0.9f32.to_bits(),
             "default CLAUDE.md threshold should be 0.9"
         );
+    }
+
+    #[test]
+    fn debug_redacts_hf_token() {
+        let config = Config {
+            hf_token: Some("hf_secret123".into()),
+            ..Config::default()
+        };
+        let dbg = format!("{config:?}");
+        assert!(!dbg.contains("hf_secret123"), "{dbg}");
+        assert!(dbg.contains("<redacted>"), "{dbg}");
     }
 }

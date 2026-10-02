@@ -1,0 +1,3 @@
+test_tool = "nextest"
+# Backend tests need model downloads (HF_TOKEN) and are ignored by default
+exclude_globs = ["crates/ml/src/candle.rs", "crates/ml/src/onnx.rs"]

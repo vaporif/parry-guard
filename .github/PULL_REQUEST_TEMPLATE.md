@@ -11,7 +11,7 @@ closes: #XXXX
 Before submitting, please make sure the following are done. If an item is not applicable, check it and add a note why.
 
 - [ ] Linked to a GitHub issue (for non-trivial changes)
-- [ ] `just check` passes
+- [ ] `just c` and `just t` pass
 - [ ] Added or updated tests for the changes
 - [ ] Reviewed my own code in the `Files changed` tab
 

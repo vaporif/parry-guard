@@ -1,0 +1,22 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      glob: "*.rs"
+      run: cargo fmt --all
+      stage_fixed: true
+    - name: taplo
+      glob: "*.toml"
+      run: taplo fmt {staged_files}
+      stage_fixed: true
+    - name: alejandra
+      glob: "*.nix"
+      run: alejandra {staged_files}
+      stage_fixed: true
+    - name: typos
+      run: typos --force-exclude {staged_files}
+
+pre-push:
+  jobs:
+    - name: check
+      run: just check && just test

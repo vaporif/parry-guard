@@ -2,8 +2,14 @@
 default:
     @just --list
 
-# Run all checks
-check: clippy test check-fmt lint
+# Run checks (compile, clippy, fmt, lints)
+check: cargo-check clippy check-fmt lint
+
+alias c := check
+
+# Type-check workspace
+cargo-check:
+    cargo check --workspace
 
 # Lint all
 lint: lint-toml check-typos check-nix-fmt lint-actions
@@ -26,6 +32,8 @@ clippy:
 # Run tests
 test:
     cargo nextest run --workspace
+
+alias t := test
 
 # Generate coverage (lcov)
 coverage:
@@ -67,6 +75,16 @@ check-typos:
 lint-actions:
     actionlint
 
+# Run mutation testing on the whole workspace
+mutants:
+    cargo mutants
+
+# Run mutation testing on lines changed vs main
+mutants-diff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo mutants --in-diff <(git diff main...)
+
 # Run ML e2e tests (requires HF_TOKEN)
 e2e:
     cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
@@ -99,6 +117,6 @@ bump:
     sed "s/\(parry-[a-z]* = { path = \"[^\"]*\", version = \)\"[^\"]*\"/\1\"${new}\"/" Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
     echo "Bumped ${current} → ${new}"
 
-# Set up git hooks
+# Install git hooks
 setup-hooks:
-    git config core.hooksPath .githooks
+    lefthook install

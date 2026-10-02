@@ -138,7 +138,60 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
+    use crate::elixir::ElixirDetector;
+    use crate::groovy::GroovyDetector;
+    use crate::javascript::JavaScriptDetector;
+    use crate::julia::JuliaDetector;
+    use crate::kotlin::KotlinDetector;
+    use crate::lua::LuaDetector;
+    use crate::nix::NixDetector;
+    use crate::perl::PerlDetector;
+    use crate::php::PhpDetector;
+    use crate::powershell::PowerShellDetector;
+    use crate::python::PythonDetector;
+    use crate::r::RDetector;
+    use crate::ruby::RubyDetector;
+    use crate::scala::ScalaDetector;
+
+    type QueryFn = fn(&dyn LangExfilDetector) -> &'static str;
+
+    fn network_sink(d: &dyn LangExfilDetector) -> &'static str {
+        d.network_sink_query()
+    }
+
+    fn file_source(d: &dyn LangExfilDetector) -> &'static str {
+        d.file_source_query()
+    }
+
+    fn string_literal(d: &dyn LangExfilDetector) -> &'static str {
+        d.string_literal_query()
+    }
+
+    #[rstest]
+    #[case::elixir(&ElixirDetector)]
+    #[case::groovy(&GroovyDetector)]
+    #[case::javascript(&JavaScriptDetector)]
+    #[case::julia(&JuliaDetector)]
+    #[case::kotlin(&KotlinDetector)]
+    #[case::lua(&LuaDetector)]
+    #[case::nix(&NixDetector)]
+    #[case::perl(&PerlDetector)]
+    #[case::php(&PhpDetector)]
+    #[case::powershell(&PowerShellDetector)]
+    #[case::python(&PythonDetector)]
+    #[case::r(&RDetector)]
+    #[case::ruby(&RubyDetector)]
+    #[case::scala(&ScalaDetector)]
+    fn query_is_valid(
+        #[case] detector: &dyn LangExfilDetector,
+        #[values(network_sink, file_source, string_literal)] query: QueryFn,
+    ) {
+        let result = Query::new(&detector.language(), query(detector));
+        assert!(result.is_ok(), "Query error: {:?}", result.err());
+    }
 
     #[test]
     fn test_contains_ip_url() {

@@ -49,7 +49,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Generate coverage
-        run: nix develop --command cargo llvm-cov nextest --workspace --exclude parry-guard-e2e --lcov --output-path lcov.info
+        run: nix develop --command cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
@@ -82,7 +82,7 @@ jobs:
         run: cargo clippy --workspace --no-default-features --features onnx-fetch -- -D warnings
 
       - name: Test
-        run: cargo nextest run --workspace --exclude parry-guard-e2e --no-default-features --features onnx-fetch
+        run: cargo nextest run --workspace --no-default-features --features onnx-fetch
 
   build:
     name: Nix build (${{ matrix.backend }}, ${{ matrix.os }})

@@ -826,4 +826,82 @@ mod tests {
         assert!(msg.contains("ML unavailable"));
         assert!(!msg.contains("no issues found"));
     }
+
+    fn findings(n: usize) -> Vec<AuditWarning> {
+        (0..n)
+            .map(|i| AuditWarning {
+                category: "INJECTION",
+                message: format!("finding {i}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn opt_in_message_shows_all_three_findings() {
+        let msg = format_opt_in_message(&findings(3), "/repo", "parry-guard", false);
+        assert!(msg.contains("Findings:"));
+        assert!(!msg.contains("showing first"));
+        assert!(msg.contains("finding 2"));
+    }
+
+    #[test]
+    fn opt_in_message_no_partial_note_with_findings() {
+        let msg = format_opt_in_message(&findings(1), "/repo", "parry-guard", false);
+        assert!(!msg.contains("ML unavailable"));
+        assert!(!msg.contains("no issues found"));
+    }
+
+    #[test]
+    fn clean_cache_invalidated_when_settings_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(claude_dir.join("settings.json"), r#"{"permissions":{}}"#).unwrap();
+        let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
+        assert!(scan(dir.path(), &config, Some(&db), Some(rp))
+            .unwrap()
+            .is_empty());
+
+        std::fs::write(
+            claude_dir.join("settings.json"),
+            r#"{"permissions":{"allow":["Bash(rm -rf /)"],"deny":[]}}"#,
+        )
+        .unwrap();
+        assert!(
+            !scan(dir.path(), &config, Some(&db), Some(rp))
+                .unwrap()
+                .is_empty(),
+            "changed settings must bypass the clean cache"
+        );
+    }
+
+    #[test]
+    fn clean_cache_invalidated_when_command_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let commands = dir.path().join(".claude").join("commands");
+        std::fs::create_dir_all(&commands).unwrap();
+        std::fs::write(commands.join("help.md"), "# Help\nNormal content.").unwrap();
+        crate::test_util::fake_daemon(dir.path());
+        let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
+        assert!(scan(dir.path(), &config, Some(&db), Some(rp))
+            .unwrap()
+            .is_empty());
+
+        std::fs::write(
+            commands.join("help.md"),
+            crate::test_util::FAKE_ML_INJECTION,
+        )
+        .unwrap();
+        let warnings = scan(dir.path(), &config, Some(&db), Some(rp)).unwrap();
+        assert_eq!(
+            warnings.len(),
+            1,
+            "changed command must bypass the clean cache"
+        );
+        assert_eq!(warnings[0].category, "INJECTION");
+    }
 }

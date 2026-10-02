@@ -153,7 +153,17 @@ mod tests {
             rd,
         );
         let ctx = read_context(rd).unwrap();
-        assert!(ctx.contains("timestamp:"));
+        let ts: u64 = ctx
+            .lines()
+            .find_map(|l| l.strip_prefix("timestamp: "))
+            .unwrap()
+            .parse()
+            .unwrap();
+        // 2023-11-14, well past any mutated constant
+        assert!(
+            ts > 1_700_000_000,
+            "timestamp should be real epoch secs: {ts}"
+        );
         assert!(ctx.contains("source: file: /tmp/evil.md"));
     }
 
