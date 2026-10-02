@@ -9,7 +9,7 @@ use crate::interpreter::{check_interpreter_inline_code, check_shell_inline_code}
 use crate::patterns;
 use crate::util::{
     get_command_name, has_sensitive_path, has_sensitive_path_expanded, is_interpreter,
-    is_network_sink, is_sensitive_source_cmd, is_shell_interpreter, node_text,
+    is_network_sink, is_sensitive_source_cmd, is_shell_interpreter, node_text, strip_quotes,
 };
 
 pub fn check_node(node: Node, source: &[u8]) -> Option<String> {
@@ -73,10 +73,9 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // nested pipelines
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
-        if let Some(reason) = check_node_nested(child, source) {
+        if let Some(reason) = check_node(child, source) {
             return Some(reason);
         }
     }
@@ -183,10 +182,9 @@ fn check_redirect(node: Node, source: &[u8]) -> Option<String> {
         ));
     }
 
-    // nested patterns
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
-        if let Some(reason) = check_node_nested(child, source) {
+        if let Some(reason) = check_node(child, source) {
             return Some(reason);
         }
     }
@@ -251,15 +249,14 @@ fn check_alias_definition(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
-        let kind = child.kind();
-        if kind == "word" || kind == "string" || kind == "raw_string" || kind == "concatenation" {
-            let text = node_text(child, source);
+        if matches!(
+            child.kind(),
+            "word" | "string" | "raw_string" | "ansi_c_string" | "concatenation"
+        ) {
+            let text = unquote_shell_word(node_text(child, source));
 
-            if let Some(eq_pos) = text.find('=') {
-                let alias_name = &text[..eq_pos];
-                let alias_value = &text[eq_pos + 1..];
-
-                let value = crate::util::strip_quotes(alias_value);
+            if let Some((alias_name, alias_value)) = text.split_once('=') {
+                let value = unquote_shell_word(alias_value);
 
                 if let Ok(Some(tree)) = crate::parse_bash(value) {
                     if let Some(reason) = check_node(tree.root_node(), value.as_bytes()) {
@@ -272,6 +269,15 @@ fn check_alias_definition(node: Node, source: &[u8]) -> Option<String> {
         }
     }
     None
+}
+
+/// Strip one layer of `'...'`, `"..."`, `$'...'` or `$"..."` quoting.
+fn unquote_shell_word(text: &str) -> &str {
+    let text = match text.strip_prefix('$') {
+        Some(rest) if rest.starts_with(['\'', '"']) => rest,
+        _ => text,
+    };
+    strip_quotes(text)
 }
 
 fn check_command_substitution_in_args(
@@ -355,16 +361,6 @@ fn check_at_file_args(node: Node, source: &[u8], cmd_name: &str) -> Option<Strin
     None
 }
 
-fn check_node_nested(node: Node, source: &[u8]) -> Option<String> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(reason) = check_node(child, source) {
-            return Some(reason);
-        }
-    }
-    None
-}
-
 fn command_has_sensitive_path(node: Node, source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -428,43 +424,27 @@ fn is_ip_url(text: &str) -> bool {
 
 /// busybox sh -c "..." -- detect the shell applet and then delegate to shell re-parsing.
 fn check_busybox_shell(node: Node, source: &[u8]) -> Option<String> {
-    let mut cursor = node.walk();
-    let children: Vec<_> = node.children(&mut cursor).collect();
-
-    let mut found_shell = false;
-    let mut i = 0;
-    for child in &children {
-        if child.kind() == "command_name" {
-            i += 1;
-            continue;
-        }
-        if child.kind() == "word" {
-            let text = node_text(*child, source);
-            if is_shell_interpreter(text) {
-                found_shell = true;
-            }
-            i += 1;
-            break;
-        }
-        i += 1;
-    }
-
-    if !found_shell {
+    let applet = node.child_by_field_name("argument")?;
+    if !is_shell_interpreter(strip_quotes(node_text(applet, source))) {
         return None;
     }
+    check_shell_inline_code(node, source, "busybox")
+}
 
-    while i < children.len() {
-        let text = node_text(children[i], source);
-        if text == "-c" {
-            if let Some(&code_node) = children.get(i + 1) {
-                let raw = node_text(code_node, source);
-                let code_str = crate::util::strip_quotes(raw);
-                if let Ok(Some(inner_reason)) = crate::detect_exfiltration(code_str) {
-                    return Some(format!("Shell 'busybox -c' wrapping exfil: {inner_reason}"));
-                }
-            }
-        }
-        i += 1;
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::single("'a b'", "a b")]
+    #[case::double("\"a b\"", "a b")]
+    #[case::ansi_c("$'a b'", "a b")]
+    #[case::translated("$\"a b\"", "a b")]
+    #[case::variable("$a", "$a")]
+    #[case::bare("a", "a")]
+    fn unquotes_shell_word(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(unquote_shell_word(input), expected);
     }
-    None
 }

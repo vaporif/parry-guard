@@ -394,4 +394,25 @@ mod tests {
         let secrets = CompiledSecrets::from_config(&config);
         assert!(!secrets.has_secret("AKIAIOSFODNN7EXAMPLE"));
     }
+
+    #[test]
+    fn pattern_config_loads_from_config_dir() {
+        let home = tempfile::tempdir().unwrap();
+        // SAFETY: nextest runs each test in its own process
+        unsafe {
+            std::env::set_var("HOME", home.path());
+            std::env::set_var("XDG_CONFIG_HOME", home.path().join(".config"));
+        }
+        let dir = dirs::config_dir().unwrap().join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("patterns.toml"),
+            "[secrets]\nadd = [\"CUSTOM_[0-9]{4}\"]\nremove = [\"AKIA[0-9A-Z]{16}\"]\n",
+        )
+        .unwrap();
+
+        let config = PatternConfig::load();
+        assert_eq!(config.secrets.add, ["CUSTOM_[0-9]{4}"]);
+        assert_eq!(config.secrets.remove, ["AKIA[0-9A-Z]{16}"]);
+    }
 }

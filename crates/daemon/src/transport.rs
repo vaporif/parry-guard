@@ -185,6 +185,83 @@ mod tests {
     }
 
     #[test]
+    fn parry_dir_defaults_to_home() {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap();
+        assert_eq!(parry_dir(None).unwrap(), home.join(".parry-guard"));
+    }
+
+    #[test]
+    fn socket_exists_tracks_socket_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!socket_exists(Some(dir.path())));
+        std::fs::write(dir.path().join("parry-guard.sock"), "").unwrap();
+        assert!(socket_exists(Some(dir.path())));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn is_process_alive_detects_live_and_dead_processes() {
+        assert!(is_process_alive(std::process::id()));
+        assert!(is_process_alive(std::os::unix::process::parent_id()));
+        assert!(!is_process_alive(0), "pid 0 addresses the process group");
+        assert!(!is_process_alive(u32::MAX));
+
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert!(!is_process_alive(pid));
+    }
+
+    fn write_state(dir: &Path, pid: &str) -> (PathBuf, PathBuf) {
+        let pid_path = pid_file_path(Some(dir)).unwrap();
+        let sock = socket_path(Some(dir)).unwrap();
+        std::fs::write(&pid_path, pid).unwrap();
+        std::fs::write(&sock, "").unwrap();
+        (pid_path, sock)
+    }
+
+    #[test]
+    fn cleanup_keeps_state_of_live_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pid_path, sock) = write_state(dir.path(), &std::process::id().to_string());
+        cleanup_stale_state(Some(dir.path()));
+        assert!(pid_path.exists());
+        assert!(sock.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cleanup_removes_state_of_dead_daemon() {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let (pid_path, sock) = write_state(dir.path(), &pid.to_string());
+        cleanup_stale_state(Some(dir.path()));
+        assert!(!pid_path.exists());
+        assert!(!sock.exists());
+    }
+
+    #[test]
+    fn cleanup_removes_corrupt_pid_file_and_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pid_path, sock) = write_state(dir.path(), "not-a-pid");
+        cleanup_stale_state(Some(dir.path()));
+        assert!(!pid_path.exists());
+        assert!(!sock.exists());
+    }
+
+    #[test]
+    fn cleanup_removes_orphaned_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = socket_path(Some(dir.path())).unwrap();
+        std::fs::write(&sock, "").unwrap();
+        cleanup_stale_state(Some(dir.path()));
+        assert!(!sock.exists());
+    }
+
+    #[test]
     fn connect_fails_without_listener() {
         let dir = tempfile::tempdir().unwrap();
         let result = Stream::connect(Duration::from_millis(50), Some(dir.path()));

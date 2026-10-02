@@ -780,6 +780,7 @@ mod tests {
         assert!(msg.contains("[Parry Guard]"));
         assert!(msg.contains("/path/to/repo"));
         assert!(msg.contains("no issues found"));
+        assert!(!msg.contains("ML unavailable"));
         assert!(msg.contains("parry-guard monitor"));
         assert!(msg.contains("parry-guard ignore"));
         assert!(msg.contains("prompt injection attacks"));

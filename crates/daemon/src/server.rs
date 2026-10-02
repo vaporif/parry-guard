@@ -23,6 +23,42 @@ enum MlState {
     Failed(u8),
 }
 
+impl MlState {
+    /// Return the scanner, loading it first unless it already failed `MAX_ML_RETRIES` times.
+    fn get_or_load(&mut self, load: impl FnOnce() -> Option<MlScanner>) -> Option<&mut MlScanner> {
+        let attempt = match *self {
+            Self::NotLoaded => Some(0),
+            Self::Failed(n) if n < MAX_ML_RETRIES => Some(n),
+            _ => None,
+        };
+        if let Some(attempt) = attempt {
+            info!(
+                attempt = attempt + 1,
+                max = MAX_ML_RETRIES,
+                "loading ML model"
+            );
+            *self = load().map_or_else(
+                || {
+                    warn!(
+                        attempt = attempt + 1,
+                        max = MAX_ML_RETRIES,
+                        "ML model failed to load, scans will fail-close"
+                    );
+                    Self::Failed(attempt + 1)
+                },
+                |scanner| {
+                    info!(ml = "loaded", "ML model ready");
+                    Self::Loaded(scanner)
+                },
+            );
+        }
+        match self {
+            Self::Loaded(scanner) => Some(scanner),
+            _ => None,
+        }
+    }
+}
+
 use crate::protocol::{DaemonCodec, ScanRequest, ScanResponse, ScanType};
 use crate::scan_cache::{self, ScanCache};
 use crate::transport;
@@ -39,6 +75,12 @@ struct CleanupGuard {
 
 impl Drop for CleanupGuard {
     fn drop(&mut self) {
+        // a replacement daemon may have rebound the socket and rewritten the PID file
+        let owns_state = std::fs::read_to_string(&self.pid_path)
+            .is_ok_and(|pid| pid.trim() == std::process::id().to_string());
+        if !owns_state {
+            return;
+        }
         let _ = std::fs::remove_file(&self.pid_path);
         crate::transport::cleanup_stale_state(self.runtime_dir.as_deref());
     }
@@ -192,36 +234,7 @@ async fn handle_connection(
     let resp = match req.scan_type {
         ScanType::Ping => ScanResponse::Pong,
         ScanType::Full => {
-            let should_load = match ml_state {
-                MlState::NotLoaded => Some(0),
-                MlState::Failed(n) if *n < MAX_ML_RETRIES => Some(*n),
-                _ => None,
-            };
-            if let Some(attempt) = should_load {
-                info!(
-                    attempt = attempt + 1,
-                    max = MAX_ML_RETRIES,
-                    "loading ML model"
-                );
-                *ml_state = load_ml_scanner(config).map_or_else(
-                    || {
-                        warn!(
-                            attempt = attempt + 1,
-                            max = MAX_ML_RETRIES,
-                            "ML model failed to load, scans will fail-close"
-                        );
-                        MlState::Failed(attempt + 1)
-                    },
-                    |scanner| {
-                        info!(ml = "loaded", "ML model ready");
-                        MlState::Loaded(scanner)
-                    },
-                );
-            }
-            let scanner = match ml_state {
-                MlState::Loaded(ref mut s) => Some(s),
-                _ => None,
-            };
+            let scanner = ml_state.get_or_load(|| load_ml_scanner(config));
             handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
@@ -306,5 +319,61 @@ const fn scan_result_to_response(result: ScanResult) -> ScanResponse {
         ScanResult::Injection => ScanResponse::Injection,
         ScanResult::Secret => ScanResponse::Secret,
         ScanResult::Clean => ScanResponse::Clean,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    fn guard_with_state(dir: &Path, pid: u32) -> (CleanupGuard, PathBuf, PathBuf) {
+        let pid_path = transport::pid_file_path(Some(dir)).unwrap();
+        let sock = dir.join("parry-guard.sock");
+        std::fs::write(&pid_path, pid.to_string()).unwrap();
+        std::fs::write(&sock, "").unwrap();
+        let guard = CleanupGuard {
+            pid_path: pid_path.clone(),
+            runtime_dir: Some(dir.to_path_buf()),
+        };
+        (guard, pid_path, sock)
+    }
+
+    #[test]
+    fn ml_load_gives_up_after_max_retries() {
+        let mut state = MlState::NotLoaded;
+        let mut loads = 0;
+        for _ in 0..MAX_ML_RETRIES + 2 {
+            let scanner = state.get_or_load(|| {
+                loads += 1;
+                None
+            });
+            assert!(scanner.is_none());
+        }
+        assert_eq!(loads, MAX_ML_RETRIES);
+        assert!(matches!(state, MlState::Failed(MAX_ML_RETRIES)));
+    }
+
+    #[test]
+    fn cleanup_guard_removes_own_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (guard, pid_path, sock) = guard_with_state(dir.path(), std::process::id());
+        drop(guard);
+        assert!(!pid_path.exists());
+        assert!(!sock.exists());
+    }
+
+    #[test]
+    fn cleanup_guard_keeps_state_of_replacement_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let other_daemon = std::os::unix::process::parent_id();
+        let (guard, pid_path, sock) = guard_with_state(dir.path(), other_daemon);
+        drop(guard);
+        assert!(
+            pid_path.exists(),
+            "must not delete another daemon's PID file"
+        );
+        assert!(sock.exists(), "must not delete another daemon's socket");
     }
 }

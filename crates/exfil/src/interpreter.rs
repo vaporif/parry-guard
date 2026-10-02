@@ -8,7 +8,7 @@ use tree_sitter::Node;
 use crate::consts::{CODE_NETWORK_INDICATORS, INLINE_CODE_FLAGS};
 use crate::lang::detect_exfil_in_code;
 use crate::patterns;
-use crate::util::{contains_ip_url, has_sensitive_path, node_text};
+use crate::util::{contains_ip_url, has_sensitive_path, node_text, strip_quotes};
 
 use crate::elixir::ElixirDetector;
 use crate::groovy::GroovyDetector;
@@ -89,24 +89,11 @@ fn try_ast_detection(code: &str, cmd_name: &str) -> Option<String> {
 }
 
 fn extract_string_content(node: Node, source: &[u8]) -> String {
+    let text = node_text(node, source);
     match node.kind() {
-        "string" | "\"" => {
-            // tree-sitter string node: try to get string_content child
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if child.kind() == "string_content" {
-                    return node_text(child, source).to_string();
-                }
-            }
-            // Fallback: strip surrounding quotes
-            let text = node_text(node, source);
-            text.trim_matches('"').to_string()
-        }
-        "raw_string" => {
-            let text = node_text(node, source);
-            text.trim_matches('\'').to_string()
-        }
-        _ => node_text(node, source).to_string(),
+        // whole node text, not the first `string_content` child: expansions split the content
+        "string" | "raw_string" => strip_quotes(text).to_owned(),
+        _ => text.to_owned(),
     }
 }
 
@@ -153,7 +140,7 @@ pub fn check_shell_inline_code(node: Node, source: &[u8], cmd_name: &str) -> Opt
         if text == "-c" {
             if let Some(&code_node) = children.get(i + 1) {
                 let raw = node_text(code_node, source);
-                let code_str = crate::util::strip_quotes(raw);
+                let code_str = strip_quotes(raw);
                 if let Ok(Some(inner_reason)) = crate::detect_exfiltration(code_str) {
                     return Some(format!(
                         "Shell '{cmd_name} -c' wrapping exfil: {inner_reason}"

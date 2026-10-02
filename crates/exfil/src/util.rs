@@ -108,3 +108,29 @@ pub const fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
 pub const fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
     ip.is_loopback() || ip.is_unicast_link_local()
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::home_var("$HOME/x", "/home/user/x")]
+    #[case::home_braced("${HOME}/x", "/home/user/x")]
+    #[case::tilde("~", "/home/user")]
+    #[case::tilde_slash("~/x", "/home/user/x")]
+    #[case::tilde_user("~bob/x", "~bob/x")]
+    #[case::mid_tilde("a~/x", "a~/x")]
+    fn expands_home(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(expand_shell_vars(input), expected);
+    }
+
+    #[rstest]
+    #[case::expanded_sensitive("$HOME/.ssh", true)]
+    #[case::unexpanded_sensitive(".env", false)]
+    #[case::expanded_benign("~/notes", false)]
+    fn sensitive_only_after_expansion(#[case] input: &str, #[case] expected: bool) {
+        assert_eq!(has_sensitive_path_expanded(input), expected);
+    }
+}

@@ -214,6 +214,71 @@ mod tests {
         ));
     }
 
+    fn pong_daemon(runtime_dir: &Path) {
+        use futures_util::{SinkExt, StreamExt};
+        use interprocess::local_socket::traits::tokio::Listener as _;
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()
+            .unwrap();
+        let listener = rt
+            .block_on(async { crate::transport::bind_async(Some(runtime_dir)) })
+            .unwrap();
+        std::thread::spawn(move || {
+            rt.block_on(async move {
+                while let Ok(stream) = listener.accept().await {
+                    let mut framed = tokio_util::codec::Framed::new(stream, protocol::DaemonCodec);
+                    if let Some(Ok(_)) = framed.next().await {
+                        let _ = framed.send(ScanResponse::Pong).await;
+                    }
+                }
+            });
+        });
+    }
+
+    fn config_in(dir: &Path) -> Config {
+        Config {
+            runtime_dir: Some(dir.to_path_buf()),
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn is_daemon_running_detects_live_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        pong_daemon(dir.path());
+        assert!(is_daemon_running(Some(dir.path())));
+    }
+
+    #[test]
+    fn wait_for_ready_sees_live_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        pong_daemon(dir.path());
+        assert!(wait_for_ready(Some(dir.path())));
+    }
+
+    #[test]
+    fn wait_for_ready_bails_without_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!wait_for_ready(Some(dir.path())));
+    }
+
+    #[test]
+    fn ensure_running_reuses_live_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        pong_daemon(dir.path());
+        ensure_running(&config_in(dir.path())).unwrap();
+    }
+
+    #[test]
+    fn ensure_running_fails_when_daemon_never_comes_up() {
+        let dir = tempfile::tempdir().unwrap();
+        // current_exe is the test binary, which exits without binding a socket
+        let result = ensure_running(&config_in(dir.path()));
+        assert!(matches!(result, Err(ScanError::DaemonStart(_))));
+    }
+
     #[test]
     fn is_daemon_running_returns_false_without_daemon() {
         let dir = tempfile::tempdir().unwrap();
@@ -233,13 +298,12 @@ mod tests {
             ..Config::default()
         };
 
-        // spawn_daemon will fail (no parry binary) but should still create the token file
-        let _ = spawn_daemon(&config);
+        // spawns the test binary, which rejects the daemon args and exits
+        spawn_daemon(&config).unwrap();
 
         let token_path = dir.path().join(".hf-token");
-        if token_path.exists() {
-            let perms = std::fs::metadata(&token_path).unwrap().permissions();
-            assert_eq!(perms.mode() & 0o777, 0o600, "token file should be 0600");
-        }
+        assert_eq!(std::fs::read_to_string(&token_path).unwrap(), "test-token");
+        let perms = std::fs::metadata(&token_path).unwrap().permissions();
+        assert_eq!(perms.mode() & 0o777, 0o600, "token file should be 0600");
     }
 }

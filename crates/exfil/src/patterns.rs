@@ -576,4 +576,34 @@ mod tests {
         let patterns = CompiledPatterns::from_config(&config);
         assert!(!patterns.has_exfil_domain("https://pastebin.com/abc"));
     }
+
+    #[test]
+    fn multi_segment_pattern_after_multibyte_prefix() {
+        assert!(Pattern::path_segment(".config/gcloud").matches("日本/.config/gcloud"));
+    }
+
+    #[test]
+    fn path_segment_with_trailing_slash_matches_directory_only() {
+        let p = Pattern::path_segment("secrets/");
+        assert!(p.matches("/home/x/secrets/key"));
+        assert!(!p.matches("/home/x/notes"));
+    }
+
+    #[test]
+    fn default_config_path_is_under_parry_guard() {
+        assert!(
+            PatternConfig::default_path().is_some_and(|p| p.ends_with("parry-guard/patterns.toml"))
+        );
+    }
+
+    #[test]
+    fn load_from_existing_path_reads_overrides() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("patterns.toml");
+        std::fs::write(&path, "[exfil_domains]\nadd = [\"evil-custom.com\"]\n")?;
+
+        let config = PatternConfig::load_from_path(Some(path));
+        assert_eq!(config.exfil_domains.add, ["evil-custom.com"]);
+        Ok(())
+    }
 }

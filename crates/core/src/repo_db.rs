@@ -542,4 +542,55 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         RepoDb::cleanup_old_db(dir.path());
     }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    #[test]
+    fn git_remote_url_reads_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        git(
+            dir.path(),
+            &["remote", "add", "origin", "https://example.com/u/r.git"],
+        );
+        assert_eq!(
+            git_remote_url(dir.path()).as_deref(),
+            Some("https://example.com/u/r.git")
+        );
+    }
+
+    #[test]
+    fn git_remote_url_none_without_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        assert!(git_remote_url(dir.path()).is_none());
+    }
+
+    #[test]
+    fn canonicalize_repo_path_resolves_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(
+            canonicalize_repo_path(Some(dir.path())).as_deref(),
+            expected.to_str()
+        );
+    }
+
+    #[test]
+    fn canonicalize_repo_path_defaults_to_cwd() {
+        let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+        assert_eq!(canonicalize_repo_path(None).as_deref(), cwd.to_str());
+    }
+
+    #[test]
+    fn canonicalize_repo_path_missing_dir() {
+        assert!(canonicalize_repo_path(Some(Path::new("/nonexistent/parry/repo"))).is_none());
+    }
 }

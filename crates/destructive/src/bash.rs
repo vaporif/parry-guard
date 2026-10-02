@@ -12,29 +12,32 @@ use crate::paths;
 pub fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     match node.kind() {
         "command" => check_command(node, source, cwd),
-        "function_definition" => check_function_body(node, source, cwd),
-        _ => {
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if let Some(reason) = check_node(child, source, cwd) {
-                    return Some(reason);
-                }
-            }
-            None
-        }
+        _ => check_children(node, source, cwd),
     }
 }
 
-fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
-    let cmd_name = get_command_name(node, source)?;
+fn check_children(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    let reason = node
+        .children(&mut cursor)
+        .find_map(|child| check_node(child, source, cwd));
+    reason
+}
 
+/// Nested children are always walked: a benign outer command must not hide `$(rm -rf /)`.
+fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    get_command_name(node, source)
+        .and_then(|cmd_name| check_named_command(cmd_name, node, source, cwd))
+        .or_else(|| check_children(node, source, cwd))
+}
+
+fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
     // user allowlisted this command
     if CONFIG.is_removed_command(cmd_name) {
         return None;
     }
 
-    // user-configured extra destructive commands
-    if CONFIG.extra_commands.iter().any(|c| c == cmd_name) {
+    if CONFIG.is_extra_command(cmd_name) {
         return Some(format!(
             "'{cmd_name}' matched user-configured destructive command"
         ));
@@ -120,16 +123,6 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         return check_eval(cmd_name, node, source, cwd);
     }
 
-    // nested structures (command substitutions, etc.)
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() != "command" {
-            if let Some(reason) = check_node(child, source, cwd) {
-                return Some(reason);
-            }
-        }
-    }
-
     None
 }
 
@@ -145,8 +138,18 @@ fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<&'a str> {
     None
 }
 
-fn strip_quotes(s: &str) -> &str {
-    s.trim_matches(|c| c == '\'' || c == '"')
+/// Approximate bash quote removal so `".."/` or `\/` are seen as the paths bash would use.
+fn unquote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' | '"' => {}
+            '\\' => out.extend(chars.next()),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -255,23 +258,13 @@ fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<St
     None
 }
 
-fn check_function_body(node: Node, source: &[u8], cwd: &str) -> Option<String> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "compound_statement" {
-            return check_node(child, source, cwd);
-        }
-    }
-    None
-}
-
 // --- category checks ---
 
 const TAINT_FILE: &str = ".parry-tainted";
 
 fn is_taint_file(path: &str) -> bool {
-    let clean = strip_quotes(path);
-    Path::new(clean).file_name().and_then(|f| f.to_str()) == Some(TAINT_FILE)
+    let clean = unquote(path);
+    Path::new(&clean).file_name().and_then(|f| f.to_str()) == Some(TAINT_FILE)
 }
 
 fn taint_file_reason(cmd_name: &str) -> String {
@@ -296,14 +289,14 @@ fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<Stri
             return Some(taint_file_reason(cmd_name));
         }
 
-        let clean = strip_quotes(path);
+        let clean = unquote(path);
 
         // rm -rf . / rm -rf ./ - nuking the project dir
-        if paths::is_cwd_itself(clean, cwd) {
+        if paths::is_cwd_itself(&clean, cwd) {
             return Some(format!("'{cmd_name}' targets project directory itself"));
         }
 
-        if paths::is_outside_cwd(clean, cwd) {
+        if paths::is_outside_cwd(&clean, cwd) {
             return Some(format!(
                 "'{cmd_name}' targets '{clean}' outside project directory"
             ));
@@ -318,8 +311,7 @@ fn check_permissions(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Op
     let path_args = get_path_args(&args);
 
     for path in &path_args {
-        let clean = strip_quotes(path);
-        if let Some(reason) = paths::check_protected(clean, cwd) {
+        if let Some(reason) = paths::check_protected(&unquote(path), cwd) {
             return Some(format!("'{cmd_name}' on protected path: {reason}"));
         }
     }
@@ -344,8 +336,12 @@ fn check_process_service(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
         return Some(format!("'launchctl {first_arg}' modifies system services"));
     }
 
-    if cmd_name == "service" && consts::SERVICE_DESTRUCTIVE.contains(&first_arg) {
-        return Some(format!("'service {first_arg}' modifies system services"));
+    // service <name> <action>
+    let service_action = path_args.get(1).copied().unwrap_or("");
+    if cmd_name == "service" && consts::SERVICE_DESTRUCTIVE.contains(&service_action) {
+        return Some(format!(
+            "'service {first_arg} {service_action}' modifies system services"
+        ));
     }
 
     None
@@ -493,12 +489,7 @@ fn check_git_remote(path_args: &[&str]) -> Option<String> {
 }
 
 fn looks_like_remote_url(s: &str) -> bool {
-    s.starts_with("http://")
-        || s.starts_with("https://")
-        || s.starts_with("git://")
-        || s.starts_with("ssh://")
-        || s.contains("://")
-        || (s.contains('@') && (s.contains(':') || s.contains('/')))
+    s.contains("://") || (s.contains('@') && (s.contains(':') || s.contains('/')))
 }
 
 fn check_database(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {

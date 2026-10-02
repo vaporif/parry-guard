@@ -221,3 +221,39 @@ fn is_suspicious_decoded(decoded: &str) -> bool {
         || lower.contains("/dev/tcp")
         || lower.contains("/dev/udp")
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::escapes(r"$'\x63\x75\x72\x6c'", Some("$'curl'"))]
+    #[case::x_without_backslash("box12", None)]
+    #[case::plain("plain", None)]
+    fn hex_escapes(#[case] input: &str, #[case] expected: Option<&str>) {
+        assert_eq!(try_decode_hex_escapes(input).as_deref(), expected);
+    }
+
+    #[rstest]
+    #[case::escapes(r"$'\143\165\162\154'", Some("$'curl'"))]
+    #[case::digit_without_backslash("a1", None)]
+    #[case::plain("abc", None)]
+    fn octal_escapes(#[case] input: &str, #[case] expected: Option<&str>) {
+        assert_eq!(try_decode_octal_escapes(input).as_deref(), expected);
+    }
+
+    #[rstest]
+    #[case::sink("curl", true)]
+    #[case::bash("bash", true)]
+    #[case::bin_sh("/bin/sh", true)]
+    #[case::eval("eval", true)]
+    #[case::exec("exec", true)]
+    #[case::dev_tcp("/dev/tcp", true)]
+    #[case::dev_udp("/dev/udp", true)]
+    #[case::benign("ls -la", false)]
+    fn suspicious_decoded(#[case] decoded: &str, #[case] expected: bool) {
+        assert_eq!(is_suspicious_decoded(decoded), expected);
+    }
+}

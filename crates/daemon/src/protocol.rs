@@ -247,6 +247,28 @@ mod tests {
     }
 
     #[test]
+    fn codec_accepts_16mb_text() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0x00);
+        buf.put_f32_le(0.5);
+        buf.put_u32_le(16 * 1024 * 1024);
+        assert!(DaemonCodec.decode(&mut buf).unwrap().is_none());
+    }
+
+    #[test]
+    fn codec_reserves_rest_of_partial_frame() {
+        let req = ScanRequest {
+            scan_type: ScanType::Full,
+            threshold: 0.5,
+            text: "x".repeat(1000),
+        };
+        let full = encode_request(&req);
+        let mut buf = BytesMut::from(&full[..HEADER_LEN + 2]);
+        assert!(DaemonCodec.decode(&mut buf).unwrap().is_none());
+        assert!(buf.capacity() >= full.len());
+    }
+
+    #[test]
     fn codec_rejects_unknown_scan_type() {
         let mut buf = BytesMut::new();
         buf.put_u8(0xFF);

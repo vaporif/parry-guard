@@ -153,6 +153,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn scan_mode_as_str() {
+        assert_eq!(ScanMode::Fast.as_str(), "fast");
+        assert_eq!(ScanMode::Full.as_str(), "full");
+        assert_eq!(ScanMode::Custom.as_str(), "custom");
+    }
+
+    #[test]
+    fn resolve_models_custom_reads_models_toml() {
+        let home = tempfile::tempdir().unwrap();
+        // SAFETY: nextest runs each test in its own process
+        unsafe {
+            std::env::set_var("HOME", home.path());
+            std::env::set_var("XDG_CONFIG_HOME", home.path().join(".config"));
+        }
+        let path = custom_models_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "[[models]]\nrepo = \"org/model\"\nthreshold = 0.5\n").unwrap();
+
+        let config = Config {
+            scan_mode: ScanMode::Custom,
+            ..Config::default()
+        };
+        let models = config.resolve_models().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].repo, "org/model");
+        assert_eq!(
+            models[0].threshold.map(f32::to_bits),
+            Some(0.5f32.to_bits())
+        );
+    }
+
+    #[test]
     fn default_scan_mode_is_fast() {
         let config = Config::default();
         assert_eq!(config.scan_mode, ScanMode::Fast);

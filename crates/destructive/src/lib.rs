@@ -80,6 +80,8 @@ pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     fn make_cwd() -> tempfile::TempDir {
@@ -908,6 +910,92 @@ mod tests {
             detect_destructive(r#"eval "echo hello""#, cwd).is_none(),
             "eval with safe command should pass"
         );
+    }
+
+    #[rstest]
+    #[case::function_brace_body("f() { rm -rf /; }")]
+    #[case::function_subshell_body("f() ( rm -rf / )")]
+    #[case::function_keyword("function f { sudo ls; }")]
+    #[case::substitution_in_echo("echo $(rm -rf /)")]
+    #[case::substitution_in_git("git log $(rm -rf /)")]
+    #[case::substitution_in_safe_rm("rm ./x $(sudo ls)")]
+    #[case::substitution_in_docker("docker ps $(kill 1)")]
+    #[case::double_quoted_path(r#"rm -rf "/tmp/x""#)]
+    #[case::single_quoted_path("rm -rf '/tmp/x'")]
+    #[case::partially_quoted_parent(r#"rm -rf ".."/"#)]
+    #[case::escaped_parent(r"rm -rf .\./")]
+    #[case::escaped_root(r"rm -rf \/")]
+    #[case::quoted_taint_file(r#"rm "./.parry-tainted""#)]
+    #[case::chmod_quoted_protected(r#"chmod 777 "/etc/passwd""#)]
+    #[case::launchctl_remove("launchctl remove com.example")]
+    #[case::service_stop("service nginx stop")]
+    #[case::git_push_file_url("git push file:///tmp/exfil main")]
+    #[case::psql_delete_without_where(r#"psql -c "DELETE FROM users""#)]
+    #[case::psql_alter_drop(r#"psql -c "ALTER TABLE users DROP COLUMN email""#)]
+    #[case::mongosh_drop_database(r#"mongosh --eval "db.dropDatabase()""#)]
+    #[case::mongo_delete_many("mongo --eval db.users.deleteMany({})")]
+    #[case::mongorestore_drop("mongorestore --drop dump/")]
+    #[case::ldb_destroy("ldb destroy --db=/tmp/db")]
+    #[case::rabbitmq_delete_queue("rabbitmqctl delete_queue jobs")]
+    #[case::celery_purge("celery purge")]
+    #[case::etcd_del_prefix("etcdctl del --prefix /")]
+    #[case::etcd_defrag("etcdctl defrag")]
+    #[case::kafka_topics_sh_delete("kafka-topics.sh --delete --topic t")]
+    #[case::docker_volume_prune("docker volume prune")]
+    #[case::docker_rmi_force("docker rmi -f img")]
+    fn destructive_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::function_safe_body("f() { echo hi; }")]
+    #[case::substitution_safe("echo $(date)")]
+    #[case::quoted_path_in_cwd(r#"rm -rf "./target""#)]
+    #[case::mv_plain("mv a.txt b.txt")]
+    #[case::cp_plain("cp a.txt b.txt")]
+    #[case::launchctl_list("launchctl list")]
+    #[case::service_status("service nginx status")]
+    #[case::systemctl_status("systemctl status nginx")]
+    #[case::git_push_branch_path("git push origin feature/login")]
+    #[case::psql_delete_with_where(r#"psql -c "DELETE FROM users WHERE id = 1""#)]
+    #[case::psql_alter_add(r#"psql -c "ALTER TABLE users ADD COLUMN age int""#)]
+    #[case::psql_drop_index(r#"psql -c "DROP INDEX idx""#)]
+    #[case::mongosh_find(r#"mongosh --eval "db.users.find()""#)]
+    #[case::mongorestore_plain("mongorestore dump/")]
+    #[case::redis_get("redis-cli GET key")]
+    #[case::ldb_scan("ldb scan")]
+    #[case::rabbitmq_list("rabbitmqctl list_queues")]
+    #[case::celery_worker("celery worker")]
+    #[case::etcd_del_single("etcdctl del key")]
+    #[case::etcd_get_prefix("etcdctl get --prefix /")]
+    #[case::kafka_topics_list("kafka-topics --list")]
+    #[case::rsync_delete("rsync --delete src/ dst/")]
+    #[case::docker_volume_ls("docker volume ls")]
+    #[case::docker_rmi_plain("docker rmi img")]
+    fn safe_allowed(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::mv("mv .parry-tainted /tmp/gone", "'mv' targets parry-guard safety file")]
+    #[case::rm("rm .parry-tainted", "'rm' targets parry-guard safety file")]
+    #[case::mongo(r#"mongosh --eval "db.dropDatabase()""#, "dropdatabase")]
+    #[case::mongorestore("mongorestore --drop dump/", "'mongorestore --drop'")]
+    #[case::redis("redis-cli FLUSHALL", "'flushall'")]
+    #[case::etcd("etcdctl defrag", "'etcdctl defrag'")]
+    fn reason_names_the_operation(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
     }
 
     #[test]

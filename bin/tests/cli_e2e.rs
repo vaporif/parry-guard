@@ -113,7 +113,7 @@ fn parse_output(out: &std::process::Output) -> serde_json::Value {
 
 fn assert_allowed(out: &std::process::Output) {
     assert!(out.status.success());
-    assert!(stdout(out).trim().is_empty());
+    assert_eq!(stdout(out).trim(), "");
 }
 
 fn assert_decision(out: &std::process::Output, expected: &str) {
@@ -961,6 +961,7 @@ fn ask_on_new_project_shows_prompt() {
     );
     assert!(out.status.success());
     assert_context_contains(&out, "Action required");
+    assert_context_contains(&out, "`parry-guard monitor`");
 
     let out = run_parry_with_retry_rt(
         &["status", dir.path().to_str().unwrap()],
@@ -1125,4 +1126,38 @@ fn status_reports_clean_audit() {
     );
     let s = stdout(&out);
     assert!(s.contains("clean (no findings)"), "status output: {s}");
+}
+
+#[test]
+fn audit_failure_fails_closed_for_monitored_repo() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let dir = isolated_dir();
+    // socket path exceeds sun_path (104/108 bytes): the daemon can never bind,
+    // so ML is unavailable regardless of local model/token setup
+    let base = tempfile::tempdir().unwrap();
+    let rt = base.path().join("x".repeat(120));
+    std::fs::create_dir_all(&rt).unwrap();
+    let out = run_parry_with_retry_rt(
+        &["monitor", dir.path().to_str().unwrap()],
+        dir.path(),
+        Some(&rt),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let commands = dir.path().join(".claude/commands");
+    std::fs::create_dir_all(&commands).unwrap();
+    // clean text passes fast scan and needs ML
+    std::fs::write(commands.join("help.md"), "# Help\nNormal content.").unwrap();
+
+    let json = serde_json::json!({
+        "tool_name": null, "tool_input": {},
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": dir.path().to_str().unwrap()
+    })
+    .to_string();
+    let out = run_hook_rt(dir.path(), &json, Some(&rt), &[]);
+    assert!(!out.status.success(), "known repo must fail closed");
+    assert_context_contains(&out, "project audit failed");
 }

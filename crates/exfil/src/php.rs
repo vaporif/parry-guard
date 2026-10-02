@@ -8,7 +8,8 @@ pub struct PhpDetector;
 
 impl LangExfilDetector for PhpDetector {
     fn language(&self) -> Language {
-        tree_sitter_php::LANGUAGE_PHP.into()
+        // `php -r` code has no `<?php` open tag
+        tree_sitter_php::LANGUAGE_PHP_ONLY.into()
     }
 
     fn network_sink_query(&self) -> &'static str {

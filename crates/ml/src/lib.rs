@@ -164,13 +164,21 @@ pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
 mod tests {
     use super::*;
 
+    /// Inputs longer than any sliding-window chunk (only the head+tail chunk).
+    const LONG_INPUT_TOKENS: usize = 300;
+
     struct MockBackend {
         score: f32,
+        long_input_score: f32,
     }
 
     impl MlBackend for MockBackend {
-        fn score(&mut self, _input_ids: &[u32], _attention_mask: &[u32]) -> Result<f32> {
-            Ok(self.score)
+        fn score(&mut self, input_ids: &[u32], _attention_mask: &[u32]) -> Result<f32> {
+            if input_ids.len() > LONG_INPUT_TOKENS {
+                Ok(self.long_input_score)
+            } else {
+                Ok(self.score)
+            }
         }
     }
 
@@ -178,6 +186,7 @@ mod tests {
         let tokenizer = Tokenizer::from_bytes(
             br###"{
             "version": "1.0",
+            "pre_tokenizer": {"type": "Whitespace"},
             "model": {
                 "type": "WordPiece",
                 "unk_token": "[UNK]",
@@ -189,7 +198,10 @@ mod tests {
         )
         .expect("minimal tokenizer");
         ModelInstance {
-            backend: MockBackend { score },
+            backend: MockBackend {
+                score,
+                long_input_score: score,
+            },
             tokenizer,
             threshold,
             repo: repo.to_string(),
@@ -250,6 +262,19 @@ mod tests {
         };
         assert!(scanner.scan_chunked("hello", 0.5).unwrap());
         assert!(!scanner.scan_chunked("hello", 0.7).unwrap());
+    }
+
+    #[test]
+    fn head_tail_chunk_detects_when_windows_clean() {
+        let mut instance = mock_instance(0.1, None, "model-a");
+        instance.backend.long_input_score = 0.9;
+        let mut scanner = Scanner {
+            instances: vec![instance],
+        };
+        // ~2 tokens per 4 chars: windows stay under LONG_INPUT_TOKENS, head+tail exceeds it
+        let text = "ab c ".repeat(400);
+        assert!(scanner.scan_chunked(&text, 0.5).unwrap());
+        assert!(!scanner.scan_chunked(&text, 0.95).unwrap());
     }
 
     #[test]

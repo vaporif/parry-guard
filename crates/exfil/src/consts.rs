@@ -59,6 +59,7 @@ pub const INTERPRETERS: &[&str] = &[
     "lua",
     "pwsh",
     "powershell",
+    "R",
     "Rscript",
     "elixir",
     "julia",

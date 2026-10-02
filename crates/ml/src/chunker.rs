@@ -75,6 +75,7 @@ mod tests {
         assert_eq!(c.len(), 2);
         // First chunk: 0..256, second chunk: 231..300
         assert_eq!(c[0].len(), CHUNK_SIZE);
+        assert_eq!(c[1].len(), 300 - (CHUNK_SIZE - CHUNK_OVERLAP));
     }
 
     #[test]
@@ -99,7 +100,7 @@ mod tests {
         for chunk in &c {
             // Every chunk must be valid UTF-8 (implicit via &str, but
             // floor_char_boundary is what prevents the panic)
-            assert!(!chunk.is_empty());
+            assert_ne!(*chunk, "");
         }
     }
 
@@ -109,7 +110,7 @@ mod tests {
         let text = "a".repeat(254) + "🔥" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {
-            assert!(!chunk.is_empty());
+            assert_ne!(*chunk, "");
         }
     }
 
@@ -118,6 +119,6 @@ mod tests {
         // Place multi-byte chars around the 512-byte head/tail cut points
         let text = "a".repeat(511) + "ñ" + &"b".repeat(1000) + "🔥" + &"c".repeat(100);
         let combined = head_tail(&text).unwrap();
-        assert!(!combined.is_empty());
+        assert_ne!(combined, "");
     }
 }

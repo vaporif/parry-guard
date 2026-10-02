@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn ignore_dirs_empty_by_default() {
         let cli = Cli::try_parse_from(["parry-guard"]).unwrap();
-        assert!(cli.ignore_dirs.is_empty());
+        assert_eq!(cli.ignore_dirs, Vec::<String>::new());
     }
 
     #[test]

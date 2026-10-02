@@ -1902,6 +1902,7 @@ dependencies = [
  "proptest",
  "redb",
  "regex",
+ "rstest",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -1936,6 +1937,7 @@ version = "0.2.0"
 dependencies = [
  "dirs",
  "regex",
+ "rstest",
  "serde",
  "tempfile",
  "toml",
@@ -1952,6 +1954,7 @@ dependencies = [
  "regex",
  "rstest",
  "serde",
+ "tempfile",
  "toml",
  "tracing",
  "tree-sitter",
