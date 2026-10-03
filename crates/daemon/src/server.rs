@@ -342,6 +342,9 @@ mod tests {
 
     #[test]
     fn ml_load_gives_up_after_max_retries() {
+        // a subscriber makes the log fields evaluate, so they're covered
+        let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
         let mut state = MlState::NotLoaded;
         let mut loads = 0;
         for _ in 0..MAX_ML_RETRIES + 2 {

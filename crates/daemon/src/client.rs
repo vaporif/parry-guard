@@ -214,7 +214,8 @@ mod tests {
         ));
     }
 
-    fn pong_daemon(runtime_dir: &Path) {
+    /// Answers a single ping, then exits so tests can join it.
+    fn pong_daemon(runtime_dir: &Path) -> std::thread::JoinHandle<()> {
         use futures_util::{SinkExt, StreamExt};
         use interprocess::local_socket::traits::tokio::Listener as _;
 
@@ -227,14 +228,12 @@ mod tests {
             .unwrap();
         std::thread::spawn(move || {
             rt.block_on(async move {
-                while let Ok(stream) = listener.accept().await {
-                    let mut framed = tokio_util::codec::Framed::new(stream, protocol::DaemonCodec);
-                    if let Some(Ok(_)) = framed.next().await {
-                        let _ = framed.send(ScanResponse::Pong).await;
-                    }
-                }
+                let stream = listener.accept().await.unwrap();
+                let mut framed = tokio_util::codec::Framed::new(stream, protocol::DaemonCodec);
+                framed.next().await.unwrap().unwrap();
+                framed.send(ScanResponse::Pong).await.unwrap();
             });
-        });
+        })
     }
 
     fn config_in(dir: &Path) -> Config {
@@ -247,15 +246,17 @@ mod tests {
     #[test]
     fn is_daemon_running_detects_live_daemon() {
         let dir = tempfile::tempdir().unwrap();
-        pong_daemon(dir.path());
+        let daemon = pong_daemon(dir.path());
         assert!(is_daemon_running(Some(dir.path())));
+        daemon.join().unwrap();
     }
 
     #[test]
     fn wait_for_ready_sees_live_daemon() {
         let dir = tempfile::tempdir().unwrap();
-        pong_daemon(dir.path());
+        let daemon = pong_daemon(dir.path());
         assert!(wait_for_ready(Some(dir.path())));
+        daemon.join().unwrap();
     }
 
     #[test]
@@ -267,8 +268,9 @@ mod tests {
     #[test]
     fn ensure_running_reuses_live_daemon() {
         let dir = tempfile::tempdir().unwrap();
-        pong_daemon(dir.path());
+        let daemon = pong_daemon(dir.path());
         ensure_running(&config_in(dir.path())).unwrap();
+        daemon.join().unwrap();
     }
 
     #[test]

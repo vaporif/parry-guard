@@ -163,9 +163,7 @@ impl ScanCache {
 
 // OLD_TABLE shares TABLE's name and redb deletes by name, so only drop it on a type mismatch.
 fn drop_legacy_table(db: &redb::Database) {
-    let Ok(txn) = db.begin_write() else {
-        return;
-    };
+    let Ok(txn) = db.begin_write() else { return };
     if matches!(
         txn.open_table(TABLE),
         Err(redb::TableError::TableTypeMismatch { .. })
