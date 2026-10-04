@@ -107,3 +107,22 @@ rstest = "0.27"
 [workspace.lints.clippy]
 nursery = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+# Panics on untrusted input crash the hook instead of blocking cleanly.
+string_slice = "deny"
+indexing_slicing = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+map_err_ignore = "deny"
+infinite_loop = "deny"
+missing_assert_message = "deny"
+assertions_on_result_states = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "deny"
+redundant_lifetimes = "deny"
+unit_bindings = "deny"
