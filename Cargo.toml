@@ -99,6 +99,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Dev dependencies
 tempfile = "3"
+indoc = "2"
 criterion = { version = "0.8", default-features = false }
 proptest = "1"
 rstest = "0.27"

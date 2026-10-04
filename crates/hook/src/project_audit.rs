@@ -195,7 +195,8 @@ pub fn format_warnings(warnings: &[AuditWarning]) -> String {
     use std::fmt::Write;
     let mut out = String::from("## Project Security Scan\n");
     for w in warnings {
-        let _ = write!(out, "\n> **{}**: {}\n", w.category, w.message);
+        let _ = writeln!(out);
+        let _ = writeln!(out, "> **{}**: {}", w.category, w.message);
     }
     out
 }
@@ -223,7 +224,10 @@ pub fn format_opt_in_message(
     );
 
     if ml_unavailable && warnings.is_empty() {
-        out.push_str("\nNote: scan completed with ML unavailable, partial results only.\n");
+        let _ = writeln!(
+            out,
+            "\nNote: scan completed with ML unavailable, partial results only."
+        );
     }
 
     if !warnings.is_empty() {
@@ -234,14 +238,17 @@ pub fn format_opt_in_message(
                 let _ = writeln!(out, "- {}: {}", w.category, w.message);
             }
         } else {
-            out.push_str("\nFindings:\n");
+            let _ = writeln!(out, "\nFindings:");
             for w in warnings {
                 let _ = writeln!(out, "- {}: {}", w.category, w.message);
             }
         }
     }
 
-    out.push_str("\nAction required: Ask the user if they want to enable injection scanning for this repo.\n");
+    let _ = writeln!(
+        out,
+        "\nAction required: Ask the user if they want to enable injection scanning for this repo."
+    );
     if warnings.is_empty() {
         let _ = writeln!(out, "- If yes: run `{cmd} monitor` using the Bash tool.");
     } else {

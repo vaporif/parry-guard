@@ -170,7 +170,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("models.toml"),
-            "[[models]]\nrepo = \"org/model\"\nthreshold = 0.5\n",
+            indoc::indoc! {r#"
+                [[models]]
+                repo = "org/model"
+                threshold = 0.5
+            "#},
         )
         .unwrap();
 

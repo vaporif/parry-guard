@@ -30,6 +30,7 @@ candle = ["parry-guard-daemon/candle", "parry-guard-core/candle"]
 features = ["candle"]
 
 [dev-dependencies]
+indoc.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 interprocess.workspace = true

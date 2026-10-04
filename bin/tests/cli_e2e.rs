@@ -730,7 +730,10 @@ fn diff_clean() {
     git_commit(dir.path(), "readme.md", "# Hello");
     std::fs::write(
         dir.path().join("readme.md"),
-        "# Hello World\n\nClean content.",
+        indoc::indoc! {"
+            # Hello World
+
+            Clean content."},
     )
     .unwrap();
 

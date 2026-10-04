@@ -1417,6 +1417,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "interprocess"
 version = "2.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1877,6 +1886,7 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "fork",
+ "indoc",
  "parry-guard-core",
  "parry-guard-daemon",
  "parry-guard-hook",
@@ -1898,6 +1908,7 @@ dependencies = [
  "dirs",
  "eyre",
  "html-escape",
+ "indoc",
  "percent-encoding",
  "proptest",
  "redb",
@@ -1937,6 +1948,7 @@ name = "parry-guard-destructive"
 version = "0.2.0"
 dependencies = [
  "dirs",
+ "indoc",
  "regex",
  "rstest",
  "serde",
@@ -1952,6 +1964,7 @@ name = "parry-guard-exfil"
 version = "0.2.0"
 dependencies = [
  "dirs",
+ "indoc",
  "regex",
  "rstest",
  "serde",
@@ -1982,6 +1995,7 @@ version = "0.2.0"
 dependencies = [
  "blake3",
  "futures-util",
+ "indoc",
  "interprocess",
  "parry-guard-core",
  "parry-guard-daemon",

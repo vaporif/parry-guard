@@ -156,7 +156,13 @@ mod tests {
         let path = dir.path().join("patterns.toml");
         std::fs::write(
             &path,
-            "[destructive_paths]\nadd = [\"/srv/data/\"]\n\n[destructive_commands]\nremove = [\"kill\"]\n",
+            indoc::indoc! {r#"
+                [destructive_paths]
+                add = ["/srv/data/"]
+
+                [destructive_commands]
+                remove = ["kill"]
+            "#},
         )
         .unwrap();
 

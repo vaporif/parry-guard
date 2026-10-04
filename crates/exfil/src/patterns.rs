@@ -592,7 +592,13 @@ mod tests {
     fn load_from_existing_path_reads_overrides() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("patterns.toml");
-        std::fs::write(&path, "[exfil_domains]\nadd = [\"evil-custom.com\"]\n")?;
+        std::fs::write(
+            &path,
+            indoc::indoc! {r#"
+                [exfil_domains]
+                add = ["evil-custom.com"]
+            "#},
+        )?;
 
         let config = PatternConfig::load_from_path(Some(path));
         assert_eq!(config.exfil_domains.add, ["evil-custom.com"]);

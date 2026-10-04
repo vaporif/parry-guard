@@ -403,7 +403,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("patterns.toml"),
-            "[secrets]\nadd = [\"CUSTOM_[0-9]{4}\"]\nremove = [\"AKIA[0-9A-Z]{16}\"]\n",
+            indoc::indoc! {r#"
+                [secrets]
+                add = ["CUSTOM_[0-9]{4}"]
+                remove = ["AKIA[0-9A-Z]{16}"]
+            "#},
         )
         .unwrap();
 

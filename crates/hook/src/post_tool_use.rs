@@ -114,7 +114,13 @@ mod tests {
 
     #[test]
     fn read_md_clean() {
-        let input = make_input("Read", "# Hello World\n\nNormal content.");
+        let input = make_input(
+            "Read",
+            indoc::indoc! {"
+                # Hello World
+
+                Normal content."},
+        );
         let (_rt, config) = test_env();
         let result = process(&input, &config, RepoState::Monitored);
         assert!(result.is_none(), "clean text should return no warning");

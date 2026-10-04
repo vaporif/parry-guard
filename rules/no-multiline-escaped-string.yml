@@ -1,0 +1,7 @@
+id: no-multiline-escaped-string
+language: rust
+severity: error
+message: String literals with several `\n` escapes are hard to read. Use `indoc::indoc!` with a raw string for multi-line text, or `writeln!` when building output.
+rule:
+  kind: string_literal
+  regex: '\\n(.|\n)*\\n'
