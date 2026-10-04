@@ -2,8 +2,7 @@ use parry_guard_exfil::detect_exfiltration;
 use parry_guard_exfil::patterns::{MatchKind, Pattern};
 use proptest::prelude::*;
 
-/// Shell-ish fragments mixed with arbitrary text, so commands reach the parsers and
-/// detectors instead of failing at the first byte.
+/// Shell-ish tokens so inputs reach the parsers instead of failing at the first byte.
 fn shell_like() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         Just("curl".to_string()),
@@ -54,7 +53,7 @@ proptest! {
         before in "\\PC{0,16}",
         after in "\\PC{0,16}",
     ) {
-        // embed the pattern so the matcher's scanning loops actually run
+        // embed the pattern so the scan loops actually run
         let text = format!("{before}{value}{after}");
         let _ = Pattern::new(value, kind).matches(&text);
     }
