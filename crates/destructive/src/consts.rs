@@ -91,3 +91,58 @@ pub(crate) const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
 ];
 
 pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
+
+// === Category 12: Command wrappers ===
+
+/// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
+pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
+    ("command", &[], 0),
+    ("exec", &["-a"], 0),
+    ("env", &["-u", "--unset", "-C", "--chdir"], 0),
+    ("nice", &["-n", "--adjustment"], 0),
+    ("nohup", &[], 0),
+    ("time", &[], 0),
+    ("timeout", &["-s", "--signal", "-k", "--kill-after"], 1),
+    (
+        "stdbuf",
+        &["-i", "-o", "-e", "--input", "--output", "--error"],
+        0,
+    ),
+    ("setsid", &[], 0),
+    (
+        "ionice",
+        &[
+            "-c",
+            "--class",
+            "-n",
+            "--classdata",
+            "-p",
+            "--pid",
+            "-P",
+            "--pgid",
+            "-u",
+            "--uid",
+        ],
+        0,
+    ),
+    (
+        "xargs",
+        &[
+            "-a",
+            "--arg-file",
+            "-d",
+            "--delimiter",
+            "-E",
+            "-I",
+            "-L",
+            "--max-lines",
+            "-n",
+            "--max-args",
+            "-P",
+            "--max-procs",
+            "-s",
+            "--max-chars",
+        ],
+        0,
+    ),
+];

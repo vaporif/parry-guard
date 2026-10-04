@@ -40,7 +40,7 @@ impl RepoState {
     }
 }
 
-/// Encoded repo state value: `[state_byte][remote_url_bytes]`.
+/// Layout: `[state_byte][remote_url_bytes]`.
 fn encode_state(state: RepoState, remote: Option<&str>) -> Vec<u8> {
     let mut buf = vec![state as u8];
     if let Some(url) = remote {
@@ -49,7 +49,7 @@ fn encode_state(state: RepoState, remote: Option<&str>) -> Vec<u8> {
     buf
 }
 
-/// Decode repo state value.
+/// Inverse of [`encode_state`].
 fn decode_state(bytes: &[u8]) -> (RepoState, Option<String>) {
     let Some((&state, remote)) = bytes.split_first() else {
         return (RepoState::Unknown, None);
@@ -62,7 +62,7 @@ fn decode_state(bytes: &[u8]) -> (RepoState, Option<String>) {
     (RepoState::from_u8(state), remote)
 }
 
-/// Centralized repository state database.
+/// Repo states and scan caches.
 pub struct RepoDb {
     db: redb::Database,
 }
@@ -86,13 +86,10 @@ pub enum RepoDbError {
 }
 
 impl RepoDb {
-    /// Open (or create) the centralized database.
-    ///
-    /// Uses `runtime_dir` if provided, otherwise `~/.parry/`.
+    /// Open or create the db in `runtime_dir`, else `~/.parry/`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the database cannot be opened or created.
+    /// Fails if the db can't be opened or created.
     pub fn open(runtime_dir: Option<&Path>) -> Result<Self, RepoDbError> {
         let dir = if let Some(d) = runtime_dir {
             d.to_path_buf()
@@ -135,8 +132,7 @@ impl RepoDb {
     /// Set the state and optional remote URL for a repo path.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the database write or commit fails.
+    /// Fails if the write or commit fails.
     pub fn set_repo_state(
         &self,
         repo_path: &str,
@@ -217,7 +213,7 @@ impl RepoDb {
         let _ = txn.commit();
     }
 
-    /// Build the composite guard cache key: `repo_path\0file_path`.
+    /// Guard cache key: `repo_path\0file_path`.
     fn guard_key(repo_path: &str, file_path: &str) -> String {
         format!("{repo_path}\0{file_path}")
     }
@@ -293,8 +289,7 @@ impl RepoDb {
     }
 }
 
-/// Canonicalize a repo path. If `path` is None, uses CWD.
-/// Returns None if canonicalization fails.
+/// Canonical repo path (cwd if `path` is `None`), or `None` on failure.
 #[must_use]
 pub fn canonicalize_repo_path(path: Option<&Path>) -> Option<String> {
     let target = match path {
@@ -306,7 +301,7 @@ pub fn canonicalize_repo_path(path: Option<&Path>) -> Option<String> {
         .and_then(|p| p.to_str().map(String::from))
 }
 
-/// Best-effort git remote URL for display purposes.
+/// Best-effort `origin` URL, for display.
 #[must_use]
 pub fn git_remote_url(path: &Path) -> Option<String> {
     std::process::Command::new("git")

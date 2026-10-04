@@ -23,9 +23,87 @@ fn check_children(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 
 /// Nested children are always walked: a benign outer command must not hide `$(rm -rf /)`.
 fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
-    get_command_name(node, source)
-        .and_then(|cmd_name| check_named_command(cmd_name, node, source, cwd))
-        .or_else(|| check_children(node, source, cwd))
+    let reason = match get_command_name(node, source)? {
+        CommandName::Static(cmd_name) => check_named_command(&cmd_name, node, source, cwd),
+        CommandName::Dynamic(text) => check_dynamic_command(text, node, source, cwd),
+    };
+    reason.or_else(|| check_children(node, source, cwd))
+}
+
+/// A name only known at runtime could be `rm`, so its arguments get the `rm` path checks.
+fn check_dynamic_command(name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    check_rm(name, node, source, cwd)
+        .map(|reason| format!("{reason} (command name resolved at runtime)"))
+}
+
+/// Check what a wrapper such as `env` or `xargs` runs: skip the wrapper's own
+/// options, then parse the rest of the line as a command of its own.
+fn check_wrapper(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let &(_, value_options, operands) = consts::COMMAND_WRAPPERS
+        .iter()
+        .find(|(name, ..)| *name == cmd_name)?;
+
+    let mut cursor = node.walk();
+    let mut args = node
+        .children_by_field_name("argument", &mut cursor)
+        .peekable();
+    let mut operands_left = operands;
+    let mut split_string = None;
+    while let Some(&arg) = args.peek() {
+        let text = node_text(arg, source);
+        if cmd_name == "command" && matches!(text, "-v" | "-V") {
+            // lookup only, nothing runs
+            return None;
+        }
+        if text == "--" {
+            args.next();
+            break;
+        }
+        if cmd_name == "env" && matches!(text, "-S" | "--split-string") {
+            args.next();
+            split_string = args.next().map(|value| unquote(node_text(value, source)));
+            break;
+        }
+        if text.starts_with('-') {
+            args.next();
+            if value_options.contains(&text) {
+                args.next();
+            }
+        } else if cmd_name == "env" && text.contains('=') {
+            args.next();
+        } else if operands_left > 0 {
+            operands_left -= 1;
+            args.next();
+        } else {
+            break;
+        }
+    }
+
+    let rest: Vec<Node> = args.collect();
+    let mut inner = split_string.unwrap_or_default();
+    if let (Some(first), Some(last)) = (rest.first(), rest.last()) {
+        let tail = source
+            .get(first.start_byte()..last.end_byte())
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())?;
+        inner.push(' ');
+        inner.push_str(tail);
+    }
+    if inner.trim().is_empty() {
+        return None;
+    }
+    if cmd_name == "xargs" {
+        // a here-string feeds xargs the arguments it appends to the command
+        let mut cursor = node.walk();
+        for redirect in node.children(&mut cursor) {
+            if redirect.kind() == "herestring_redirect" {
+                let words = node_text(redirect, source).trim_start_matches("<<<");
+                inner.push(' ');
+                inner.push_str(&unquote(words.trim()));
+            }
+        }
+    }
+
+    crate::detect_destructive(&inner, cwd).map(|reason| format!("'{cmd_name}' runs: {reason}"))
 }
 
 fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
@@ -44,6 +122,10 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
         return Some(format!(
             "Privilege escalation via '{cmd_name}' - all elevated commands require confirmation"
         ));
+    }
+
+    if let Some(reason) = check_wrapper(cmd_name, node, source, cwd) {
+        return Some(reason);
     }
 
     if consts::UNCONDITIONAL_DESTRUCTIVE.contains(&cmd_name) {
@@ -109,16 +191,39 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
     None
 }
 
-fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<&'a str> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "command_name" {
-            let text = node_text(child, source);
-            // /usr/bin/rm -> rm
-            return Some(text.rsplit('/').next().unwrap_or(text));
-        }
+enum CommandName<'a> {
+    /// Known after quote removal: `"rm"`, `\rm` and `r''m` are all `rm`.
+    Static(String),
+    /// Only known at runtime: `$(echo rm)`, `$X`, `${X:-rm}`.
+    Dynamic(&'a str),
+}
+
+fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<CommandName<'a>> {
+    let name = node.child_by_field_name("name")?;
+    let text = node_text(name, source);
+    if has_expansion(name) {
+        return Some(CommandName::Dynamic(text));
     }
-    None
+    let unquoted = unquote(text);
+    // /usr/bin/rm -> rm
+    let base = unquoted.rsplit('/').next().unwrap_or_default();
+    Some(CommandName::Static(base.to_owned()))
+}
+
+fn has_expansion(node: Node) -> bool {
+    if matches!(
+        node.kind(),
+        "command_substitution"
+            | "simple_expansion"
+            | "expansion"
+            | "arithmetic_expansion"
+            | "process_substitution"
+    ) {
+        return true;
+    }
+    let mut cursor = node.walk();
+    let found = node.children(&mut cursor).any(has_expansion);
+    found
 }
 
 /// Approximate bash quote removal so `".."/` or `\/` are seen as the paths bash would use.

@@ -1,4 +1,4 @@
-//! Runtime configuration for parry scanning.
+//! Runtime scan configuration.
 
 use std::path::PathBuf;
 
@@ -8,7 +8,7 @@ const DEFAULT_MODEL: &str = "ProtectAI/deberta-v3-small-prompt-injection-v2";
 #[cfg(feature = "candle")]
 const FULL_MODELS: &[&str] = &[DEFAULT_MODEL, "meta-llama/Llama-Prompt-Guard-2-86M"];
 
-/// Scan mode controlling which ML models are used.
+/// Which ML models to run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ScanMode {
     /// Single model (default `DeBERTa` v3).
@@ -21,7 +21,7 @@ pub enum ScanMode {
 }
 
 impl ScanMode {
-    /// String representation for CLI argument forwarding.
+    /// Form used when forwarding as a CLI argument.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -32,42 +32,36 @@ impl ScanMode {
     }
 }
 
-/// A single model definition for ML scanning.
+/// One ML model to load.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelDef {
-    /// `HuggingFace` repo ID (e.g. `"ProtectAI/deberta-v3-small-prompt-injection-v2"`).
+    /// `HuggingFace` repo ID.
     pub repo: String,
-    /// Optional per-model threshold; falls back to global `Config::threshold`.
+    /// Overrides `Config::threshold` for this model.
     pub threshold: Option<f32>,
 }
 
-/// TOML configuration for custom models (`<config dir>/parry-guard/models.toml`).
+/// Contents of `<config dir>/parry-guard/models.toml`.
 #[derive(Debug, Deserialize)]
 struct ModelsConfig {
     models: Vec<ModelDef>,
 }
 
-/// Default ML threshold for CLAUDE.md scanning (higher to reduce false positives).
 const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
 
-/// Runtime configuration for parry scanning.
 #[derive(Clone)]
 pub struct Config {
     pub hf_token: Option<String>,
     pub threshold: f32,
-    /// ML threshold for CLAUDE.md scanning (default 0.9).
-    ///
-    /// Higher than `threshold` because CLAUDE.md files are instructions
-    /// by design and `DeBERTa` scores them higher than normal text.
+    /// Higher than `threshold`: CLAUDE.md is instructions by design, so `DeBERTa` scores it high.
     pub claude_md_threshold: f32,
     pub scan_mode: ScanMode,
-    /// Explicit runtime directory for daemon IPC, caches, and taint files.
-    /// `None` means use default paths (`~/.parry-guard/` for daemon, cwd for hook files).
-    /// Set in tests to avoid process-global env var mutation.
+    /// Dir for daemon IPC, caches, and taint files; `None` uses defaults.
+    /// Tests set it to avoid mutating process-global env vars.
     pub runtime_dir: Option<PathBuf>,
 }
 
-// manual impl: Config is recorded by tracing spans, keep the token out of logs
+// manual impl keeps `hf_token` out of tracing spans
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
@@ -81,11 +75,10 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
-    /// Resolve the list of models to load based on `scan_mode`.
+    /// Models to load for `scan_mode`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if `Custom` mode config is missing or has no models.
+    /// Fails if the `Custom` config is missing or has no models.
     pub fn resolve_models(&self) -> crate::Result<Vec<ModelDef>> {
         self.resolve_models_in(dirs::config_dir().as_deref())
     }

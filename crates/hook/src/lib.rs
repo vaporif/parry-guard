@@ -1,6 +1,4 @@
-//! Claude Code hook integration.
-//!
-//! Provides pre-tool-use blocking and post-tool-use scanning for Claude Code hooks.
+//! Claude Code hooks: pre-tool-use blocking and post-tool-use scanning.
 
 pub mod claude_md;
 pub mod post_tool_use;
@@ -25,11 +23,7 @@ pub struct HookInput {
 }
 
 impl HookInput {
-    /// Extract tool response as a string.
-    ///
-    /// If the value is a JSON string, returns it directly.
-    /// If it's an object/array, serializes it to a JSON string.
-    /// Returns `None` if absent or null.
+    /// Tool response as text (objects/arrays serialized to JSON); `None` if absent or null.
     #[must_use]
     pub fn response_text(&self) -> Option<String> {
         match self.tool_response.as_ref()? {
@@ -140,22 +134,19 @@ impl PreToolUseOutput {
     }
 }
 
-/// Run all scans (unicode + substring + secrets + ML) on the given text.
-/// Uses the daemon for ML scanning - auto-starts it if not running.
+/// Run all scans (unicode, substring, secrets, ML), auto-starting the daemon.
 ///
 /// # Errors
-///
-/// Returns `ScanError::DaemonStart` or `ScanError::DaemonIo` if the daemon is unavailable.
+/// Fails if the daemon can't be started or reached.
 #[instrument(skip(text, config), fields(text_len = text.len()))]
 pub fn scan_text(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
     scan_text_with_threshold(text, config, config.threshold)
 }
 
-/// Like `scan_text` but with a custom ML threshold (e.g. higher for CLAUDE.md).
+/// Like `scan_text` with a custom ML threshold (e.g. higher for CLAUDE.md).
 ///
 /// # Errors
-///
-/// Returns `ScanError::DaemonStart` or `ScanError::DaemonIo` if the daemon is unavailable.
+/// Fails if the daemon can't be started or reached.
 #[instrument(skip(text, config), fields(text_len = text.len(), threshold))]
 pub fn scan_text_with_threshold(
     text: &str,
@@ -220,8 +211,7 @@ pub(crate) mod test_util {
     /// Text containing this marker is reported as injection by [`fake_daemon`].
     pub(crate) const FAKE_ML_INJECTION: &str = "FAKE_ML_INJECTION_MARKER";
 
-    /// Serve the daemon protocol from `runtime_dir` without loading a model.
-    /// Answers `Injection` for text containing [`FAKE_ML_INJECTION`], `Clean` otherwise.
+    /// Model-free daemon on `runtime_dir`: `Injection` iff text contains [`FAKE_ML_INJECTION`].
     pub(crate) fn fake_daemon(runtime_dir: &Path) {
         use futures_util::{SinkExt, StreamExt};
         use interprocess::local_socket::traits::tokio::Listener as _;

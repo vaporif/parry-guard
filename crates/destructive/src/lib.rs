@@ -1029,7 +1029,10 @@ mod tests {
 
     #[rstest]
     #[case::wrapper("env rm -rf /etc", "'env' runs: 'rm' targets '/etc'")]
-    #[case::dynamic("$(echo rm) -rf /etc", "'$(echo rm)' is resolved at runtime")]
+    #[case::dynamic(
+        "$(echo rm) -rf /etc",
+        "'/etc' outside project directory (command name resolved at runtime)"
+    )]
     #[case::quoted(r#""rm" -rf /etc"#, "'rm' targets '/etc'")]
     fn obfuscated_reason_names_the_operation(#[case] command: &str, #[case] expected: &str) {
         let d = make_cwd();
