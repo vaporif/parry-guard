@@ -1,6 +1,6 @@
 //! Pattern matching for sensitive paths and exfil domains.
 //!
-//! Supports configuration overrides via `~/.config/parry/patterns.toml`.
+//! Supports configuration overrides via `<config dir>/parry-guard/patterns.toml`.
 
 use std::sync::LazyLock;
 

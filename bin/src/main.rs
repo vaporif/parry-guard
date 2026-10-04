@@ -315,7 +315,8 @@ fn run_audit(
                 warn!(%e, "audit ML scan failed (fail-closed)");
                 let message = format!(
                     "parry: project audit failed - ML scanner unavailable. \
-                     Run `parry serve` and retry. Error: {e}"
+                     Run `{} serve` and retry. Error: {e}",
+                    command_name()
                 );
                 eprintln!("{message}");
                 return ExitCode::from(BLOCK_EXIT);

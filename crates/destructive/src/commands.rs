@@ -1,6 +1,6 @@
 //! Configuration for destructive operation overrides.
 //!
-//! Loads from `~/.config/parry/patterns.toml` (same file as exfil patterns).
+//! Loads from `<config dir>/parry-guard/patterns.toml` (same file as exfil patterns).
 
 use std::sync::LazyLock;
 

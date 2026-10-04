@@ -94,8 +94,10 @@ impl Drop for CleanupGuard {
 #[instrument(skip(config, daemon_config), fields(idle_timeout = ?daemon_config.idle_timeout))]
 pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<()> {
     let rd = config.runtime_dir.as_deref();
-    if crate::client::is_daemon_running(rd) {
-        warn!("another daemon is already running");
+    // a plain connect, not a ping: a daemon busy loading the model accepts
+    // connections but can't answer a ping in time, and must not lose its socket
+    if transport::Stream::connect(Duration::from_millis(50), rd).is_ok() {
+        warn!("another daemon is already listening");
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
@@ -378,5 +380,28 @@ mod tests {
             "must not delete another daemon's PID file"
         );
         assert!(sock.exists(), "must not delete another daemon's socket");
+    }
+
+    #[test]
+    fn run_refuses_to_replace_busy_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // listens but never accepts, like a daemon stuck loading the model
+            let _busy = transport::bind_async(Some(dir.path())).unwrap();
+            let config = Config {
+                runtime_dir: Some(dir.path().to_path_buf()),
+                ..Config::default()
+            };
+            let daemon_config = DaemonConfig {
+                idle_timeout: Duration::from_secs(1),
+            };
+            let result = run(&config, &daemon_config).await;
+            assert!(result.is_err(), "must not take over a live socket");
+            assert!(transport::socket_exists(Some(dir.path())));
+        });
     }
 }

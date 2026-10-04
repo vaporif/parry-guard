@@ -16,7 +16,7 @@ pub enum ScanMode {
     Fast,
     /// Two-model ensemble (`DeBERTa` + Llama Prompt Guard).
     Full,
-    /// User-defined model list from `~/.config/parry/models.toml`.
+    /// User-defined model list from `<config dir>/parry-guard/models.toml`.
     Custom,
 }
 
@@ -41,7 +41,7 @@ pub struct ModelDef {
     pub threshold: Option<f32>,
 }
 
-/// TOML configuration for custom models (`~/.config/parry/models.toml`).
+/// TOML configuration for custom models (`<config dir>/parry-guard/models.toml`).
 #[derive(Debug, Deserialize)]
 struct ModelsConfig {
     models: Vec<ModelDef>,

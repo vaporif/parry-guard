@@ -1,6 +1,6 @@
 //! Secret pattern detection with configurable overrides.
 //!
-//! Supports configuration via `~/.config/parry/patterns.toml` under `[secrets]`.
+//! Supports configuration via `<config dir>/parry-guard/patterns.toml` under `[secrets]`.
 
 use regex::RegexSet;
 use serde::Deserialize;

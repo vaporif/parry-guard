@@ -189,11 +189,14 @@ fn try_decode_octal_escapes(text: &str) -> Option<String> {
 
     while let Some(c) = chars.next() {
         if c == '\\' && chars.peek().is_some_and(char::is_ascii_digit) {
-            let octal: String = chars
-                .by_ref()
-                .take_while(char::is_ascii_digit)
-                .take(3)
-                .collect();
+            // peek, so the first non-digit after a short escape isn't swallowed
+            let mut octal = String::with_capacity(3);
+            while octal.len() < 3 {
+                match chars.next_if(char::is_ascii_digit) {
+                    Some(d) => octal.push(d),
+                    None => break,
+                }
+            }
             if let Ok(byte) = u8::from_str_radix(&octal, 8) {
                 result.push(byte as char);
             }
@@ -240,6 +243,8 @@ mod tests {
     #[case::escapes(r"$'\143\165\162\154'", Some("$'curl'"))]
     #[case::digit_without_backslash("a1", None)]
     #[case::plain("abc", None)]
+    #[case::short_escape_keeps_next_char(r"\61x", Some("1x"))]
+    #[case::space_then_word(r"\143url\40http", Some("curl http"))]
     fn octal_escapes(#[case] input: &str, #[case] expected: Option<&str>) {
         assert_eq!(try_decode_octal_escapes(input).as_deref(), expected);
     }

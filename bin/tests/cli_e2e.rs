@@ -21,6 +21,8 @@ use std::process::{Command, Stdio};
 fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_parry-guard"));
     cmd.env("PARRY_LOG", "off");
+    // inherited by any daemon the hook spawns, so it exits soon after the test
+    cmd.env("PARRY_IDLE_TIMEOUT", "5");
     if let Some(rd) = runtime_dir {
         cmd.env("PARRY_RUNTIME_DIR", rd);
     }
@@ -58,8 +60,10 @@ fn inject_cwd(json: &str, dir: &Path) -> String {
     v.to_string()
 }
 
+/// Runs the hook with a throwaway runtime dir so it never touches `~/.parry-guard`.
 fn run_hook(dir: &Path, json: &str) -> std::process::Output {
-    run_hook_rt(dir, json, None, &[])
+    let runtime = tempfile::tempdir().unwrap();
+    run_hook_rt(dir, json, Some(runtime.path()), &[])
 }
 
 fn run_hook_rt(
@@ -1178,6 +1182,11 @@ fn audit_failure_fails_closed_for_monitored_repo() {
     assert_eq!(out.status.code(), Some(2), "known repo must fail closed");
     assert!(
         stderr(&out).contains("project audit failed"),
+        "stderr: {}",
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("`parry-guard serve`"),
         "stderr: {}",
         stderr(&out)
     );

@@ -91,16 +91,8 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
         let token_file = crate::transport::parry_dir(config.runtime_dir.as_deref())
             .map_err(|e| ScanError::DaemonStart(format!("failed to resolve parry dir: {e}")))?
             .join(".hf-token");
-        std::fs::write(&token_file, token)
+        write_private(&token_file, token)
             .map_err(|e| ScanError::DaemonStart(format!("failed to write token file: {e}")))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&token_file, perms).map_err(|e| {
-                ScanError::DaemonStart(format!("failed to set token file permissions: {e}"))
-            })?;
-        }
         cmd.arg("--hf-token-path").arg(&token_file);
     }
 
@@ -116,6 +108,23 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
     cmd.spawn()
         .map_err(|e| ScanError::DaemonStart(format!("failed to spawn daemon: {e}")))?;
     Ok(())
+}
+
+/// Write `contents` to a file that is owner-only before any byte lands in it.
+fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(path)?;
+    // mode() only applies on create; tighten a pre-existing file too
+    #[cfg(unix)]
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.write_all(contents.as_bytes())
 }
 
 /// Ensure the daemon is running. Spawns it if needed and waits for readiness.
@@ -317,5 +326,21 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&token_path).unwrap(), "test-token");
         let perms = std::fs::metadata(&token_path).unwrap().permissions();
         assert_eq!(perms.mode() & 0o777, 0o600, "token file should be 0600");
+    }
+
+    #[test]
+    fn write_private_tightens_existing_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".hf-token");
+        std::fs::write(&path, "old-token-longer").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_private(&path, "new").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

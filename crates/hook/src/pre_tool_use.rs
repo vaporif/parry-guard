@@ -174,7 +174,8 @@ fn check_sensitive_path(tool: &str, input: &serde_json::Value) -> Option<PreTool
         debug!(tool, path, "sensitive path access flagged for review");
         Some(PreToolUseOutput::ask(&format!(
             "Review: {tool} accessing sensitive path '{path}'. \
-             Configure allowed paths in ~/.config/parry/patterns.toml"
+             Configure allowed paths in parry-guard/patterns.toml in your config dir \
+             (~/.config on Linux, ~/Library/Application Support on macOS)"
         )))
     } else {
         None

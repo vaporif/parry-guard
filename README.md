@@ -218,7 +218,7 @@ The scanner fails closed: if it can't tell whether something is safe, it treats 
 |------|--------|-------------------|---------|
 | `fast` (default) | DeBERTa v3 | ~50-70ms | any |
 | `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | candle only |
-| `custom` | User-defined (`~/.config/parry-guard/models.toml`) | varies | any |
+| `custom` | User-defined (`parry-guard/models.toml` in your config dir) | varies | any |
 
 Use `fast` for interactive work. Use `full` for high security or batch scans (`parry-guard diff --full`). DeBERTa v3 is good at common injection patterns; Llama Prompt Guard 2 is better at subtle ones like role-play jailbreaks and indirect injection. `full` flags text if either model does, so it misses less, but each chunk takes about 20x longer.
 
@@ -264,8 +264,8 @@ Use `fast` for interactive work. Use `full` for high security or batch scans (`p
 
 </details>
 
-Custom patterns go in `~/.config/parry-guard/patterns.toml`. You can add or remove sensitive paths, exfil domains, and secret patterns.
-Custom models go in `~/.config/parry-guard/models.toml` and are used with `--scan-mode custom`. See `examples/models.toml`.
+Custom patterns go in `parry-guard/patterns.toml` under your config dir: `~/.config` on Linux, `~/Library/Application Support` on macOS. You can add or remove sensitive paths, exfil domains, and secret patterns.
+Custom models go in `parry-guard/models.toml` in the same dir and are used with `--scan-mode custom`. See `examples/models.toml`.
 
 <details>
 <summary><h2>ML backends</h2></summary>
