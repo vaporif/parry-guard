@@ -418,6 +418,10 @@ mod tests {
         let pattern = Pattern::path_segment("ésecret");
         assert!(!pattern.matches("cat xésecretx"));
         assert!(pattern.matches("cat 'ésecret'"));
+        assert!(
+            pattern.matches("xésecretx 'ésecret'"),
+            "unbounded first hit must not end the scan"
+        );
     }
 
     #[test]

@@ -49,6 +49,7 @@ candle = [
 ]
 
 [dev-dependencies]
+proptest.workspace = true
 criterion.workspace = true
 
 [package.metadata.docs.rs]

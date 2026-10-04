@@ -1935,6 +1935,7 @@ dependencies = [
  "interprocess",
  "parry-guard-core",
  "parry-guard-ml",
+ "proptest",
  "redb",
  "tempfile",
  "tokio",
@@ -1949,6 +1950,7 @@ version = "0.2.0"
 dependencies = [
  "dirs",
  "indoc",
+ "proptest",
  "regex",
  "rstest",
  "serde",
@@ -1965,6 +1967,7 @@ version = "0.2.0"
 dependencies = [
  "dirs",
  "indoc",
+ "proptest",
  "regex",
  "rstest",
  "serde",
@@ -2022,6 +2025,7 @@ dependencies = [
  "ndarray",
  "ort",
  "parry-guard-core",
+ "proptest",
  "serde_json",
  "tokenizers 0.23.2",
  "tracing",

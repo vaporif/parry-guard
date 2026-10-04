@@ -33,6 +33,7 @@ candle = ["parry-guard-ml/candle", "parry-guard-core/candle"]
 features = ["candle"]
 
 [dev-dependencies]
+proptest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 tracing-subscriber.workspace = true
