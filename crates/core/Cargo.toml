@@ -16,6 +16,7 @@ regex.workspace = true
 aho-corasick.workspace = true
 unicode-general-category.workspace = true
 unicode-normalization.workspace = true
+unicode_skeleton.workspace = true
 data-encoding.workspace = true
 percent-encoding.workspace = true
 html-escape.workspace = true
