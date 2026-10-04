@@ -399,59 +399,75 @@ mod tests {
         assert!(matches!(state, MlState::Failed(MAX_ML_RETRIES)));
     }
 
+    /// Hands out one pending load and counts how many loads were started.
+    struct FakeLoader {
+        pending: Option<Receiver<Option<u8>>>,
+        starts: usize,
+    }
+
+    impl FakeLoader {
+        fn pending() -> (std::sync::mpsc::Sender<Option<u8>>, Self) {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let loader = Self {
+                pending: Some(rx),
+                starts: 0,
+            };
+            (tx, loader)
+        }
+
+        fn start(&mut self) -> Receiver<Option<u8>> {
+            self.starts += 1;
+            self.pending.take().unwrap_or_else(|| finished_load(None))
+        }
+    }
+
     #[test]
     fn slow_load_is_awaited_not_restarted() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut pending = Some(rx);
-        let mut loads = 0;
+        let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::NotLoaded;
         for _ in 0..2 {
-            let scanner = state.get_or_load(
-                || {
-                    loads += 1;
-                    pending.take().unwrap()
-                },
-                SHORT_WAIT,
-            );
+            let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
             assert_eq!(scanner, None, "the load has not finished yet");
         }
-        assert_eq!(loads, 1, "a timed-out load must not start another thread");
+        assert_eq!(
+            loader.starts, 1,
+            "a timed-out load must not start another thread"
+        );
 
         tx.send(Some(7)).unwrap();
-        let scanner = state.get_or_load(|| unreachable!("load already running"), SHORT_WAIT);
+        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
         assert_eq!(scanner.copied(), Some(7), "a late success still installs");
+        assert_eq!(loader.starts, 1);
     }
 
     #[test]
     fn hung_load_stops_blocking_after_max_waits() {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::Loading {
-            result: rx,
+            result: loader.pending.take().unwrap(),
             attempt: 0,
             timeouts: MAX_ML_RETRIES,
         };
         // past the wait budget only a non-blocking check runs, so this returns at once
-        let scanner = state.get_or_load(|| unreachable!(), Duration::from_hours(1));
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
         assert_eq!(scanner, None);
 
         tx.send(Some(7)).unwrap();
-        let scanner = state.get_or_load(|| unreachable!(), Duration::from_hours(1));
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
         assert_eq!(scanner.copied(), Some(7));
+        assert_eq!(loader.starts, 0, "the running load is reused");
     }
 
     #[test]
     fn failed_load_after_wait_allows_retry() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut pending = Some(rx);
+        let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::NotLoaded;
-        assert_eq!(
-            state.get_or_load(|| pending.take().unwrap(), SHORT_WAIT),
-            None
-        );
+        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
 
         tx.send(None).unwrap();
-        assert_eq!(state.get_or_load(|| unreachable!(), SHORT_WAIT), None);
+        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
         assert!(matches!(state, MlState::Failed(1)));
+        assert_eq!(loader.starts, 1);
 
         let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);
         assert_eq!(scanner.copied(), Some(3));

@@ -95,11 +95,11 @@ e2e:
 
 # Benchmark ML inference with candle backend (requires HF_TOKEN)
 bench-candle:
-    cargo bench -p parry-ml --bench inference
+    cargo bench -p parry-guard-ml --bench inference
 
 # Benchmark ML inference with ONNX backend (requires HF_TOKEN)
 bench-onnx:
-    cargo bench -p parry-ml --bench inference --no-default-features --features onnx-fetch
+    cargo bench -p parry-guard-ml --bench inference --no-default-features --features onnx-fetch
 
 # Run scan on stdin
 scan:

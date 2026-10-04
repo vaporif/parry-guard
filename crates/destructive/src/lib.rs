@@ -1011,7 +1011,7 @@ mod tests {
     #[case::split_raw_string_name("r''m -rf /etc")]
     #[case::split_string_name(r#"r"m" -rf /etc"#)]
     #[case::variable_name("X=rm; $X -rf /etc")]
-    #[case::default_expansion_name(&format!("${{X:-rm}} -rf /etc"))]
+    #[case::default_expansion_name("${CMD:-rm} -rf /etc")]
     #[case::command_wrapper("command rm -rf /etc")]
     #[case::env_wrapper("env rm -rf /etc")]
     #[case::env_with_flags_and_vars("env -i FOO=1 rm -rf /etc")]
