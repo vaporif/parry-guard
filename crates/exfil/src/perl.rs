@@ -12,7 +12,6 @@ impl LangExfilDetector for PerlDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(get|post|request|socket|connect|LWP|HTTP|IO::Socket)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for PerlDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(open|read|slurp)")

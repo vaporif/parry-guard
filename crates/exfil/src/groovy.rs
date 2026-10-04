@@ -12,7 +12,6 @@ impl LangExfilDetector for GroovyDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(openConnection|getText|execute|post|get|URL|HttpURLConnection|Socket)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for GroovyDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(getText|readLines|eachLine|newReader|File|FileReader|FileInputStream)")

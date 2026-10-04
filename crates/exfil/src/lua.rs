@@ -12,10 +12,6 @@ impl LangExfilDetector for LuaDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - socket.http.request
-        // - socket.connect
-        // - http.request (LuaSocket)
         r#"
         (function_call
           name: [
@@ -28,10 +24,6 @@ impl LangExfilDetector for LuaDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - io.open(file)
-        // - io.read()
-        // - file:read()
         r#"
         (function_call
           name: [

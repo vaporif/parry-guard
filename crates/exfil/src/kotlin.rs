@@ -12,7 +12,6 @@ impl LangExfilDetector for KotlinDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(readText|openConnection|execute|post|get|request|URL|HttpURLConnection|Socket|OkHttpClient)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for KotlinDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(readText|readLines|readBytes|bufferedReader|reader|File|FileReader|FileInputStream|BufferedReader)")

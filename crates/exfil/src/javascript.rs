@@ -12,12 +12,6 @@ impl LangExfilDetector for JavaScriptDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - fetch(url, ...)
-        // - http.request(...)
-        // - https.request(...)
-        // - axios.get/post(...)
-        // - net.connect(...)
         r#"
         (call_expression
           function: (identifier) @fn
@@ -35,12 +29,6 @@ impl LangExfilDetector for JavaScriptDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - fs.readFileSync(path)
-        // - fs.readFile(path, ...)
-        // - require('fs').readFileSync(path)
-        // - Deno.readTextFileSync(path)
-        // - Bun.file(path)
         r#"
         (call_expression
           function: (member_expression

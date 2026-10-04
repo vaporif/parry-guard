@@ -13,11 +13,6 @@ impl LangExfilDetector for PhpDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - curl_exec(...)
-        // - file_get_contents('http...')
-        // - fopen('http...')
-        // - fsockopen(...)
         r#"
         (function_call_expression
           function: (name) @fn
@@ -27,11 +22,6 @@ impl LangExfilDetector for PhpDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - file_get_contents(path)
-        // - fopen(path, 'r')
-        // - file(path)
-        // - readfile(path)
         r#"
         (function_call_expression
           function: (name) @fn

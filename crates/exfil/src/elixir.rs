@@ -12,7 +12,6 @@ impl LangExfilDetector for ElixirDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "^(get|post|put|delete|request|get!|post!)$")
@@ -20,7 +19,6 @@ impl LangExfilDetector for ElixirDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "^(read|read!|stream!|open)$")

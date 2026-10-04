@@ -12,11 +12,6 @@ impl LangExfilDetector for NixDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - builtins.fetchurl
-        // - builtins.fetchTarball
-        // - fetchFromGitHub
-        // - pkgs.fetchurl
         r#"
         (identifier) @fn
         (#match? @fn "(fetchurl|fetchTarball|fetchFromGitHub|fetchgit|fetchzip|curl|wget)")
@@ -24,10 +19,6 @@ impl LangExfilDetector for NixDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - builtins.readFile
-        // - builtins.readDir
-        // - import
         r#"
         (identifier) @fn
         (#match? @fn "(readFile|readDir|pathExists|import)")
