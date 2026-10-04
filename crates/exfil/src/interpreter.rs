@@ -1,7 +1,4 @@
-//! Interpreter and shell inline code detection.
-//!
-//! Detects exfiltration in `python -c "..."`, `node -e "..."`, `bash -c "..."`, etc.
-//! Uses AST-based detection for supported languages, keyword matching as fallback.
+//! Inline code checks (`python -c`, `node -e`, `bash -c`): AST first, keywords as fallback.
 
 use tree_sitter::Node;
 
@@ -38,16 +35,13 @@ pub(crate) fn check_interpreter_inline_code(
         let text = node_text(child, source);
 
         if INLINE_CODE_FLAGS.contains(&text) {
-            // Next sibling is the code string
             if let Some(&code_node) = children.get(i + 1) {
                 let code_str = extract_string_content(code_node, source);
 
-                // Try AST-based detection first for supported languages
                 if let Some(reason) = try_ast_detection(&code_str, cmd_name) {
                     return Some(reason);
                 }
 
-                // Fall back to keyword matching
                 if let Some(reason) = check_code_string_for_exfil(&code_str, cmd_name) {
                     return Some(reason);
                 }
@@ -58,7 +52,6 @@ pub(crate) fn check_interpreter_inline_code(
     None
 }
 
-/// Try AST-based detection for supported languages.
 fn try_ast_detection(code: &str, cmd_name: &str) -> Option<String> {
     let base = cmd_name
         .rsplit('/')
@@ -94,7 +87,7 @@ fn try_ast_detection(code: &str, cmd_name: &str) -> Option<String> {
 fn extract_string_content(node: Node, source: &[u8]) -> String {
     let text = node_text(node, source);
     match node.kind() {
-        // whole node text, not the first `string_content` child: expansions split the content
+        // not the first `string_content` child: expansions split the content
         "string" | "raw_string" => strip_quotes(text).to_owned(),
         _ => text.to_owned(),
     }
@@ -129,8 +122,7 @@ fn check_code_string_for_exfil(code: &str, cmd_name: &str) -> Option<String> {
     None
 }
 
-/// For shell interpreters (bash -c, sh -c, etc.), re-parse the inner string
-/// through the full detection pipeline rather than keyword matching.
+/// `sh -c` and friends: run the inner code through the full bash pipeline.
 pub(crate) fn check_shell_inline_code(node: Node, source: &[u8], cmd_name: &str) -> Option<String> {
     let mut cursor = node.walk();
     let children: Vec<_> = node.children(&mut cursor).collect();

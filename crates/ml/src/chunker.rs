@@ -92,8 +92,7 @@ mod tests {
         let text = "a".repeat(255) + "ñ" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {
-            // &str already guarantees valid UTF-8; floor_char_boundary is what
-            // prevents the slicing panic
+            // reaching here means no slicing panic
             assert_ne!(*chunk, "");
         }
     }
