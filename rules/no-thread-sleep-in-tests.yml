@@ -1,0 +1,21 @@
+id: no-thread-sleep-in-tests
+language: rust
+severity: error
+message: Fixed sleeps in tests are flaky. Poll with a deadline, or use `#[tokio::test(start_paused = true)]` with `tokio::time`.
+utils:
+  test-attr:
+    kind: attribute_item
+    regex: ^#\[(test|tokio::test|rstest|test_case)\b
+rule:
+  kind: call_expression
+  regex: ^(std::)?thread::sleep\b
+  inside:
+    kind: function_item
+    stopBy: end
+    follows:
+      matches: test-attr
+      stopBy:
+        not:
+          any:
+            - kind: attribute_item
+            - kind: line_comment

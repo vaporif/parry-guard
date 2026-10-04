@@ -1,0 +1,7 @@
+id: no-env-mutation
+language: rust
+severity: error
+message: Don't mutate process env. Tests run on parallel threads under `cargo test` (e.g. the Nix build), so this races. Pass the value (dir, path, config) in as a parameter instead.
+rule:
+  kind: identifier
+  regex: ^(set_var|remove_var)$
