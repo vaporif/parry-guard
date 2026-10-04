@@ -7,12 +7,9 @@ use regex::Regex;
 
 use crate::commands::{CompiledDestructive, CONFIG};
 
-/// WSL drive letter pattern: /mnt/[a-z]/
 #[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static WSL_DRIVE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/mnt/[a-z]/").expect("valid regex"));
-
-// === macOS protected paths ===
 
 const MACOS_SYSTEM: &[&str] = &[
     "/System/",
@@ -35,8 +32,6 @@ const MACOS_USER: &[&str] = &[
     "~/.Trash/",
 ];
 
-// === Linux protected paths ===
-
 const LINUX_SYSTEM: &[&str] = &[
     "/etc/", "/var/", "/usr/", "/bin/", "/sbin/", "/opt/", "/boot/", "/lib/", "/lib64/", "/srv/",
 ];
@@ -49,8 +44,6 @@ const LINUX_USER: &[&str] = &[
     "~/.local/bin/",
 ];
 
-// === WSL Windows protected paths ===
-
 const WSL_SYSTEM_SUFFIXES: &[&str] = &[
     "Windows/",
     "Program Files/",
@@ -59,8 +52,6 @@ const WSL_SYSTEM_SUFFIXES: &[&str] = &[
 ];
 
 const WSL_USER_SUFFIXES: &[&str] = &["AppData/", "Desktop/", "Documents/", "Downloads/"];
-
-// === Cross-platform protected paths ===
 
 const CROSS_PLATFORM_CONFIG: &[&str] = &["~/.config/", "~/.local/"];
 
@@ -78,7 +69,6 @@ const CROSS_PLATFORM_TOOLCHAINS: &[&str] = &[
 const NIX_SYSTEM: &[&str] = &["/nix/"];
 const NIX_USER: &[&str] = &["~/.nix-profile/", "~/.nix-defexpr/"];
 
-/// Expand `~` prefix to actual home directory.
 fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
@@ -92,8 +82,7 @@ fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-/// Resolve a potentially relative path against CWD using lexical normalization.
-/// Does not follow symlinks, to avoid macOS `/private` prefix issues.
+/// Lexical only: following symlinks would add macOS `/private` prefixes.
 fn resolve_path(path: &str, cwd: &str) -> PathBuf {
     let expanded = expand_tilde(path);
     let p = Path::new(&expanded);
@@ -106,7 +95,7 @@ fn resolve_path(path: &str, cwd: &str) -> PathBuf {
     }
 }
 
-/// Lexical normalization: resolve `.` and `..` without touching the filesystem.
+/// Resolves `.` and `..` without touching the filesystem.
 fn lexical_normalize(path: &Path) -> PathBuf {
     let mut components = Vec::new();
     for component in path.components() {
@@ -125,7 +114,6 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
-/// Append `/` if missing, for prefix matching.
 fn ensure_trailing_slash(s: &str) -> String {
     if s.ends_with('/') {
         s.to_string()
@@ -134,7 +122,6 @@ fn ensure_trailing_slash(s: &str) -> String {
     }
 }
 
-/// Check if a path is under CWD (CWD itself or any subdirectory).
 fn is_under_cwd(resolved: &Path, cwd: &Path) -> bool {
     resolved.starts_with(cwd)
 }
@@ -187,10 +174,7 @@ fn matches_wsl_prefix(resolved_with_slash: &str) -> Option<String> {
         .map(|suffix| (*suffix).to_string())
 }
 
-/// Check if a file path targets a protected location.
-///
-/// Returns `Some(reason)` if the path is protected and not under CWD.
-/// CWD and its subdirectories are excluded from protection.
+/// Reason if `path` is protected; CWD and its subdirectories are exempt.
 #[must_use]
 pub(crate) fn check_protected(path: &str, cwd: &str) -> Option<String> {
     let resolved = resolve_path(path, cwd);
@@ -211,7 +195,7 @@ pub(crate) fn check_protected(path: &str, cwd: &str) -> Option<String> {
     None
 }
 
-/// Check if a path resolves to CWD itself (not a subdirectory).
+/// True only for CWD itself, not its subdirectories.
 #[must_use]
 pub(crate) fn is_cwd_itself(path: &str, cwd: &str) -> bool {
     let resolved = resolve_path(path, cwd);
@@ -219,7 +203,6 @@ pub(crate) fn is_cwd_itself(path: &str, cwd: &str) -> bool {
     resolved == cwd_path
 }
 
-/// Check if a path resolves to somewhere outside CWD.
 #[must_use]
 pub(crate) fn is_outside_cwd(path: &str, cwd: &str) -> bool {
     let resolved = resolve_path(path, cwd);
