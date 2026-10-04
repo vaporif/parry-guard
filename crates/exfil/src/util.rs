@@ -1,4 +1,4 @@
-//! Shared utility functions for AST-based exfil detection.
+//! Shared AST helpers.
 
 use tree_sitter::Node;
 
@@ -101,12 +101,10 @@ pub(crate) fn strip_quotes(s: &str) -> &str {
         .unwrap_or(s)
 }
 
-/// Returns true if the IPv4 address is private/loopback (RFC 1918 + loopback).
 pub(crate) const fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
     ip.is_loopback() || ip.is_private() || ip.is_link_local()
 }
 
-/// Returns true if the IPv6 address is loopback or link-local.
 pub(crate) const fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
     ip.is_loopback() || ip.is_unicast_link_local()
 }

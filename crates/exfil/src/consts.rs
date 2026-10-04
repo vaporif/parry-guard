@@ -22,7 +22,6 @@ pub(crate) const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
     "s3cmd put",
 ];
 
-// Clipboard staging tools
 pub(crate) const CLIPBOARD_TOOLS: &[&str] = &[
     "pbcopy",   // macOS
     "xclip",    // Linux X11
