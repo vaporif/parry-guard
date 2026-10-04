@@ -1175,6 +1175,10 @@ fn audit_failure_fails_closed_for_monitored_repo() {
     })
     .to_string();
     let out = run_hook_rt(dir.path(), &json, Some(&rt), &[]);
-    assert!(!out.status.success(), "known repo must fail closed");
-    assert_context_contains(&out, "project audit failed");
+    assert_eq!(out.status.code(), Some(2), "known repo must fail closed");
+    assert!(
+        stderr(&out).contains("project audit failed"),
+        "stderr: {}",
+        stderr(&out)
+    );
 }
