@@ -27,17 +27,14 @@ fn check_children(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 fn check_pipeline(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let mut cursor = node.walk();
     let stages: Vec<Node> = node.named_children(&mut cursor).collect();
-    let reason = stages.windows(2).find_map(|pair| {
-        let [upstream, stage] = pair else {
-            return None;
-        };
-        if !matches!(get_command_name(*stage, source), Some(CommandName::Static(name)) if name == "xargs")
+    let reason = stages.iter().zip(stages.iter().skip(1)).find_map(|(&upstream, &stage)| {
+        if !matches!(get_command_name(stage, source), Some(CommandName::Static(name)) if name == "xargs")
         {
             return None;
         }
         // TODO: output of any other stage (`cat list | xargs rm`) is unknown, so it's allowed.
-        let input = stage_output(*upstream, source, cwd)?;
-        check_wrapper("xargs", *stage, source, cwd, &input)
+        let input = stage_output(upstream, source, cwd)?;
+        check_wrapper("xargs", stage, source, cwd, &input)
     });
     reason.or_else(|| check_children(node, source, cwd))
 }

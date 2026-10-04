@@ -1117,11 +1117,13 @@ mod tests {
         assert!(reason.contains(expected), "{reason}");
     }
 
-    #[test]
-    fn gap_xargs_targets_from_unknown_stage() {
+    #[rstest]
+    #[case::file_contents("cat list.txt | xargs rm -rf")]
+    #[case::dynamic_stage("$(echo cat) list.txt | xargs rm -rf")]
+    fn gap_xargs_targets_from_unknown_stage(#[case] command: &str) {
         // Known gap: targets printed by a stage we can't evaluate. Flip the assert once fixed.
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
-        assert_eq!(detect_destructive("cat list.txt | xargs rm -rf", cwd), None);
+        assert_eq!(detect_destructive(command, cwd), None);
     }
 }
