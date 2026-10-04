@@ -12,7 +12,7 @@ cargo-check:
     cargo check --workspace
 
 # Lint all
-lint: lint-toml check-typos check-nix-fmt lint-actions
+lint: lint-toml check-typos check-nix-fmt lint-actions lint-ast
 
 # Format all
 fmt: fmt-rust fmt-toml fmt-nix
@@ -74,6 +74,10 @@ check-typos:
 # Lint GitHub Actions
 lint-actions:
     actionlint
+
+# Run ast-grep rules (rules/)
+lint-ast:
+    ast-grep scan
 
 # Run mutation testing on the whole workspace
 mutants:

@@ -1,10 +1,16 @@
-//! CLI e2e tests - runs the `parry-guard` binary with JSON on stdin.
+//! CLI e2e tests: run the `parry-guard` binary with JSON on stdin.
 //!
-//! `PreToolUse` tests must use `current_dir` set to a temp dir, otherwise
-//! `claude_md::check()` finds the repo's real CLAUDE.md and triggers ML scan.
-//!
-//! Tests that need Monitored state use `monitored_dir()` which creates an
-//! isolated runtime dir per test to avoid redb lock contention.
+//! Tests run in temp dirs so `claude_md::check()` never finds the repo's CLAUDE.md (ML scan),
+//! and each gets its own runtime dir to avoid redb lock contention.
+
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    clippy::missing_assert_message,
+    reason = "helpers outside #[test] fns aren't covered by allow-*-in-tests"
+)]
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -12,6 +18,8 @@ use std::process::{Command, Stdio};
 fn parry_cmd(runtime_dir: Option<&Path>) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_parry-guard"));
     cmd.env("PARRY_LOG", "off");
+    // inherited by any daemon the hook spawns, so it exits soon after the test
+    cmd.env("PARRY_IDLE_TIMEOUT", "5");
     if let Some(rd) = runtime_dir {
         cmd.env("PARRY_RUNTIME_DIR", rd);
     }
@@ -49,8 +57,10 @@ fn inject_cwd(json: &str, dir: &Path) -> String {
     v.to_string()
 }
 
+/// Runs the hook with a throwaway runtime dir so it never touches `~/.parry-guard`.
 fn run_hook(dir: &Path, json: &str) -> std::process::Output {
-    run_hook_rt(dir, json, None, &[])
+    let runtime = tempfile::tempdir().unwrap();
+    run_hook_rt(dir, json, Some(runtime.path()), &[])
 }
 
 fn run_hook_rt(
@@ -113,7 +123,7 @@ fn parse_output(out: &std::process::Output) -> serde_json::Value {
 
 fn assert_allowed(out: &std::process::Output) {
     assert!(out.status.success());
-    assert!(stdout(out).trim().is_empty());
+    assert_eq!(stdout(out).trim(), "");
 }
 
 fn assert_decision(out: &std::process::Output, expected: &str) {
@@ -147,8 +157,7 @@ fn isolated_dir() -> tempfile::TempDir {
     dir
 }
 
-/// Temp dir pre-registered as Monitored with its own isolated runtime db.
-/// Returns `(project_dir, runtime_dir)` - both must stay alive for the test.
+/// Monitored `(project_dir, runtime_dir)`; both must outlive the test.
 fn monitored_dir() -> (tempfile::TempDir, tempfile::TempDir) {
     let dir = isolated_dir();
     let runtime = tempfile::tempdir().unwrap();
@@ -197,7 +206,10 @@ fn git_commit(dir: &Path, name: &str, content: &str) {
         .unwrap();
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     serde_json::json!({
         "tool_name": tool,
@@ -207,7 +219,10 @@ fn pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     .to_string()
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn codex_pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     serde_json::json!({
         "session_id": "session-test",
@@ -224,7 +239,10 @@ fn codex_pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     .to_string()
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn post_tool_json(tool: &str, input: serde_json::Value, response: serde_json::Value) -> String {
     serde_json::json!({
         "tool_name": tool,
@@ -234,8 +252,6 @@ fn post_tool_json(tool: &str, input: serde_json::Value, response: serde_json::Va
     })
     .to_string()
 }
-
-// ── PreToolUse: allow ─────────────────────────────────────────
 
 #[test]
 fn pre_read_normal_file() {
@@ -264,7 +280,7 @@ fn pre_write_clean_content() {
         "hook_event_name": "PreToolUse",
         "cwd": dir.path().to_str().unwrap()
     }).to_string();
-    // Fast scan clean -> ML scan fails without daemon -> fail-closed (ask)
+    // fast scan clean, ML unavailable without daemon: fail-closed (ask)
     let out = run_hook(dir.path(), &json);
     assert!(out.status.success());
 }
@@ -288,8 +304,6 @@ fn pre_grep_normal_path() {
     );
     assert_allowed(&run_hook(dir.path(), &json));
 }
-
-// ── PreToolUse: block ─────────────────────────────────────────
 
 #[test]
 fn pre_bash_exfil_denied() {
@@ -431,8 +445,6 @@ fn pre_glob_sensitive_path() {
     assert_decision(&out, "ask");
 }
 
-// ── PreToolUse: destructive ───────────────────────────────────
-
 #[test]
 fn pre_rm_rf_root() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
@@ -488,8 +500,6 @@ fn pre_write_etc_hosts() {
     assert_decision(&out, "ask");
 }
 
-// ── PreToolUse: MCP ───────────────────────────────────────────
-
 #[test]
 fn pre_mcp_short_strings() {
     let dir = isolated_dir();
@@ -516,8 +526,6 @@ fn pre_mcp_injection() {
     assert!(out.status.success());
     assert_decision(&out, "ask");
 }
-
-// ── PostToolUse: clean ────────────────────────────────────────
 
 #[test]
 fn post_clean_text() {
@@ -574,8 +582,6 @@ fn post_null_response() {
     assert_allowed(&run_hook(dir.path(), &json));
 }
 
-// ── PostToolUse: warn ─────────────────────────────────────────
-
 #[test]
 fn post_injection_warns() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
@@ -628,8 +634,6 @@ fn post_object_response_scanned() {
     assert_context_contains(&out, "injection");
 }
 
-// ── Edge cases ────────────────────────────────────────────────
-
 #[test]
 fn empty_stdin() {
     let dir = isolated_dir();
@@ -637,9 +641,29 @@ fn empty_stdin() {
 }
 
 #[test]
-fn invalid_json() {
+fn invalid_json_blocks() {
     let dir = isolated_dir();
-    assert!(!run_hook(dir.path(), "not json at all").status.success());
+    let out = run_hook(dir.path(), "not json at all");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "only exit 2 blocks the tool call"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("blocking"));
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn panic_blocks() {
+    let dir = isolated_dir();
+    let json = pre_tool_json("Bash", serde_json::json!({ "command": "ls" }));
+    let out = run_hook_rt(dir.path(), &json, None, &[("PARRY_TEST_PANIC", "1")]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "only exit 2 blocks the tool call"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("blocking"));
 }
 
 #[test]
@@ -661,11 +685,9 @@ fn unknown_hook_event() {
     assert_allowed(&run_hook(dir.path(), &json));
 }
 
-// ── Taint (smoke test) ────────────────────────────────────────
-// Taint uses runtime_dir, not JSON cwd - can only verify no crash.
-
 #[test]
 fn tainted_project_no_crash() {
+    // Taint uses runtime_dir, not the JSON cwd, so this only checks for no crash.
     let dir = isolated_dir();
     std::fs::write(dir.path().join(".parry-tainted"), "test").unwrap();
     let json = serde_json::json!({
@@ -679,11 +701,9 @@ fn tainted_project_no_crash() {
     assert!(out.status.success() || out.status.code() == Some(2));
 }
 
-// ── Repo management ──────────────────────────────────────────
-
 #[test]
 fn repo_lifecycle() {
-    // Repo management needs db which is unavailable in Nix sandbox
+    // repo db is unavailable in the Nix sandbox
     if std::env::var("NIX_BUILD_TOP").is_ok() {
         return;
     }
@@ -718,7 +738,6 @@ fn repo_lifecycle() {
     let out = run_parry_with_retry_rt(&["status", path], dir.path(), Some(rt.path()));
     assert!(stdout(&out).contains("unknown"));
 
-    // Ignored repo skips scanning
     run_parry_with_retry_rt(&["ignore", path], dir.path(), Some(rt.path()));
 
     let json = serde_json::json!({
@@ -742,15 +761,16 @@ fn repo_lifecycle() {
     run_parry_with_retry_rt(&["reset", path], dir.path(), Some(rt.path()));
 }
 
-// ── Diff mode ─────────────────────────────────────────────────
-
 #[test]
 fn diff_clean() {
     let dir = git_repo();
     git_commit(dir.path(), "readme.md", "# Hello");
     std::fs::write(
         dir.path().join("readme.md"),
-        "# Hello World\n\nClean content.",
+        indoc::indoc! {"
+            # Hello World
+
+            Clean content."},
     )
     .unwrap();
 
@@ -821,8 +841,6 @@ fn diff_secret() {
     assert!(stdout(&out).contains("Threats detected"));
     assert!(stdout(&out).contains("config.txt"));
 }
-
-// ── UserPromptSubmit ──────────────────────────────────────────
 
 #[test]
 fn prompt_submit_no_claude_dir() {
@@ -906,8 +924,6 @@ fn prompt_submit_hook_scripts() {
     assert_context_contains(&out, "HOOKS");
 }
 
-// ── Auto-monitor (PARRY_ASK_ON_NEW_PROJECT) ───────────────────
-
 #[test]
 fn auto_monitor_sets_monitored_on_first_run() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
@@ -930,7 +946,6 @@ fn auto_monitor_sets_monitored_on_first_run() {
         "auto-monitor should not prompt: {s}"
     );
 
-    // Verify repo is now Monitored
     let out = run_parry_with_retry_rt(
         &["status", dir.path().to_str().unwrap()],
         dir.path(),
@@ -961,6 +976,7 @@ fn ask_on_new_project_shows_prompt() {
     );
     assert!(out.status.success());
     assert_context_contains(&out, "Action required");
+    assert_context_contains(&out, "`parry-guard monitor`");
 
     let out = run_parry_with_retry_rt(
         &["status", dir.path().to_str().unwrap()],
@@ -1125,4 +1141,46 @@ fn status_reports_clean_audit() {
     );
     let s = stdout(&out);
     assert!(s.contains("clean (no findings)"), "status output: {s}");
+}
+
+#[test]
+fn audit_failure_fails_closed_for_monitored_repo() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let dir = isolated_dir();
+    // socket path exceeds sun_path, so the daemon can't bind and ML is always unavailable
+    let base = tempfile::tempdir().unwrap();
+    let rt = base.path().join("x".repeat(120));
+    std::fs::create_dir_all(&rt).unwrap();
+    let out = run_parry_with_retry_rt(
+        &["monitor", dir.path().to_str().unwrap()],
+        dir.path(),
+        Some(&rt),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let commands = dir.path().join(".claude/commands");
+    std::fs::create_dir_all(&commands).unwrap();
+    // clean text passes fast scan and needs ML
+    std::fs::write(commands.join("help.md"), "# Help\nNormal content.").unwrap();
+
+    let json = serde_json::json!({
+        "tool_name": null, "tool_input": {},
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": dir.path().to_str().unwrap()
+    })
+    .to_string();
+    let out = run_hook_rt(dir.path(), &json, Some(&rt), &[]);
+    assert_eq!(out.status.code(), Some(2), "known repo must fail closed");
+    assert!(
+        stderr(&out).contains("project audit failed"),
+        "stderr: {}",
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("`parry-guard serve`"),
+        "stderr: {}",
+        stderr(&out)
+    );
 }

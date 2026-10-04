@@ -5,18 +5,18 @@
 [![codecov](https://codecov.io/gh/vaporif/parry-guard/branch/main/graph/badge.svg)](https://codecov.io/gh/vaporif/parry-guard)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 
-**Prompt injection scanner for AI coding tool hooks.** Catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs. It is built for Claude Code hooks and can also be used with Codex or similar tools that run command hooks with compatible JSON input/output.
+A prompt injection scanner for AI coding tool hooks. It catches injection attacks, leaked secrets, and data exfiltration in tool inputs and outputs. It's built for Claude Code, and also works with Codex or any tool that runs command hooks with the same JSON input and output.
 
-> **Early development** - bugs and false positives happen. Tested on Linux and macOS.
+> Early development: expect bugs and false positives. Tested on Linux and macOS.
 
 ## Prerequisites
 
-The ML models are gated on HuggingFace, so you need to accept licenses before installing:
+The ML models are gated on HuggingFace. Before installing:
 
-1. Create an account at [huggingface.co](https://huggingface.co)
-2. Accept the [DeBERTa v3 license](https://huggingface.co/ProtectAI/deberta-v3-small-prompt-injection-v2) (required for all modes)
-3. For `full` mode: also accept the [Llama Prompt Guard 2 license](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M) (Meta approval required)
-4. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+1. Create an account at [huggingface.co](https://huggingface.co).
+2. Accept the [DeBERTa v3 license](https://huggingface.co/ProtectAI/deberta-v3-small-prompt-injection-v2). All modes need it.
+3. For `full` mode, also accept the [Llama Prompt Guard 2 license](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M). Meta has to approve it.
+4. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
 ## Usage
 
@@ -24,7 +24,7 @@ The ML models are gated on HuggingFace, so you need to accept licenses before in
 
 Add to `~/.claude/settings.json`:
 
-**With [uvx](https://docs.astral.sh/uv/):**
+With [uvx](https://docs.astral.sh/uv/):
 
 ```json
 {
@@ -36,7 +36,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-**With [rvx](https://github.com/vaporif/rvx):**
+With [rvx](https://github.com/vaporif/rvx):
 
 ```json
 {
@@ -48,7 +48,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-**With parry-guard on PATH** (via [Nix](#nix-home-manager), cargo install, or [release binary](https://github.com/vaporif/parry/releases)):
+With `parry-guard` on your PATH (from [Nix](#nix-home-manager), `cargo install`, or a [release binary](https://github.com/vaporif/parry-guard/releases)):
 
 ```json
 {
@@ -92,20 +92,20 @@ timeout = 2
 
 ### Other hook runners
 
-`parry-guard hook` reads one JSON hook payload from stdin and writes a JSON decision to stdout. Any tool with command hooks can integrate it if it sends Claude/Codex-style fields such as `hook_event_name`, `tool_name`, `tool_input`, `tool_response`, and `prompt`, then honors block/deny responses.
+`parry-guard hook` reads one JSON payload from stdin and writes a JSON decision to stdout. Any tool with command hooks can use it, as long as it sends Claude/Codex-style fields (`hook_event_name`, `tool_name`, `tool_input`, `tool_response`, `prompt`) and respects block/deny responses.
 
-Note: Claude Code supports interactive `PreToolUse` `ask` decisions. Codex does not currently support that decision, so `parry-guard` maps review/ask results from Codex-shaped `PreToolUse` payloads to a blocking exit code with the reason on stderr.
+Claude Code can ask you to confirm a `PreToolUse` call. Codex can't yet, so for Codex payloads parry-guard turns an "ask" into a block: it exits with a blocking code and prints the reason to stderr.
 
 <details>
 <summary>Other installation methods</summary>
 
-**From source:**
+From source:
 
 ```bash
-# Default (ONNX backend - statically linked, 5-6x faster than Candle)
+# Default: ONNX backend, statically linked, 5-6x faster than Candle
 cargo install --path bin
 
-# Candle backend (pure Rust, no native deps, portable)
+# Candle backend: pure Rust, no native deps, portable
 cargo install --path bin --no-default-features --features candle
 ```
 
@@ -114,7 +114,7 @@ cargo install --path bin --no-default-features --features candle
 ```nix
 # flake.nix
 {
-  inputs.parry.url = "github:vaporif/parry";
+  inputs.parry.url = "github:vaporif/parry-guard";
 
   outputs = { parry, ... }: {
     # pass parry to your home-manager config via extraSpecialArgs, overlays, etc.
@@ -133,7 +133,7 @@ cargo install --path bin --no-default-features --features candle
     # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
     hfTokenFile = config.sops.secrets.hf-token.path;
     ignoreDirs = [ "/home/user/repos/trusted" ];
-    # askOnNewProject = true;  # Ask before monitoring new projects (default: auto-monitor)
+    # askOnNewProject = true;  # ask before monitoring new projects (default: monitor right away)
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
 
     # scanMode = "full";  # fast (default) | full | custom
@@ -153,25 +153,25 @@ cargo install --path bin --no-default-features --features candle
 
 ### HuggingFace token
 
-Provide your token via one of (first match wins):
+Set your token one of these ways (first match wins):
 ```bash
 export HF_TOKEN="hf_..."                          # direct value
 export HF_TOKEN_PATH="/path/to/token"              # file path
 # or place token at /run/secrets/hf-token-scan-injection
 ```
 
-The daemon starts on the first scan, downloads the model on the first run, and shuts down after 30 minutes idle. Non-Nix users: set env vars in your shell profile or pass flags directly (see [Config](#config)).
+The daemon starts on the first scan, downloads the model on the first run, and stops after 30 idle minutes. Without Nix, set the env vars in your shell profile or pass flags (see [Config](#config)).
 
 ### Project scanning
 
-By default, parry auto-monitors every new project - scanning is active from the first session with no prompt. To opt out of a specific repo, run `parry-guard ignore <path>`.
+By default, every new project is scanned from its first session, with no prompt. To skip a repo, run `parry-guard ignore <path>`.
 
-To get ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProject = true` in Nix). See [docs/opt-in-flow.md](docs/opt-in-flow.md) for the full flow.
+To be asked first instead, set `PARRY_ASK_ON_NEW_PROJECT=true` (`askOnNewProject = true` in Nix). [docs/opt-in-flow.md](docs/opt-in-flow.md) shows the full flow.
 
 | Command | Effect |
 |---------|-------------|
-| `parry-guard monitor [path]` | Turn on scanning for a repo |
-| `parry-guard ignore [path]` | Turn off scanning for a repo |
+| `parry-guard monitor [path]` | Turn scanning on for a repo |
+| `parry-guard ignore [path]` | Turn scanning off for a repo |
 | `parry-guard reset [path]` | Clear state and caches, back to unknown |
 | `parry-guard status [path]` | Show current repo state and findings |
 | `parry-guard repos` | List all known repos and their states |
@@ -180,28 +180,36 @@ To get ask-first behavior, set `PARRY_ASK_ON_NEW_PROJECT=true` (or `askOnNewProj
 
 ### What each hook does
 
-**PreToolUse** runs 7 checks in order, stopping at the first match: ignored/unknown repo skip, taint enforcement, CLAUDE.md scanning, exfil blocking, destructive operation detection, sensitive path blocking, and input content injection scanning (Write/Edit/Bash/MCP tools).
+`PreToolUse` runs 7 checks in order and stops at the first hit:
 
-**PostToolUse** scans tool output for injection and secrets. If it finds something, it auto-taints the project.
+1. Skip ignored or unknown repos
+2. Enforce taint
+3. Scan CLAUDE.md
+4. Block exfiltration
+5. Catch destructive operations
+6. Block sensitive paths
+7. Scan input content for injection (Write, Edit, Bash, MCP tools)
 
-**UserPromptSubmit** audits your `.claude/` directory for dangerous permissions, injected commands, and hook scripts.
+`PostToolUse` scans tool output for injection and secrets. A hit taints the project.
+
+`UserPromptSubmit` audits your `.claude/` directory for dangerous permissions, injected commands, and hook scripts.
 
 ### Daemon and cache
 
-You can run the daemon standalone with `parry-guard serve --idle-timeout 1800`. Hook calls start it automatically if it isn't running.
+Hook calls start the daemon if it isn't running. You can also run it yourself with `parry-guard serve --idle-timeout 1800`.
 
-Scan results are cached in `~/.parry-guard/scan-cache.redb` with a 30-day TTL. Cache hits take about 8ms vs 70ms+ for inference. The cache is shared across projects and pruned hourly.
+Scan results are cached in `~/.parry-guard/scan-cache.redb` for 30 days. A cache hit takes about 8ms, versus 70ms+ for inference. All projects share the cache, and it's pruned hourly.
 
 ## Detection layers
 
-The scanner is fail-closed: if it can't tell whether something is safe, it treats it as unsafe.
+The scanner fails closed: if it can't tell whether something is safe, it treats it as unsafe.
 
-1. **Unicode** invisible characters (PUA, unassigned codepoints), homoglyphs, RTL overrides
-2. **Substring** Aho-Corasick matching for known injection phrases
-3. **Secrets** 40+ regex patterns for credentials (AWS, GitHub/GitLab, cloud providers, database URIs, private keys, etc.)
-4. **ML classification** DeBERTa v3 transformer with text chunking (256 chars, 25 overlap) and a head+tail strategy for long texts. Threshold defaults to 0.7.
-5. **Bash exfiltration** tree-sitter AST analysis for data exfil: network sinks, command substitution, obfuscation (base64, hex, ROT13), DNS tunneling, cloud storage, 60+ sensitive paths, 40+ exfil domains
-6. **Script exfiltration** same source-to-sink analysis for script files across 16 languages
+1. Unicode: invisible characters (PUA, unassigned codepoints), homoglyphs, RTL overrides.
+2. Substring: Aho-Corasick matching for known injection phrases.
+3. Secrets: 40+ regex patterns for credentials (AWS, GitHub/GitLab, cloud providers, database URIs, private keys, and more).
+4. ML classification: a DeBERTa v3 model. Text is split into 256-char chunks with 25 chars of overlap, and long texts are scanned head and tail. Default threshold is 0.7.
+5. Bash exfiltration: tree-sitter AST analysis for network sinks, command substitution, obfuscation (base64, hex, ROT13), DNS tunneling, cloud storage, 60+ sensitive paths, and 40+ exfil domains.
+6. Script exfiltration: the same source-to-sink analysis for script files in 16 languages.
 
 <details>
 <summary>Scan modes</summary>
@@ -210,11 +218,11 @@ The scanner is fail-closed: if it can't tell whether something is safe, it treat
 |------|--------|-------------------|---------|
 | `fast` (default) | DeBERTa v3 | ~50-70ms | any |
 | `full` | DeBERTa v3 + Llama Prompt Guard 2 | ~1.5s | candle only |
-| `custom` | User-defined (`~/.config/parry-guard/models.toml`) | varies | any |
+| `custom` | User-defined (`parry-guard/models.toml` in your config dir) | varies | any |
 
-Use `fast` for interactive work and `full` for high security or batch scanning (`parry-guard diff --full`). The two models have different blind spots — DeBERTa v3 is good at common injection patterns, while Llama Prompt Guard 2 is better at subtle stuff like role-play jailbreaks and indirect injections. Running both as an OR ensemble means fewer missed attacks, but at roughly 20x higher latency per chunk.
+Use `fast` for interactive work. Use `full` for high security or batch scans (`parry-guard diff --full`). DeBERTa v3 is good at common injection patterns; Llama Prompt Guard 2 is better at subtle ones like role-play jailbreaks and indirect injection. `full` flags text if either model does, so it misses less, but each chunk takes about 20x longer.
 
-> **Note:** `full` mode needs the `candle` backend because Llama Prompt Guard 2 doesn't have an ONNX export. Build with `--features candle --no-default-features`.
+`full` mode needs the `candle` backend, since Llama Prompt Guard 2 has no ONNX export. Build with `--features candle --no-default-features`.
 
 </details>
 
@@ -230,8 +238,8 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 | `--scan-mode` | `PARRY_SCAN_MODE` | fast | ML scan mode: `fast`, `full`, `custom` |
 | `--hf-token` | `HF_TOKEN` | | HuggingFace token (direct value) |
 | `--hf-token-path` | `HF_TOKEN_PATH` | `/run/secrets/hf-token-scan-injection` | HuggingFace token file |
-| `--ask-on-new-project` | `PARRY_ASK_ON_NEW_PROJECT` | false | Ask before monitoring new projects (default: auto-monitor) |
-| `--ignore-dirs` | `PARRY_IGNORE_DIRS` | | Parent directories to ignore, comma-separated. All repos under these paths get skipped. |
+| `--ask-on-new-project` | `PARRY_ASK_ON_NEW_PROJECT` | false | Ask before monitoring new projects instead of monitoring them right away |
+| `--ignore-dirs` | `PARRY_IGNORE_DIRS` | | Comma-separated parent directories. Every repo under them is skipped. |
 
 </details>
 
@@ -241,7 +249,7 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 | Flag | Env | Default | Effect |
 |------|-----|---------|-------------|
 | `serve --idle-timeout` | `PARRY_IDLE_TIMEOUT` | 1800 | Daemon idle timeout in seconds |
-| `diff --full` | | false | Use ML scan instead of fast-only |
+| `diff --full` | | false | Add the ML scan (default is fast scan only) |
 | `diff -e, --extensions` | | | Filter by file extension (comma-separated) |
 
 </details>
@@ -256,27 +264,27 @@ Use `fast` for interactive work and `full` for high security or batch scanning (
 
 </details>
 
-Custom patterns: `~/.config/parry-guard/patterns.toml` (add/remove sensitive paths, exfil domains, secret patterns).
-Custom models: `~/.config/parry-guard/models.toml` (used with `--scan-mode custom`, see `examples/models.toml`).
+Custom patterns go in `parry-guard/patterns.toml` under your config dir: `~/.config` on Linux, `~/Library/Application Support` on macOS. You can add or remove sensitive paths, exfil domains, and secret patterns.
+Custom models go in `parry-guard/models.toml` in the same dir and are used with `--scan-mode custom`. See `examples/models.toml`.
 
 <details>
 <summary><h2>ML backends</h2></summary>
 
-One backend is always required (enforced at compile time). Nix defaults to ONNX on x86_64-linux, aarch64-linux, and aarch64-darwin. Use the `candle` package on other platforms.
+You need exactly one backend; the build fails without one. Nix uses ONNX on x86_64-linux, aarch64-linux, and aarch64-darwin. On other platforms, use the `candle` package.
 
 | Feature | |
 |---------|------------|
-| `onnx-fetch` | ONNX, statically linked (downloads ORT at build time). Default. |
+| `onnx-fetch` | ONNX, statically linked. Downloads ORT at build time. Default. |
 | `candle` | Pure Rust ML. Portable, no native deps. About 5-6x slower. |
 | `onnx` | ONNX, you provide `ORT_DYLIB_PATH`. |
-| `onnx-coreml` | (experimental) ONNX with CoreML on Apple Silicon. |
+| `onnx-coreml` | ONNX with CoreML on Apple Silicon. Experimental. |
 
 </details>
 
 <details>
 <summary><h2>Performance</h2></summary>
 
-Apple Silicon, release build, `fast` mode (DeBERTa v3 only). Candle is about 5-6x slower than ONNX. Run `just bench-candle` / `just bench-onnx` to reproduce (requires `HF_TOKEN`).
+Apple Silicon, release build, `fast` mode (DeBERTa v3 only). To reproduce, run `just bench-candle` or `just bench-onnx` with `HF_TOKEN` set.
 
 | Scenario | ONNX (default) | Candle |
 |---|---|---|
@@ -296,11 +304,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Credits
 
 - ML model: [ProtectAI/deberta-v3-small-prompt-injection-v2](https://huggingface.co/ProtectAI/deberta-v3-small-prompt-injection-v2), also used by [LLM Guard](https://github.com/protectai/llm-guard)
-- Exfil patterns: inspired by [GuardDog](https://github.com/DataDog/guarddog) (Datadog's malicious package scanner)
+- Exfil patterns: inspired by [GuardDog](https://github.com/DataDog/guarddog), Datadog's malicious package scanner
 - Full scan mode optionally uses [Llama Prompt Guard 2 86M](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M) by Meta, licensed under the [Llama 4 Community License](https://github.com/meta-llama/llama-models/blob/main/models/llama4/LICENSE). Built with Llama.
 
 ## License
 
 MIT
 
-Llama Prompt Guard 2 (used in `full` scan mode) is licensed separately under the Llama 4 Community License. See [LICENSE-LLAMA](LICENSE-LLAMA).
+Llama Prompt Guard 2 (used in `full` mode) has its own license, the Llama 4 Community License. See [LICENSE-LLAMA](LICENSE-LLAMA).

@@ -1,7 +1,4 @@
-//! AST-based destructive operation detection.
-//!
-//! Detects potentially destructive system operations in bash commands
-//! and checks file paths against protected system locations.
+//! AST-based detection of destructive bash commands and protected file paths.
 
 use std::sync::Mutex;
 
@@ -13,13 +10,10 @@ pub mod commands;
 mod consts;
 mod paths;
 
-/// Mutex to serialize tree-sitter parser creation (C runtime is not thread-safe during init).
+/// Tree-sitter's C runtime is not thread-safe during parser init.
 static PARSER_LOCK: Mutex<()> = Mutex::new(());
 
-/// Parse a bash command into a tree-sitter AST.
-///
-/// Returns `Err` if the parser mutex is poisoned (fail-closed).
-/// Returns `Ok(None)` if parsing fails or the AST contains errors (fail-open for unparsable input).
+/// `Err` on poisoned mutex or AST errors (fail-closed); `Ok(None)` if the parser itself fails.
 fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     let tree = {
         let _guard = PARSER_LOCK.lock().map_err(|e| {
@@ -49,10 +43,7 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     }
 }
 
-/// Check if a Bash command contains destructive operations.
-///
-/// Returns a human-readable reason on match. `cwd` is resolved by the caller
-/// (from `HookInput.cwd` or `std::env::current_dir()`).
+/// Reason if `command` is destructive; `cwd` is resolved by the caller.
 #[must_use]
 #[instrument(skip(command), fields(command_len = command.len()))]
 pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
@@ -70,9 +61,7 @@ pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
     result
 }
 
-/// Check if a file path targets a protected location.
-///
-/// CWD and subdirectories are excluded. `cwd` is resolved by the caller.
+/// Reason if `path` is protected; CWD and its subdirectories are exempt.
 #[must_use]
 pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
     paths::check_protected(path, cwd)
@@ -80,13 +69,13 @@ pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     fn make_cwd() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
     }
-
-    // === Category 1: Filesystem Destruction ===
 
     #[test]
     fn rm_outside_cwd_blocked() {
@@ -107,7 +96,6 @@ mod tests {
     fn rm_rf_target_within_cwd_allowed() {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_str().unwrap();
-        // Create a target dir inside cwd
         let target = dir.path().join("target");
         std::fs::create_dir(&target).unwrap();
         let target_str = target.to_str().unwrap();
@@ -261,8 +249,6 @@ mod tests {
         assert!(detect_destructive("truncate -s 0 /var/log/syslog", cwd).is_some());
     }
 
-    // === Category 2: Process / Service ===
-
     #[test]
     fn kill_blocked() {
         let d = make_cwd();
@@ -298,8 +284,6 @@ mod tests {
         assert!(detect_destructive("launchctl unload com.example.service", cwd).is_some());
     }
 
-    // === Category 3: Permissions on protected paths ===
-
     #[test]
     fn chmod_protected_path_blocked() {
         let d = make_cwd();
@@ -317,8 +301,6 @@ mod tests {
             "chmod within CWD should pass"
         );
     }
-
-    // === Category 4: Package Managers ===
 
     #[test]
     fn brew_uninstall_blocked() {
@@ -378,8 +360,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("npm install", cwd).is_none());
     }
-
-    // === Category 5: Git Destructive ===
 
     #[test]
     fn git_push_force_blocked() {
@@ -589,8 +569,6 @@ mod tests {
         assert!(detect_destructive("git status", cwd).is_none());
     }
 
-    // === Category 6: Database / Storage ===
-
     #[test]
     fn psql_drop_table_blocked() {
         let d = make_cwd();
@@ -629,8 +607,6 @@ mod tests {
         assert!(detect_destructive("kafka-topics --delete --topic test", cwd).is_some());
     }
 
-    // === Category 7: Disk / Mount ===
-
     #[test]
     fn fdisk_blocked() {
         let d = make_cwd();
@@ -644,8 +620,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("diskutil eraseDisk JHFS+ Untitled /dev/disk2", cwd).is_some());
     }
-
-    // === Category 8: Container / Orchestration ===
 
     #[test]
     fn kubectl_delete_blocked() {
@@ -692,8 +666,6 @@ mod tests {
         );
     }
 
-    // === Category 9: System Admin ===
-
     #[test]
     fn crontab_r_blocked() {
         let d = make_cwd();
@@ -724,8 +696,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("nft flush ruleset", cwd).is_some());
     }
-
-    // === Category 10: Nix ===
 
     #[test]
     fn nix_collect_garbage_blocked() {
@@ -775,8 +745,6 @@ mod tests {
         );
     }
 
-    // === Category 11: Privilege Escalation ===
-
     #[test]
     fn sudo_blocked() {
         let d = make_cwd();
@@ -790,8 +758,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("doas rm /tmp/file", cwd).is_some());
     }
-
-    // === False positive tests ===
 
     #[test]
     fn echo_allowed() {
@@ -846,8 +812,6 @@ mod tests {
         );
     }
 
-    // === Protected path tests ===
-
     #[test]
     fn protected_path_etc() {
         let d = make_cwd();
@@ -868,8 +832,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(is_protected_path("~/.config/app/config.toml", cwd).is_some());
     }
-
-    // === eval / source bypass (4.6) ===
 
     #[test]
     fn eval_string_literal_destructive_blocked() {
@@ -910,10 +872,258 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::function_brace_body("f() { rm -rf /; }")]
+    #[case::function_subshell_body("f() ( rm -rf / )")]
+    #[case::function_keyword("function f { sudo ls; }")]
+    #[case::substitution_in_echo("echo $(rm -rf /)")]
+    #[case::substitution_in_git("git log $(rm -rf /)")]
+    #[case::substitution_in_safe_rm("rm ./x $(sudo ls)")]
+    #[case::substitution_in_docker("docker ps $(kill 1)")]
+    #[case::double_quoted_path(r#"rm -rf "/tmp/x""#)]
+    #[case::single_quoted_path("rm -rf '/tmp/x'")]
+    #[case::partially_quoted_parent(r#"rm -rf ".."/"#)]
+    #[case::escaped_parent(r"rm -rf .\./")]
+    #[case::escaped_root(r"rm -rf \/")]
+    #[case::quoted_taint_file(r#"rm "./.parry-tainted""#)]
+    #[case::chmod_quoted_protected(r#"chmod 777 "/etc/passwd""#)]
+    #[case::launchctl_remove("launchctl remove com.example")]
+    #[case::service_stop("service nginx stop")]
+    #[case::git_push_file_url("git push file:///tmp/exfil main")]
+    #[case::psql_delete_without_where(r#"psql -c "DELETE FROM users""#)]
+    #[case::psql_alter_drop(r#"psql -c "ALTER TABLE users DROP COLUMN email""#)]
+    #[case::mongosh_drop_database(r#"mongosh --eval "db.dropDatabase()""#)]
+    #[case::mongo_delete_many("mongo --eval db.users.deleteMany({})")]
+    #[case::mongorestore_drop("mongorestore --drop dump/")]
+    #[case::ldb_destroy("ldb destroy --db=/tmp/db")]
+    #[case::rabbitmq_delete_queue("rabbitmqctl delete_queue jobs")]
+    #[case::celery_purge("celery purge")]
+    #[case::etcd_del_prefix("etcdctl del --prefix /")]
+    #[case::etcd_defrag("etcdctl defrag")]
+    #[case::kafka_topics_sh_delete("kafka-topics.sh --delete --topic t")]
+    #[case::docker_volume_prune("docker volume prune")]
+    #[case::docker_rmi_force("docker rmi -f img")]
+    fn destructive_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::function_safe_body("f() { echo hi; }")]
+    #[case::substitution_safe("echo $(date)")]
+    #[case::quoted_path_in_cwd(r#"rm -rf "./target""#)]
+    #[case::mv_plain("mv a.txt b.txt")]
+    #[case::cp_plain("cp a.txt b.txt")]
+    #[case::launchctl_list("launchctl list")]
+    #[case::service_status("service nginx status")]
+    #[case::systemctl_status("systemctl status nginx")]
+    #[case::git_push_branch_path("git push origin feature/login")]
+    #[case::psql_delete_with_where(r#"psql -c "DELETE FROM users WHERE id = 1""#)]
+    #[case::psql_alter_add(r#"psql -c "ALTER TABLE users ADD COLUMN age int""#)]
+    #[case::psql_drop_index(r#"psql -c "DROP INDEX idx""#)]
+    #[case::mongosh_find(r#"mongosh --eval "db.users.find()""#)]
+    #[case::mongorestore_plain("mongorestore dump/")]
+    #[case::redis_get("redis-cli GET key")]
+    #[case::ldb_scan("ldb scan")]
+    #[case::rabbitmq_list("rabbitmqctl list_queues")]
+    #[case::celery_worker("celery worker")]
+    #[case::etcd_del_single("etcdctl del key")]
+    #[case::etcd_get_prefix("etcdctl get --prefix /")]
+    #[case::kafka_topics_list("kafka-topics --list")]
+    #[case::rsync_delete("rsync --delete src/ dst/")]
+    #[case::docker_volume_ls("docker volume ls")]
+    #[case::docker_rmi_plain("docker rmi img")]
+    fn safe_allowed(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::mv("mv .parry-tainted /tmp/gone", "'mv' targets parry-guard safety file")]
+    #[case::rm("rm .parry-tainted", "'rm' targets parry-guard safety file")]
+    #[case::mongo(r#"mongosh --eval "db.dropDatabase()""#, "dropdatabase")]
+    #[case::mongorestore("mongorestore --drop dump/", "'mongorestore --drop'")]
+    #[case::redis("redis-cli FLUSHALL", "'flushall'")]
+    #[case::etcd("etcdctl defrag", "'etcdctl defrag'")]
+    fn reason_names_the_operation(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
+    }
+
     #[test]
     fn eval_unquoted_destructive_blocked() {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("eval rm -rf /", cwd).is_some());
+    }
+
+    #[rstest]
+    #[case::substitution_name("$(echo rm) -rf /etc")]
+    #[case::backtick_name("`echo rm` -rf /etc")]
+    #[case::double_quoted_name(r#""rm" -rf /etc"#)]
+    #[case::single_quoted_name("'rm' -rf /etc")]
+    #[case::escaped_name(r"\rm -rf /etc")]
+    #[case::split_raw_string_name("r''m -rf /etc")]
+    #[case::split_string_name(r#"r"m" -rf /etc"#)]
+    #[case::variable_name("X=rm; $X -rf /etc")]
+    #[case::default_expansion_name("${X:-rm} -rf /etc")]
+    #[case::command_wrapper("command rm -rf /etc")]
+    #[case::env_wrapper("env rm -rf /etc")]
+    #[case::env_with_flags_and_vars("env -i FOO=1 rm -rf /etc")]
+    #[case::env_split_string(r#"env -S "rm -rf /etc""#)]
+    #[case::nice_wrapper("nice -n 5 rm -rf /etc")]
+    #[case::nohup_wrapper("nohup rm -rf /etc")]
+    #[case::exec_wrapper("exec rm -rf /etc")]
+    #[case::time_wrapper("time rm -rf /etc")]
+    #[case::timeout_wrapper("timeout 5 rm -rf /etc")]
+    #[case::timeout_with_signal("timeout -s KILL 5 rm -rf /etc")]
+    #[case::stdbuf_wrapper("stdbuf -oL rm -rf /etc")]
+    #[case::xargs_with_args("xargs rm -rf /etc")]
+    #[case::xargs_herestring("xargs rm -rf <<< /etc")]
+    #[case::xargs_with_flags("xargs -n 1 -P 4 rm -rf <<< /etc")]
+    #[case::nested_wrappers("nohup nice env rm -rf /etc")]
+    #[case::end_of_options("env -- rm -rf /etc")]
+    #[case::env_verbose_flag("env -v rm -rf /etc")]
+    #[case::expansion_inside_concatenation("r${X}m -rf /etc")]
+    #[case::wrapped_kill("env kill 1")]
+    #[case::wrapped_sudo("nohup sudo ls")]
+    fn obfuscated_command_name_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::editor_variable("$EDITOR README.md")]
+    #[case::all_args(r#""$@""#)]
+    #[case::default_interpreter("${PYTHON:-python3} build.py")]
+    #[case::which_substitution("$(which python3) script.py")]
+    #[case::dynamic_name_in_cwd("$X -rf ./target")]
+    #[case::quoted_name_in_cwd(r#""rm" -rf ./target"#)]
+    #[case::env_vars("env FOO=1 cargo test")]
+    #[case::env_unset("env -u HOME ls")]
+    #[case::env_alone("env")]
+    #[case::nice_build("nice -n 5 cargo build")]
+    #[case::timeout_test("timeout 5 cargo test")]
+    #[case::time_build("time cargo build")]
+    #[case::xargs_grep("xargs grep foo")]
+    #[case::xargs_rm_in_cwd("xargs rm -rf <<< ./target")]
+    #[case::env_rm_in_cwd("env rm -rf ./target")]
+    #[case::command_lookup("command -v rm")]
+    #[case::command_describe("command -V rm")]
+    #[case::command_lookup_with_args("command -v rm -rf /etc")]
+    #[case::destructive_words_as_data("echo rm -rf /etc")]
+    #[case::exec_shell("exec bash")]
+    fn obfuscation_guard_allows_safe(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::wrapper("env rm -rf /etc", "'env' runs: 'rm' targets '/etc'")]
+    #[case::dynamic(
+        "$(echo rm) -rf /etc",
+        "'/etc' outside project directory (command name resolved at runtime)"
+    )]
+    #[case::quoted(r#""rm" -rf /etc"#, "'rm' targets '/etc'")]
+    fn obfuscated_reason_names_the_operation(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
+    }
+
+    #[rstest]
+    #[case::echo_into_xargs("echo /etc | xargs rm -rf")]
+    #[case::echo_flags_into_xargs("echo -n /etc | xargs rm -rf")]
+    #[case::printf_into_xargs(r#"printf "/etc\n" | xargs rm -rf"#)]
+    #[case::printf_format_into_xargs(r"printf '%s\n' /etc | xargs rm -rf")]
+    #[case::xargs_replace_string("echo /etc | xargs -I{} rm -rf {}")]
+    #[case::find_into_xargs("find /etc -type f | xargs rm -f")]
+    #[case::find_print0_into_xargs("find /etc -print0 | xargs -0 rm -f")]
+    #[case::find_symlink_option_into_xargs("find -L /etc | xargs rm")]
+    #[case::xargs_mid_pipeline("echo /etc | xargs rm -rf | cat")]
+    #[case::find_delete("find /etc -delete")]
+    #[case::find_delete_with_predicate("find /etc -name '*.conf' -delete")]
+    #[case::find_delete_several_roots("find ./target /etc -delete")]
+    #[case::find_delete_project_root("find . -delete")]
+    #[case::find_delete_default_root("find -delete")]
+    #[case::find_delete_always_true_test("find . -true -delete")]
+    #[case::find_delete_or_branch("find . -name x -o -delete")]
+    #[case::find_exec_plus("find /etc -exec rm -rf {} +")]
+    #[case::find_exec_semicolon(r"find /etc -type f -exec rm {} \;")]
+    #[case::find_exec_quoted_semicolon("find /etc -exec rm {} ';'")]
+    #[case::find_execdir(r"find /etc -execdir rm {} \;")]
+    #[case::find_ok(r"find /etc -ok rm {} \;")]
+    #[case::find_okdir(r"find /etc -okdir rm {} \;")]
+    #[case::find_exec_project_root("find . -exec rm -rf {} +")]
+    #[case::find_exec_explicit_target(r"find . -name x -exec rm -rf /etc \;")]
+    #[case::find_exec_privilege(r"find . -exec sudo ls \;")]
+    #[case::find_exec_second_action(r"find /etc -exec ls {} \; -exec rm {} \;")]
+    fn pipeline_and_find_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::echo_project_path_into_xargs("echo ./target | xargs rm -rf")]
+    #[case::echo_into_safe_xargs("echo /etc | xargs ls")]
+    #[case::echo_into_bare_xargs("echo /etc | xargs")]
+    #[case::echo_into_wc("echo /etc | wc -l")]
+    #[case::find_in_project_into_xargs(r#"find . -name "*.o" | xargs rm -f"#)]
+    #[case::find_subdir_into_xargs("find ./target -type f | xargs rm -f")]
+    #[case::find_into_grep("find /etc -type f | xargs grep foo")]
+    #[case::find_delete_in_subdir("find ./target -delete")]
+    #[case::find_delete_with_name(r#"find . -name "*.o" -delete"#)]
+    #[case::find_delete_default_root_with_name(r#"find -name "*.o" -delete"#)]
+    #[case::find_delete_with_depth_and_type("find . -maxdepth 1 -type f -name '*.tmp' -delete")]
+    #[case::find_read_only("find /etc -name passwd")]
+    #[case::find_exec_grep(r"find /etc -exec grep x {} \;")]
+    #[case::find_exec_cat("find /etc -exec cat {} +")]
+    #[case::find_exec_rm_narrowed(r#"find . -name "*.o" -exec rm {} \;"#)]
+    #[case::find_exec_unterminated("find /etc -exec rm")]
+    fn pipeline_and_find_allow_safe(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::pipeline("echo /etc | xargs rm -rf", "'xargs' runs: 'rm' targets '/etc'")]
+    #[case::find_delete("find /etc -delete", "'find -delete' targets '/etc'")]
+    #[case::find_exec("find /etc -exec rm {} +", "'find -exec' runs: 'rm' targets '/etc'")]
+    fn pipeline_and_find_reason(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
+    }
+
+    #[rstest]
+    #[case::file_contents("cat list.txt | xargs rm -rf")]
+    #[case::dynamic_stage("$(echo cat) list.txt | xargs rm -rf")]
+    fn gap_xargs_targets_from_unknown_stage(#[case] command: &str) {
+        // Known gap: targets printed by a stage we can't evaluate. Flip the assert once fixed.
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert_eq!(detect_destructive(command, cwd), None);
     }
 }

@@ -1,13 +1,11 @@
-//! Text chunking strategy for ML scanning.
+//! Text chunking for ML scanning.
 
 pub const CHUNK_SIZE: usize = 256;
 pub const CHUNK_OVERLAP: usize = 25;
 const HEAD_TAIL_THRESHOLD: usize = 1024;
 const HEAD_TAIL_SIZE: usize = 512;
 
-/// Yields overlapping chunks of text for ML scanning.
-/// For short text (<= `CHUNK_SIZE`), yields a single chunk.
-/// For long text, yields sliding windows + a head+tail chunk.
+/// Overlapping sliding windows plus a head+tail chunk; short text is one chunk.
 #[must_use]
 pub fn chunks(text: &str) -> Vec<&str> {
     if text.len() <= CHUNK_SIZE {
@@ -20,8 +18,7 @@ pub fn chunks(text: &str) -> Vec<&str> {
     let mut start = 0;
     while start < text.len() {
         let end = text.floor_char_boundary((start + CHUNK_SIZE).min(text.len()));
-        let chunk = &text[start..end];
-        if !chunk.trim().is_empty() {
+        if let Some(chunk) = text.get(start..end).filter(|c| !c.trim().is_empty()) {
             result.push(chunk);
         }
         start = text.floor_char_boundary(start + step);
@@ -30,18 +27,16 @@ pub fn chunks(text: &str) -> Vec<&str> {
     result
 }
 
-/// Returns the head and tail concatenated (space-separated) for texts longer than 1024 chars.
-/// Returns `None` when input is shorter than `HEAD_TAIL_THRESHOLD`.
-/// Catches injection appended at the very end.
+/// Head and tail joined by a space, to catch injection appended at the end.
 #[must_use]
 pub fn head_tail(text: &str) -> Option<String> {
     if text.len() <= HEAD_TAIL_THRESHOLD {
         return None;
     }
     let head_end = text.floor_char_boundary(HEAD_TAIL_SIZE.min(text.len()));
-    let head = &text[..head_end];
+    let (head, _) = text.split_at(head_end);
     let tail_start = text.floor_char_boundary(text.len().saturating_sub(HEAD_TAIL_SIZE));
-    let tail = &text[tail_start..];
+    let (_, tail) = text.split_at(tail_start);
     Some(format!("{head} {tail}"))
 }
 
@@ -62,7 +57,6 @@ mod tests {
         let text = "a".repeat(600);
         let c = chunks(&text);
         assert!(c.len() > 1);
-        // Each chunk should be <= CHUNK_SIZE
         for chunk in &c {
             assert!(chunk.len() <= CHUNK_SIZE);
         }
@@ -75,6 +69,7 @@ mod tests {
         assert_eq!(c.len(), 2);
         // First chunk: 0..256, second chunk: 231..300
         assert_eq!(c[0].len(), CHUNK_SIZE);
+        assert_eq!(c[1].len(), 300 - (CHUNK_SIZE - CHUNK_OVERLAP));
     }
 
     #[test]
@@ -97,19 +92,17 @@ mod tests {
         let text = "a".repeat(255) + "ñ" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {
-            // Every chunk must be valid UTF-8 (implicit via &str, but
-            // floor_char_boundary is what prevents the panic)
-            assert!(!chunk.is_empty());
+            // reaching here means no slicing panic
+            assert_ne!(*chunk, "");
         }
     }
 
     #[test]
     fn chunks_emoji_at_boundary() {
-        // '🔥' is 4 bytes
         let text = "a".repeat(254) + "🔥" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {
-            assert!(!chunk.is_empty());
+            assert_ne!(*chunk, "");
         }
     }
 
@@ -118,6 +111,6 @@ mod tests {
         // Place multi-byte chars around the 512-byte head/tail cut points
         let text = "a".repeat(511) + "ñ" + &"b".repeat(1000) + "🔥" + &"c".repeat(100);
         let combined = head_tail(&text).unwrap();
-        assert!(!combined.is_empty());
+        assert_ne!(combined, "");
     }
 }

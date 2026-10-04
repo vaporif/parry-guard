@@ -1,25 +1,17 @@
 //! Static command and flag arrays for destructive operation detection.
 
-// === Category 1: Filesystem Destruction (unconditional) ===
-
-/// Commands that are always destructive regardless of arguments.
-pub const UNCONDITIONAL_DESTRUCTIVE: &[&str] =
+/// Destructive regardless of arguments.
+pub(crate) const UNCONDITIONAL_DESTRUCTIVE: &[&str] =
     &["shred", "mkfs", "dd", "wipefs", "truncate", "srm"];
 
-// === Category 2: Process / Service ===
+pub(crate) const PROCESS_KILL: &[&str] = &["kill", "killall", "pkill", "xkill"];
 
-pub const PROCESS_KILL: &[&str] = &["kill", "killall", "pkill", "xkill"];
-
-pub const SYSTEMCTL_DESTRUCTIVE: &[&str] = &["stop", "disable", "mask"];
-pub const LAUNCHCTL_DESTRUCTIVE: &[&str] = &["unload", "remove"];
-pub const SERVICE_DESTRUCTIVE: &[&str] = &["stop"];
-
-// Category 3 (Permissions: chmod/chown/chgrp) handled in bash.rs -no constants needed.
-
-// === Category 4: Package Managers ===
+pub(crate) const SYSTEMCTL_DESTRUCTIVE: &[&str] = &["stop", "disable", "mask"];
+pub(crate) const LAUNCHCTL_DESTRUCTIVE: &[&str] = &["unload", "remove"];
+pub(crate) const SERVICE_DESTRUCTIVE: &[&str] = &["stop"];
 
 /// (`command_name`, `destructive_subcommands`)
-pub const PKG_MANAGER_DESTRUCTIVE: &[(&str, &[&str])] = &[
+pub(crate) const PKG_MANAGER_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("brew", &["uninstall", "remove", "rm"]),
     ("apt", &["remove", "purge", "autoremove"]),
     ("apt-get", &["remove", "purge", "autoremove"]),
@@ -29,18 +21,14 @@ pub const PKG_MANAGER_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("bun", &["remove"]),
 ];
 
-/// npm uninstall is only destructive with -g flag.
-pub const NPM_GLOBAL_UNINSTALL: &[&str] = &["uninstall", "rm", "remove"];
+/// Destructive only with `-g`.
+pub(crate) const NPM_GLOBAL_UNINSTALL: &[&str] = &["uninstall", "rm", "remove"];
 
-// === Category 5: Git Destructive ===
+pub(crate) const GIT_HISTORY_REWRITE: &[&str] = &["filter-branch", "filter-repo"];
 
-pub const GIT_HISTORY_REWRITE: &[&str] = &["filter-branch", "filter-repo"];
+pub(crate) const DB_CLI_COMMANDS: &[&str] = &["psql", "mysql", "sqlite3"];
 
-// === Category 6: Database / Storage ===
-
-pub const DB_CLI_COMMANDS: &[&str] = &["psql", "mysql", "sqlite3"];
-
-pub const DB_DESTRUCTIVE_SQL: &[&str] = &[
+pub(crate) const DB_DESTRUCTIVE_SQL: &[&str] = &[
     "drop table",
     "drop database",
     "drop schema",
@@ -48,9 +36,9 @@ pub const DB_DESTRUCTIVE_SQL: &[&str] = &[
     "truncate ",
 ];
 
-pub const MONGO_CLI_COMMANDS: &[&str] = &["mongo", "mongosh"];
+pub(crate) const MONGO_CLI_COMMANDS: &[&str] = &["mongo", "mongosh"];
 
-pub const MONGO_DESTRUCTIVE: &[&str] = &[
+pub(crate) const MONGO_DESTRUCTIVE: &[&str] = &[
     "dropdatabase",
     ".drop()",
     "deletemany({})",
@@ -58,45 +46,35 @@ pub const MONGO_DESTRUCTIVE: &[&str] = &[
     "deletemany()",
 ];
 
-pub const REDIS_CLI: &str = "redis-cli";
+pub(crate) const REDIS_CLI: &str = "redis-cli";
 
-pub const REDIS_DESTRUCTIVE: &[&str] = &["flushall", "flushdb"];
+pub(crate) const REDIS_DESTRUCTIVE: &[&str] = &["flushall", "flushdb"];
 
-pub const MONGORESTORE_DESTRUCTIVE: &[&str] = &["--drop"];
+pub(crate) const MONGORESTORE_DESTRUCTIVE: &[&str] = &["--drop"];
 
-pub const LDB_DESTRUCTIVE: &[&str] = &["destroy"];
+pub(crate) const LDB_DESTRUCTIVE: &[&str] = &["destroy"];
 
-// Queues
-pub const RABBITMQ_DESTRUCTIVE: &[&str] = &["delete_queue", "purge_queue"];
-pub const CELERY_DESTRUCTIVE: &[&str] = &["purge"];
+pub(crate) const RABBITMQ_DESTRUCTIVE: &[&str] = &["delete_queue", "purge_queue"];
+pub(crate) const CELERY_DESTRUCTIVE: &[&str] = &["purge"];
 
-// === Category 7: Disk / Mount ===
-
-pub const DISK_COMMANDS: &[&str] = &["umount", "diskutil", "fdisk", "parted"];
-
-// === Category 8: Container / Orchestration ===
+pub(crate) const DISK_COMMANDS: &[&str] = &["umount", "diskutil", "fdisk", "parted"];
 
 /// (`command`, `destructive_subcommand`)
-pub const CONTAINER_DESTRUCTIVE: &[(&str, &[&str])] = &[
+pub(crate) const CONTAINER_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("kubectl", &["delete"]),
     ("terraform", &["destroy"]),
     ("helm", &["uninstall"]),
 ];
 
-// === Category 9: System Admin ===
+pub(crate) const FIREWALL_COMMANDS: &[&str] = &["iptables", "ip6tables"];
+pub(crate) const FIREWALL_FLUSH_FLAGS: &[&str] = &["-F", "--flush"];
 
-pub const FIREWALL_COMMANDS: &[&str] = &["iptables", "ip6tables"];
-pub const FIREWALL_FLUSH_FLAGS: &[&str] = &["-F", "--flush"];
+pub(crate) const NFT_FLUSH: &[&str] = &["flush"];
 
-pub const NFT_FLUSH: &[&str] = &["flush"];
-
-// === Category 10: Nix ===
-
-/// Nix commands that are unconditionally destructive.
-pub const NIX_UNCONDITIONAL: &[&str] = &["nix-collect-garbage"];
+pub(crate) const NIX_UNCONDITIONAL: &[&str] = &["nix-collect-garbage"];
 
 /// (`command`, `destructive_subcommand_prefix`)
-pub const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
+pub(crate) const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
     (
         "nix",
         &[
@@ -112,6 +90,92 @@ pub const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("nixos-rebuild", &["switch"]),
 ];
 
-// === Category 11: Privilege Escalation ===
+pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
 
-pub const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
+// Command wrappers
+
+/// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
+pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
+    ("command", &[], 0),
+    ("exec", &["-a"], 0),
+    ("env", &["-u", "--unset", "-C", "--chdir"], 0),
+    ("nice", &["-n", "--adjustment"], 0),
+    ("nohup", &[], 0),
+    ("time", &[], 0),
+    ("timeout", &["-s", "--signal", "-k", "--kill-after"], 1),
+    (
+        "stdbuf",
+        &["-i", "-o", "-e", "--input", "--output", "--error"],
+        0,
+    ),
+    ("setsid", &[], 0),
+    (
+        "ionice",
+        &[
+            "-c",
+            "--class",
+            "-n",
+            "--classdata",
+            "-p",
+            "--pid",
+            "-P",
+            "--pgid",
+            "-u",
+            "--uid",
+        ],
+        0,
+    ),
+    (
+        "xargs",
+        &[
+            "-a",
+            "--arg-file",
+            "-d",
+            "--delimiter",
+            "-E",
+            "-I",
+            "-L",
+            "--max-lines",
+            "-n",
+            "--max-args",
+            "-P",
+            "--max-procs",
+            "-s",
+            "--max-chars",
+        ],
+        0,
+    ),
+];
+
+/// `find` actions that run a command per match, ended by `;` or `+`.
+pub(crate) const FIND_EXEC_ACTIONS: &[&str] = &["-exec", "-execdir", "-ok", "-okdir"];
+
+/// `find` arguments that don't narrow which files match: options, operators, output actions.
+pub(crate) const FIND_NON_TESTS: &[&str] = &[
+    "-delete",
+    "-depth",
+    "-d",
+    "-maxdepth",
+    "-mindepth",
+    "-xdev",
+    "-mount",
+    "-follow",
+    "-noleaf",
+    "-ignore_readdir_race",
+    "-regextype",
+    "-true",
+    "-print",
+    "-print0",
+    "-printf",
+    "-fprint",
+    "-fprint0",
+    "-fprintf",
+    "-ls",
+    "-fls",
+    "-a",
+    "-and",
+    "-not",
+];
+
+/// `find` operators that make a later action run on files the earlier tests rejected.
+pub(crate) const FIND_OR: &[&str] = &["-o", "-or", ","];

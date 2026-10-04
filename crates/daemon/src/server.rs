@@ -1,4 +1,4 @@
-//! Async daemon server.
+//! Daemon server.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,6 +23,42 @@ enum MlState {
     Failed(u8),
 }
 
+impl MlState {
+    /// Return the scanner, loading it first unless it already failed `MAX_ML_RETRIES` times.
+    fn get_or_load(&mut self, load: impl FnOnce() -> Option<MlScanner>) -> Option<&mut MlScanner> {
+        let attempt = match *self {
+            Self::NotLoaded => Some(0),
+            Self::Failed(n) if n < MAX_ML_RETRIES => Some(n),
+            Self::Loaded(_) | Self::Failed(_) => None,
+        };
+        if let Some(attempt) = attempt {
+            info!(
+                attempt = attempt + 1,
+                max = MAX_ML_RETRIES,
+                "loading ML model"
+            );
+            *self = load().map_or_else(
+                || {
+                    warn!(
+                        attempt = attempt + 1,
+                        max = MAX_ML_RETRIES,
+                        "ML model failed to load, scans will fail-close"
+                    );
+                    Self::Failed(attempt + 1)
+                },
+                |scanner| {
+                    info!(ml = "loaded", "ML model ready");
+                    Self::Loaded(scanner)
+                },
+            );
+        }
+        match self {
+            Self::Loaded(scanner) => Some(scanner),
+            Self::NotLoaded | Self::Failed(_) => None,
+        }
+    }
+}
+
 use crate::protocol::{DaemonCodec, ScanRequest, ScanResponse, ScanType};
 use crate::scan_cache::{self, ScanCache};
 use crate::transport;
@@ -31,7 +67,7 @@ pub struct DaemonConfig {
     pub idle_timeout: Duration,
 }
 
-/// RAII cleanup for PID file and socket.
+/// Removes PID file and socket on drop.
 struct CleanupGuard {
     pid_path: PathBuf,
     runtime_dir: Option<PathBuf>,
@@ -39,30 +75,34 @@ struct CleanupGuard {
 
 impl Drop for CleanupGuard {
     fn drop(&mut self) {
+        // a replacement daemon may have rebound the socket and rewritten the PID file
+        let owns_state = std::fs::read_to_string(&self.pid_path)
+            .is_ok_and(|pid| pid.trim() == std::process::id().to_string());
+        if !owns_state {
+            return;
+        }
         let _ = std::fs::remove_file(&self.pid_path);
-        crate::transport::cleanup_stale_state(self.runtime_dir.as_deref());
+        transport::cleanup_stale_state(self.runtime_dir.as_deref());
     }
 }
 
-/// Run the daemon server. ML model loads lazily on first scan request.
-///
 /// # Errors
-///
-/// Returns an error if another daemon is running or the socket cannot be bound.
+/// Fails if another daemon is running or the socket can't be bound.
 #[instrument(skip(config, daemon_config), fields(idle_timeout = ?daemon_config.idle_timeout))]
 pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<()> {
     let rd = config.runtime_dir.as_deref();
-    if crate::client::is_daemon_running(rd) {
-        warn!("another daemon is already running");
+    // a plain connect, not a ping: a daemon busy loading the model accepts
+    // connections but can't answer a ping in time, and must not lose its socket
+    if transport::Stream::connect(Duration::from_millis(50), rd).is_ok() {
+        warn!("another daemon is already listening");
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
-    // stale socket -nobody responded to ping
-    crate::transport::cleanup_stale_state(rd);
+    transport::cleanup_stale_state(rd);
     let listener = transport::bind_async(rd)?;
 
     let pid_path = transport::pid_file_path(rd)?;
-    // PID file is informational; socket bind is the real mutual exclusion
+    // PID file is informational; the socket bind enforces mutual exclusion
     std::fs::write(&pid_path, std::process::id().to_string())?;
 
     let _cleanup = CleanupGuard {
@@ -132,8 +172,8 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     Ok(())
 }
 
-/// On timeout the background thread is left running — `MlState::Failed`
-/// prevents piling up concurrent loads.
+/// On timeout the background thread keeps running. `MlState::Failed`
+/// stops concurrent loads from piling up.
 fn load_ml_scanner(config: &Config) -> Option<MlScanner> {
     let config = config.clone();
     let (tx, rx) = std::sync::mpsc::channel();
@@ -192,36 +232,7 @@ async fn handle_connection(
     let resp = match req.scan_type {
         ScanType::Ping => ScanResponse::Pong,
         ScanType::Full => {
-            let should_load = match ml_state {
-                MlState::NotLoaded => Some(0),
-                MlState::Failed(n) if *n < MAX_ML_RETRIES => Some(*n),
-                _ => None,
-            };
-            if let Some(attempt) = should_load {
-                info!(
-                    attempt = attempt + 1,
-                    max = MAX_ML_RETRIES,
-                    "loading ML model"
-                );
-                *ml_state = load_ml_scanner(config).map_or_else(
-                    || {
-                        warn!(
-                            attempt = attempt + 1,
-                            max = MAX_ML_RETRIES,
-                            "ML model failed to load, scans will fail-close"
-                        );
-                        MlState::Failed(attempt + 1)
-                    },
-                    |scanner| {
-                        info!(ml = "loaded", "ML model ready");
-                        MlState::Loaded(scanner)
-                    },
-                );
-            }
-            let scanner = match ml_state {
-                MlState::Loaded(ref mut s) => Some(s),
-                _ => None,
-            };
+            let scanner = ml_state.get_or_load(|| load_ml_scanner(config));
             handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
@@ -253,9 +264,9 @@ fn handle_request(
         }
 
         let result = run_full_scan(&req.text, req.threshold, ml_scanner);
-        // don't cache errors -model may load on next restart
-        if result != ScanResponse::Error {
-            c.put(&hash, response_to_result(result));
+        // don't cache errors: the model may load after a restart
+        if let Some(cacheable) = response_to_result(result) {
+            c.put(&hash, cacheable);
         }
         result
     } else {
@@ -292,12 +303,12 @@ fn run_full_scan(text: &str, threshold: f32, ml_scanner: Option<&mut MlScanner>)
     }
 }
 
-fn response_to_result(resp: ScanResponse) -> ScanResult {
+const fn response_to_result(resp: ScanResponse) -> Option<ScanResult> {
     match resp {
-        ScanResponse::Injection => ScanResult::Injection,
-        ScanResponse::Secret => ScanResult::Secret,
-        ScanResponse::Clean | ScanResponse::Pong => ScanResult::Clean,
-        ScanResponse::Error => unreachable!("Error responses must not be cached"),
+        ScanResponse::Injection => Some(ScanResult::Injection),
+        ScanResponse::Secret => Some(ScanResult::Secret),
+        ScanResponse::Clean | ScanResponse::Pong => Some(ScanResult::Clean),
+        ScanResponse::Error => None,
     }
 }
 
@@ -306,5 +317,87 @@ const fn scan_result_to_response(result: ScanResult) -> ScanResponse {
         ScanResult::Injection => ScanResponse::Injection,
         ScanResult::Secret => ScanResponse::Secret,
         ScanResult::Clean => ScanResponse::Clean,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    fn guard_with_state(dir: &Path, pid: u32) -> (CleanupGuard, PathBuf, PathBuf) {
+        let pid_path = transport::pid_file_path(Some(dir)).unwrap();
+        let sock = dir.join("parry-guard.sock");
+        std::fs::write(&pid_path, pid.to_string()).unwrap();
+        std::fs::write(&sock, "").unwrap();
+        let guard = CleanupGuard {
+            pid_path: pid_path.clone(),
+            runtime_dir: Some(dir.to_path_buf()),
+        };
+        (guard, pid_path, sock)
+    }
+
+    #[test]
+    fn ml_load_gives_up_after_max_retries() {
+        // a subscriber makes the log fields evaluate, so they're covered
+        let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let mut state = MlState::NotLoaded;
+        let mut loads = 0;
+        for _ in 0..MAX_ML_RETRIES + 2 {
+            let scanner = state.get_or_load(|| {
+                loads += 1;
+                None
+            });
+            assert!(scanner.is_none());
+        }
+        assert_eq!(loads, MAX_ML_RETRIES);
+        assert!(matches!(state, MlState::Failed(MAX_ML_RETRIES)));
+    }
+
+    #[test]
+    fn cleanup_guard_removes_own_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (guard, pid_path, sock) = guard_with_state(dir.path(), std::process::id());
+        drop(guard);
+        assert!(!pid_path.exists());
+        assert!(!sock.exists());
+    }
+
+    #[test]
+    fn cleanup_guard_keeps_state_of_replacement_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let other_daemon = std::os::unix::process::parent_id();
+        let (guard, pid_path, sock) = guard_with_state(dir.path(), other_daemon);
+        drop(guard);
+        assert!(
+            pid_path.exists(),
+            "must not delete another daemon's PID file"
+        );
+        assert!(sock.exists(), "must not delete another daemon's socket");
+    }
+
+    #[test]
+    fn run_refuses_to_replace_busy_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // listens but never accepts, like a daemon stuck loading the model
+            let _busy = transport::bind_async(Some(dir.path())).unwrap();
+            let config = Config {
+                runtime_dir: Some(dir.path().to_path_buf()),
+                ..Config::default()
+            };
+            let daemon_config = DaemonConfig {
+                idle_timeout: Duration::from_secs(1),
+            };
+            let result = run(&config, &daemon_config).await;
+            assert!(result.is_err(), "must not take over a live socket");
+            assert!(transport::socket_exists(Some(dir.path())));
+        });
     }
 }

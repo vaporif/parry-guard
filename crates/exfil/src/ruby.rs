@@ -1,10 +1,10 @@
-//! Ruby-specific exfiltration detection.
+//! Ruby exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct RubyDetector;
+pub(crate) struct RubyDetector;
 
 impl LangExfilDetector for RubyDetector {
     fn language(&self) -> Language {
@@ -12,11 +12,6 @@ impl LangExfilDetector for RubyDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - Net::HTTP.get/post(...)
-        // - TCPSocket.new(...)
-        // - open-uri operations
-        // - HTTParty.get/post(...)
         r#"
         (call
           method: (identifier) @method
@@ -32,10 +27,6 @@ impl LangExfilDetector for RubyDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - File.read(path)
-        // - File.open(path)
-        // - IO.read(path)
         r#"
         (call
           receiver: (constant) @receiver

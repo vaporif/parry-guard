@@ -75,7 +75,6 @@
         "aarch64-darwin"
       ];
 
-      # Candle
       candleArgs =
         commonArgs
         // {
@@ -88,7 +87,6 @@
           inherit meta;
         });
 
-      # ONNX
       onnxArgs =
         commonArgs
         // {
@@ -114,7 +112,6 @@
           inherit meta;
         };
 
-      # Extended toolchain for the dev shell — adds cross targets
       devToolchain = let
         withTargets = targets:
           fenixPkgs.combine (map (c: rust.${c}) rustToolchain.components ++ map targetStd targets);
@@ -168,6 +165,15 @@
             } ''
               cd ${self}
               typos
+              touch $out
+            '';
+
+          ast-grep =
+            pkgs.runCommand "ast-grep-check" {
+              nativeBuildInputs = [pkgs.ast-grep];
+            } ''
+              cd ${self}
+              ast-grep scan
               touch $out
             '';
 
@@ -229,6 +235,7 @@
             pkgs.typos
             pkgs.alejandra
             pkgs.actionlint
+            pkgs.ast-grep
             pkgs.lefthook
             pkgs.cargo-nextest
             pkgs.cargo-llvm-cov

@@ -36,6 +36,19 @@ jobs:
       - name: Nix flake checks
         run: nix flake check
 
+  ast-grep:
+    name: ast-grep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run ast-grep rules
+        run: nix shell nixpkgs#ast-grep --command ast-grep scan --format github
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -58,7 +71,7 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
-  # Cant do fetch in nix
+  # Nix sandbox has no network, so onnx-fetch is checked outside Nix
   check-onnx-fetch:
     name: Check (onnx-fetch)
     runs-on: ubuntu-latest

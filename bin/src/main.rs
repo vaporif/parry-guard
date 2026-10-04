@@ -10,6 +10,9 @@ use std::time::Duration;
 use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
+/// Only exit code Claude Code and Codex treat as blocking; others let the call through.
+const BLOCK_EXIT: u8 = 2;
+
 fn init_tracing() {
     let filter = EnvFilter::try_from_env("PARRY_LOG").unwrap_or_else(|_| EnvFilter::new("warn"));
 
@@ -53,11 +56,12 @@ fn init_tracing() {
 
 fn main() -> ExitCode {
     init_tracing();
-    // fail-closed: panics exit with failure
+    // fail-closed: a panic blocks the tool call
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_hook(info);
-        std::process::exit(1);
+        eprintln!("parry-guard crashed, blocking for safety");
+        std::process::exit(i32::from(BLOCK_EXIT));
     }));
 
     let cli = cli::Cli::parse();
@@ -91,13 +95,7 @@ fn main() -> ExitCode {
             extensions,
             full,
         }) => run_diff(&config, &git_ref, extensions.as_deref(), full),
-        Some(
-            cmd @ (cli::Command::Ignore { .. }
-            | cli::Command::Monitor { .. }
-            | cli::Command::Reset { .. }
-            | cli::Command::Status { .. }
-            | cli::Command::Repos),
-        ) => run_repo_command(cmd, &config),
+        Some(cli::Command::Repo(cmd)) => run_repo_command(cmd, &config),
         Some(cli::Command::Hook) => run_hook(&config, &ignore_dirs, ask_on_new_project),
         None => {
             if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
@@ -114,10 +112,18 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
+    // lets e2e tests exercise the panic path
+    #[cfg(debug_assertions)]
+    assert!(
+        std::env::var_os("PARRY_TEST_PANIC").is_none(),
+        "PARRY_TEST_PANIC is set"
+    );
+
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         warn!("failed to read stdin (fail-closed)");
-        return ExitCode::FAILURE;
+        eprintln!("parry-guard could not read hook input, blocking for safety");
+        return ExitCode::from(BLOCK_EXIT);
     }
 
     let input = input.trim();
@@ -130,7 +136,8 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
         Ok(v) => v,
         Err(e) => {
             warn!(%e, "invalid hook JSON (fail-closed)");
-            return ExitCode::FAILURE;
+            eprintln!("parry-guard got invalid hook JSON, blocking for safety: {e}");
+            return ExitCode::from(BLOCK_EXIT);
         }
     };
     let hook_runner = hook_envelope.runner();
@@ -200,7 +207,7 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
                 if output.is_deny() || (hook_runner.blocks_ask_decisions() && output.is_ask()) {
                     info!(tool, "tool denied by PreToolUse");
                     eprintln!("{}", output.reason());
-                    return ExitCode::from(2);
+                    return ExitCode::from(BLOCK_EXIT);
                 }
                 info!(tool, "tool requires approval (PreToolUse)");
                 match serde_json::to_string(&output) {
@@ -299,7 +306,6 @@ fn run_audit(
         Ok(w) => w,
         Err(e) => {
             if audit_failure_is_soft(repo_state, ask_on_new_project) {
-                // soft-fail: unknown repos in prompt mode
                 warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
                 ml_unavailable = true;
                 Vec::new()
@@ -307,13 +313,11 @@ fn run_audit(
                 warn!(%e, "audit ML scan failed (fail-closed)");
                 let message = format!(
                     "parry: project audit failed - ML scanner unavailable. \
-                     Run `parry serve` and retry. Error: {e}"
+                     Run `{} serve` and retry. Error: {e}",
+                    command_name()
                 );
-                let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-                if let Ok(json) = serde_json::to_string(&output) {
-                    println!("{json}");
-                }
-                return ExitCode::FAILURE;
+                eprintln!("{message}");
+                return ExitCode::from(BLOCK_EXIT);
             }
         }
     };
@@ -350,8 +354,7 @@ fn run_audit(
     ExitCode::SUCCESS
 }
 
-/// Only repos the user hasn't opted into yet (prompt mode) may proceed without ML;
-/// everything else fails closed.
+/// Only not-yet-opted-in repos (prompt mode) may proceed without ML; all else fails closed.
 fn audit_failure_is_soft(
     repo_state: parry_guard_core::repo_db::RepoState,
     ask_on_new_project: bool,
@@ -359,8 +362,7 @@ fn audit_failure_is_soft(
     repo_state == parry_guard_core::repo_db::RepoState::Unknown && ask_on_new_project
 }
 
-/// Detect the command prefix based on how the binary was installed.
-/// Returns e.g. `"uvx parry-guard"`, `"rvx parry-guard"`, or `"parry-guard"`.
+/// Command prefix matching how the binary was installed (`uvx`, `rvx`, or bare).
 fn command_name() -> &'static str {
     let exe = std::env::current_exe()
         .ok()
@@ -400,7 +402,7 @@ fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode>
     })
 }
 
-fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
+fn run_repo_command(subcommand: cli::RepoCommand, config: &Config) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     let db = match RepoDb::open(config.runtime_dir.as_deref()) {
@@ -412,7 +414,7 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
     };
 
     match subcommand {
-        cli::Command::Ignore { path } => {
+        cli::RepoCommand::Ignore { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -422,9 +424,8 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!("Set {canonical} to ignored");
-            ExitCode::SUCCESS
         }
-        cli::Command::Monitor { path } => {
+        cli::RepoCommand::Monitor { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -434,17 +435,15 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!("Set {canonical} to monitored");
-            ExitCode::SUCCESS
         }
-        cli::Command::Reset { path } => {
+        cli::RepoCommand::Reset { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
             db.reset_repo(&canonical);
             println!("Reset {canonical} to unknown (caches cleared)");
-            ExitCode::SUCCESS
         }
-        cli::Command::Status { path } => {
+        cli::RepoCommand::Status { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -455,7 +454,7 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 println!("Remote:  {url}");
             }
 
-            // fresh audit (None for db/repo_path bypasses cache)
+            // no db/repo_path bypasses the cache
             let dir = std::path::Path::new(&canonical);
             match parry_guard_hook::project_audit::scan(dir, config, None, None) {
                 Ok(warnings) if warnings.is_empty() => {
@@ -471,10 +470,8 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                     println!("Audit:   unavailable ({e})");
                 }
             }
-
-            ExitCode::SUCCESS
         }
-        cli::Command::Repos => {
+        cli::RepoCommand::Repos => {
             let repos = db.list_repos();
             if repos.is_empty() {
                 println!("No known repos.");
@@ -490,10 +487,9 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                     );
                 }
             }
-            ExitCode::SUCCESS
         }
-        _ => unreachable!(),
     }
+    ExitCode::SUCCESS
 }
 
 fn format_repo_entry(path: &str, state: &str, remote: Option<&str>) -> String {

@@ -4,10 +4,10 @@ about: Suggest a feature or improvement
 labels: enhancement
 ---
 
-## Description
+## What you want
 
 <!-- What would you like to see? -->
 
-## Use Case
+## Why
 
-<!-- Why is this valuable? What problem does it solve? -->
+<!-- What problem does it solve for you? -->

@@ -1,4 +1,4 @@
-//! Candle ML backend
+//! Candle ML backend.
 
 use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
@@ -17,18 +17,15 @@ pub struct CandleBackend {
 
 impl CandleBackend {
     /// # Errors
-    ///
-    /// Returns an error if the safetensors model or config cannot be loaded.
-    ///
-    /// # Safety
-    ///
-    /// Uses memory-mapped safetensors via `VarBuilder::from_mmaped_safetensors`.
+    /// Fails if the safetensors model or config can't be loaded.
     pub fn load(safetensors_path: &str, config_path: &str) -> Result<Self> {
         let device = Device::Cpu;
 
         let config_str = std::fs::read_to_string(config_path)?;
         let config: DebertaV2Config = serde_json::from_str(&config_str)?;
 
+        // SAFETY: the safetensors file lives in the HF cache and is not modified while mapped.
+        #[expect(unsafe_code, reason = "candle only exposes mmap loading as unsafe")]
         let vb =
             unsafe { VarBuilder::from_mmaped_safetensors(&[safetensors_path], DTYPE, &device)? };
         let vb = vb.set_prefix("deberta");

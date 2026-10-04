@@ -1,10 +1,10 @@
-//! Kotlin-specific exfiltration detection.
+//! Kotlin exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct KotlinDetector;
+pub(crate) struct KotlinDetector;
 
 impl LangExfilDetector for KotlinDetector {
     fn language(&self) -> Language {
@@ -12,7 +12,6 @@ impl LangExfilDetector for KotlinDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(readText|openConnection|execute|post|get|request|URL|HttpURLConnection|Socket|OkHttpClient)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for KotlinDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(readText|readLines|readBytes|bufferedReader|reader|File|FileReader|FileInputStream|BufferedReader)")

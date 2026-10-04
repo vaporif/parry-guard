@@ -1,7 +1,10 @@
 use parry_guard_core::decode::{decode_variants, normalize};
+use parry_guard_core::secrets::has_secret;
+use parry_guard_core::substring::has_security_substring;
 use parry_guard_core::unicode::{
     has_homoglyphs, has_invisible_unicode, normalize_homoglyphs, strip_invisible,
 };
+use parry_guard_core::{scan_injection_only, scan_text_fast};
 use proptest::prelude::*;
 
 proptest! {
@@ -40,5 +43,13 @@ proptest! {
     #[test]
     fn normalize_homoglyphs_leaves_nothing_to_flag(text in any::<String>()) {
         prop_assert!(!has_homoglyphs(&normalize_homoglyphs(&text)));
+    }
+
+    #[test]
+    fn scanners_never_panic(text in any::<String>()) {
+        let _ = scan_text_fast(&text);
+        let _ = scan_injection_only(&text);
+        let _ = has_secret(&text);
+        let _ = has_security_substring(&text);
     }
 }

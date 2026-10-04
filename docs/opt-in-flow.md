@@ -1,11 +1,13 @@
-# Project Scanning Flow
+# Project scanning flow
 
-## Default: Auto-Monitor (`PARRY_ASK_ON_NEW_PROJECT=false`)
+Each repo is in one of three states: Unknown, Monitored, or Ignored. This page shows how hooks act on each state and how a repo moves between them.
 
-New projects are automatically set to Monitored on first session. No prompt, immediate protection.
+## Default: monitor right away (`PARRY_ASK_ON_NEW_PROJECT=false`)
+
+A new project becomes Monitored in its first session. There is no prompt, so protection starts immediately.
 
 ```
-                    Session Start
+                    Session start
                          |
                          v
                +-------------------+
@@ -30,7 +32,7 @@ New projects are automatically set to Monitored on first session. No prompt, imm
      [Monitored]    [Unknown]      [Ignored]
           |              |              |
           v              v              v
-    Run audit       Auto-set to      Skip
+    Run audit       Set to           Skip
     (with cache)    Monitored,       (return success)
           |         run audit
           |         (with cache)
@@ -40,12 +42,12 @@ New projects are automatically set to Monitored on first session. No prompt, imm
                    (if any)
 ```
 
-## Prompt Mode (`PARRY_ASK_ON_NEW_PROJECT=true`)
+## Ask first (`PARRY_ASK_ON_NEW_PROJECT=true`)
 
-Restores the ask-first behavior: scan once, show findings, ask user to decide.
+Parry scans the new project once, shows what it found, and lets you decide.
 
 ```
-                    Session Start
+                    Session start
                          |
                          v
                +-------------------+
@@ -79,30 +81,32 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
                          |
                          v
               +------------------------+
-              | Claude asks user:      |
+              | Claude asks the user:  |
               | "Enable injection      |
               |  scanning?"            |
               +------------------------+
-                    |           |
-                    v           v
-               [Yes]         [No]          [No answer]
-                    |           |                |
-                    v           v                v
-              Claude runs  Claude runs     Stays Unknown
-              `parry       `parry          (retries next
-               monitor`     ignore`         session)
-                    |           |
-                    v           v
-              Monitored     Ignored
-                    |
-                    v (if findings existed)
+                  |           |            |
+                  v           v            v
+                [Yes]        [No]      [No answer]
+                  |           |            |
+                  v           v            v
+            Claude runs   Claude runs   Stays Unknown
+            parry-guard   parry-guard   (asks again
+            monitor       ignore         next session)
+                  |           |
+                  v           v
+              Monitored    Ignored
+                  |
+                  v  (if there were findings)
               +------------------------+
               | Claude offers to help  |
-              | fix findings           |
+              | fix the findings       |
               +------------------------+
 ```
 
-## PreToolUse / PostToolUse Flow
+## PreToolUse and PostToolUse
+
+Only Monitored repos are scanned. Unknown repos are skipped because you haven't agreed to scanning yet.
 
 ```
                PreToolUse or PostToolUse
@@ -130,11 +134,11 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
           |
           v
     Normal scan
-    (7 layers for PreToolUse,
+    (7 checks for PreToolUse,
      output scan for PostToolUse)
 ```
 
-## State Machine
+## State changes
 
 ```
                     +-------------------+
@@ -143,43 +147,35 @@ Restores the ask-first behavior: scan once, show findings, ask user to decide.
                     +-------------------+
                        /           \
                       /             \
-          parry monitor          parry ignore
-          (or auto-monitor)
+          monitor (or auto)        ignore
                     /                 \
                    v                   v
         +-------------+       +-------------+
-        |  Monitored  |       |   Ignored   |
-        |  (scanning  |       |  (no scan)  |
-        |   active)   |       |             |
+        |  Monitored  | <---> |   Ignored   |
+        |  (scanning) |       |  (no scan)  |
         +-------------+       +-------------+
-               |   ^               |   ^
-               |   |               |   |
-        parry  |   | parry  parry  |   | parry
-        ignore |   | monitor ignore|   | monitor
-               v   |               v   |
-        +-------------+       +-------------+
-        |   Ignored   |       |  Monitored  |
-        +-------------+       +-------------+
+                 monitor / ignore switch
+                 between the two at any time
 
-        parry reset (from any state) --> Unknown
+        reset (from any state) --> Unknown
 ```
 
-## Configuration
+All commands are `parry-guard <command>`.
+
+## Settings and commands
 
 | Setting | Effect |
 |---|---|
-| `PARRY_ASK_ON_NEW_PROJECT=false` (default) | Auto-monitor new projects, no prompt |
-| `PARRY_ASK_ON_NEW_PROJECT=true` | Ask user before monitoring each new project |
-| `PARRY_IGNORE_DIRS=/path/to/parent` | Skip all repos under these parent directories (comma-separated) |
-| `parry-guard ignore <path>` | Opt out of scanning for a specific repo |
-| `parry-guard monitor <path>` | Opt in to scanning for a specific repo |
-
-## CLI Commands
+| `PARRY_ASK_ON_NEW_PROJECT=false` (default) | Monitor new projects right away, no prompt |
+| `PARRY_ASK_ON_NEW_PROJECT=true` | Ask before monitoring each new project |
+| `PARRY_IGNORE_DIRS=/path/to/parent` | Skip every repo under these parent directories (comma-separated) |
 
 | Command | Effect |
 |---|---|
-| `parry monitor [path]` | Set repo to Monitored (enable scanning) |
-| `parry ignore [path]` | Set repo to Ignored (disable scanning) |
-| `parry reset [path]` | Clear state + caches, back to Unknown |
-| `parry status [path]` | Show current state, re-run audit for findings |
-| `parry repos` | List all known repos and their states |
+| `parry-guard monitor [path]` | Set the repo to Monitored (scanning on) |
+| `parry-guard ignore [path]` | Set the repo to Ignored (scanning off) |
+| `parry-guard reset [path]` | Clear state and caches, back to Unknown |
+| `parry-guard status [path]` | Show the current state and re-run the audit for findings |
+| `parry-guard repos` | List all known repos and their states |
+
+`path` defaults to the current directory.

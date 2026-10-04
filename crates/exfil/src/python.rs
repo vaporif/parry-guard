@@ -1,10 +1,10 @@
-//! Python-specific exfiltration detection.
+//! Python exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PythonDetector;
+pub(crate) struct PythonDetector;
 
 impl LangExfilDetector for PythonDetector {
     fn language(&self) -> Language {
@@ -12,13 +12,6 @@ impl LangExfilDetector for PythonDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match function calls that are network sinks:
-        // - urllib.request.urlopen(...)
-        // - urllib.urlopen(...)
-        // - requests.get/post/put/delete(...)
-        // - http.client.HTTPConnection(...)
-        // - socket.connect(...)
-        // - socket.create_connection(...)
         r#"
         (call
           function: [
@@ -41,10 +34,6 @@ impl LangExfilDetector for PythonDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - open(path)
-        // - open(path).read()
-        // - Path(path).read_text()
         r#"
         (call
           function: (identifier) @fn

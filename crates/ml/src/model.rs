@@ -5,11 +5,8 @@ use parry_guard_core::config::Config;
 use parry_guard_core::Result;
 use tracing::debug;
 
-/// Get a `HuggingFace` Hub repo handle for an arbitrary model repo.
-///
 /// # Errors
-///
-/// Returns an error if the `HuggingFace` API client cannot be built.
+/// Fails if the `HuggingFace` API client can't be built.
 pub fn hf_repo_for(config: &Config, repo: &str) -> Result<hf_hub::api::sync::ApiRepo> {
     use hf_hub::api::sync::ApiBuilder;
 

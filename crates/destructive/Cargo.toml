@@ -19,6 +19,9 @@ tree-sitter.workspace = true
 tree-sitter-bash.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
+indoc.workspace = true
+rstest.workspace = true
 tempfile.workspace = true
 
 [lints]

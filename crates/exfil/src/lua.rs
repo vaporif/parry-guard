@@ -1,10 +1,10 @@
-//! Lua-specific exfiltration detection.
+//! Lua exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct LuaDetector;
+pub(crate) struct LuaDetector;
 
 impl LangExfilDetector for LuaDetector {
     fn language(&self) -> Language {
@@ -12,10 +12,6 @@ impl LangExfilDetector for LuaDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - socket.http.request
-        // - socket.connect
-        // - http.request (LuaSocket)
         r#"
         (function_call
           name: [
@@ -28,10 +24,6 @@ impl LangExfilDetector for LuaDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - io.open(file)
-        // - io.read()
-        // - file:read()
         r#"
         (function_call
           name: [

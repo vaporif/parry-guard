@@ -1,8 +1,4 @@
-# Parry Pattern Configuration
-# Copy to ~/.config/parry/patterns.toml to customize
-#
-# Defaults are compiled into the binary. This file only needs entries
-# you want to add or remove from the defaults.
+# Copy to ~/.config/parry/patterns.toml. Defaults are compiled in; list only additions/removals.
 
 [sensitive_paths]
 # Add custom sensitive path patterns
@@ -16,7 +12,7 @@
 #                  ".env" matches "/project/.env" but not ".environment"
 #   suffix       - matches at end of path
 #                  "/id_rsa" matches "~/.ssh/id_rsa" but not "id_rsa_backup"
-#   substring    - matches anywhere (use sparingly - high false positive risk)
+#   substring    - matches anywhere (use sparingly: high false positive risk)
 #
 # Remove built-in patterns you don't want
 # remove = [".env", "pastebin.com"]
@@ -41,8 +37,7 @@ remove = []
 #     "CORP_API_KEY_[0-9]{20}",
 # ]
 
-# Remove built-in patterns you don't want to detect
-# Use the exact regex string from the defaults below
+# Remove built-in patterns by exact regex string (see defaults below)
 # remove = [
 #     "eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+",  # JWT
 # ]
@@ -50,9 +45,7 @@ remove = []
 add = []
 remove = []
 
-# =============================================================================
-# Built-in Defaults (for reference - do not uncomment, these are compiled in)
-# =============================================================================
+# Built-in defaults (reference only, already compiled in):
 #
 # Sensitive Paths:
 #   .env, .envrc                          (path_segment)

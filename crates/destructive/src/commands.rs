@@ -1,14 +1,11 @@
-//! Configuration for destructive operation overrides.
-//!
-//! Loads from `~/.config/parry/patterns.toml` (same file as exfil patterns).
+//! User overrides from `<config dir>/parry-guard/patterns.toml` (shared with exfil patterns).
 
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 use tracing::warn;
 
-/// User-configurable overrides for destructive detection.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct DestructiveConfig {
     #[serde(default)]
     pub destructive_paths: ListOverrides,
@@ -16,8 +13,7 @@ pub struct DestructiveConfig {
     pub destructive_commands: ListOverrides,
 }
 
-/// Add/remove overrides for a list.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct ListOverrides {
     #[serde(default)]
     pub add: Vec<String>,
@@ -26,7 +22,6 @@ pub struct ListOverrides {
 }
 
 impl DestructiveConfig {
-    /// Load configuration from the default path.
     #[must_use]
     pub fn load() -> Self {
         Self::load_from_path(Self::default_path())
@@ -56,26 +51,20 @@ impl DestructiveConfig {
     }
 }
 
-/// Runtime-compiled destructive detection config with user overrides applied.
+/// Destructive config with user overrides applied.
 pub struct CompiledDestructive {
-    /// Additional protected paths from user config.
     pub extra_paths: Vec<String>,
-    /// Protected paths removed by user config.
     pub removed_paths: Vec<String>,
-    /// Additional commands to flag as destructive.
     pub extra_commands: Vec<String>,
-    /// Commands removed from destructive detection.
     pub removed_commands: Vec<String>,
 }
 
 impl CompiledDestructive {
-    /// Load from default config path.
     #[must_use]
     pub fn load() -> Self {
         Self::from_config(DestructiveConfig::load())
     }
 
-    /// Create from explicit config (useful for testing).
     #[must_use]
     pub fn from_config(config: DestructiveConfig) -> Self {
         Self {
@@ -86,14 +75,22 @@ impl CompiledDestructive {
         }
     }
 
-    /// Check if a command has been removed from detection by user config.
     #[must_use]
     pub fn is_removed_command(&self, cmd: &str) -> bool {
         self.removed_commands.iter().any(|r| r == cmd)
     }
+
+    #[must_use]
+    pub fn is_extra_command(&self, cmd: &str) -> bool {
+        self.extra_commands.iter().any(|c| c == cmd)
+    }
+
+    #[must_use]
+    pub fn is_removed_path(&self, path: &str) -> bool {
+        self.removed_paths.iter().any(|r| r == path)
+    }
 }
 
-/// Global compiled config (loaded once).
 pub static CONFIG: LazyLock<CompiledDestructive> = LazyLock::new(CompiledDestructive::load);
 
 #[cfg(test)]
@@ -103,10 +100,10 @@ mod tests {
     #[test]
     fn default_config_empty_overrides() {
         let compiled = CompiledDestructive::from_config(DestructiveConfig::default());
-        assert!(compiled.extra_paths.is_empty());
-        assert!(compiled.removed_paths.is_empty());
-        assert!(compiled.extra_commands.is_empty());
-        assert!(compiled.removed_commands.is_empty());
+        assert_eq!(compiled.extra_paths, Vec::<String>::new());
+        assert_eq!(compiled.removed_paths, Vec::<String>::new());
+        assert_eq!(compiled.extra_commands, Vec::<String>::new());
+        assert_eq!(compiled.removed_commands, Vec::<String>::new());
     }
 
     #[test]
@@ -126,5 +123,51 @@ mod tests {
         assert_eq!(compiled.removed_paths, vec!["~/.cargo/"]);
         assert!(compiled.is_removed_command("kill"));
         assert!(!compiled.is_removed_command("rm"));
+        assert!(compiled.is_extra_command("custom-destroy"));
+        assert!(!compiled.is_extra_command("kill"));
+        assert!(compiled.is_removed_path("~/.cargo/"));
+        assert!(!compiled.is_removed_path("/my/protected"));
+    }
+
+    #[test]
+    fn default_path_points_at_patterns_toml() {
+        let path = DestructiveConfig::default_path().unwrap();
+        assert!(path.ends_with("parry-guard/patterns.toml"), "{path:?}");
+    }
+
+    #[test]
+    fn load_from_path_parses_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("patterns.toml");
+        std::fs::write(
+            &path,
+            indoc::indoc! {r#"
+                [destructive_paths]
+                add = ["/srv/data/"]
+
+                [destructive_commands]
+                remove = ["kill"]
+            "#},
+        )
+        .unwrap();
+
+        let config = DestructiveConfig::load_from_path(Some(path));
+
+        assert_eq!(config.destructive_paths.add, vec!["/srv/data/"]);
+        assert_eq!(config.destructive_commands.remove, vec!["kill"]);
+    }
+
+    #[test]
+    fn load_from_path_falls_back_to_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let invalid = dir.path().join("invalid.toml");
+        std::fs::write(&invalid, "not = [valid").unwrap();
+
+        for path in [None, Some(dir.path().join("missing.toml")), Some(invalid)] {
+            assert_eq!(
+                DestructiveConfig::load_from_path(path),
+                DestructiveConfig::default()
+            );
+        }
     }
 }

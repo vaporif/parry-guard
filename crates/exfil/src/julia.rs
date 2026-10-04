@@ -1,10 +1,10 @@
-//! Julia-specific exfiltration detection.
+//! Julia exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct JuliaDetector;
+pub(crate) struct JuliaDetector;
 
 impl LangExfilDetector for JuliaDetector {
     fn language(&self) -> Language {
@@ -12,10 +12,6 @@ impl LangExfilDetector for JuliaDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - HTTP.request/get/post
-        // - Downloads.download
-        // - download()
         r#"
         (call_expression
           (field_expression) @fn
@@ -30,10 +26,6 @@ impl LangExfilDetector for JuliaDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - read(file)
-        // - open(file)
-        // - readlines(file)
         r#"
         (call_expression
           (identifier) @fn

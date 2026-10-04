@@ -40,7 +40,7 @@ impl RepoState {
     }
 }
 
-/// Encoded repo state value: `[state_byte][remote_url_bytes]`.
+/// Layout: `[state_byte][remote_url_bytes]`.
 fn encode_state(state: RepoState, remote: Option<&str>) -> Vec<u8> {
     let mut buf = vec![state as u8];
     if let Some(url) = remote {
@@ -49,21 +49,20 @@ fn encode_state(state: RepoState, remote: Option<&str>) -> Vec<u8> {
     buf
 }
 
-/// Decode repo state value.
+/// Inverse of [`encode_state`].
 fn decode_state(bytes: &[u8]) -> (RepoState, Option<String>) {
-    if bytes.is_empty() {
+    let Some((&state, remote)) = bytes.split_first() else {
         return (RepoState::Unknown, None);
-    }
-    let state = RepoState::from_u8(bytes[0]);
-    let remote = if bytes.len() > 1 {
-        String::from_utf8(bytes[1..].to_vec()).ok()
-    } else {
-        None
     };
-    (state, remote)
+    let remote = if remote.is_empty() {
+        None
+    } else {
+        String::from_utf8(remote.to_vec()).ok()
+    };
+    (RepoState::from_u8(state), remote)
 }
 
-/// Centralized repository state database.
+/// Repo states and scan caches.
 pub struct RepoDb {
     db: redb::Database,
 }
@@ -87,13 +86,10 @@ pub enum RepoDbError {
 }
 
 impl RepoDb {
-    /// Open (or create) the centralized database.
-    ///
-    /// Uses `runtime_dir` if provided, otherwise `~/.parry/`.
+    /// Open or create the db in `runtime_dir`, else `~/.parry/`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the database cannot be opened or created.
+    /// Fails if the db can't be opened or created.
     pub fn open(runtime_dir: Option<&Path>) -> Result<Self, RepoDbError> {
         let dir = if let Some(d) = runtime_dir {
             d.to_path_buf()
@@ -136,8 +132,7 @@ impl RepoDb {
     /// Set the state and optional remote URL for a repo path.
     ///
     /// # Errors
-    ///
-    /// Returns an error if the database write or commit fails.
+    /// Fails if the write or commit fails.
     pub fn set_repo_state(
         &self,
         repo_path: &str,
@@ -218,7 +213,7 @@ impl RepoDb {
         let _ = txn.commit();
     }
 
-    /// Build the composite guard cache key: `repo_path\0file_path`.
+    /// Guard cache key: `repo_path\0file_path`.
     fn guard_key(repo_path: &str, file_path: &str) -> String {
         format!("{repo_path}\0{file_path}")
     }
@@ -294,8 +289,7 @@ impl RepoDb {
     }
 }
 
-/// Canonicalize a repo path. If `path` is None, uses CWD.
-/// Returns None if canonicalization fails.
+/// Canonical repo path (cwd if `path` is `None`), or `None` on failure.
 #[must_use]
 pub fn canonicalize_repo_path(path: Option<&Path>) -> Option<String> {
     let target = match path {
@@ -307,7 +301,7 @@ pub fn canonicalize_repo_path(path: Option<&Path>) -> Option<String> {
         .and_then(|p| p.to_str().map(String::from))
 }
 
-/// Best-effort git remote URL for display purposes.
+/// Best-effort `origin` URL, for display.
 #[must_use]
 pub fn git_remote_url(path: &Path) -> Option<String> {
     std::process::Command::new("git")
@@ -541,5 +535,56 @@ mod tests {
     fn cleanup_old_db_noop_if_missing() {
         let dir = tempfile::tempdir().unwrap();
         RepoDb::cleanup_old_db(dir.path());
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    #[test]
+    fn git_remote_url_reads_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        git(
+            dir.path(),
+            &["remote", "add", "origin", "https://example.com/u/r.git"],
+        );
+        assert_eq!(
+            git_remote_url(dir.path()).as_deref(),
+            Some("https://example.com/u/r.git")
+        );
+    }
+
+    #[test]
+    fn git_remote_url_none_without_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        assert!(git_remote_url(dir.path()).is_none());
+    }
+
+    #[test]
+    fn canonicalize_repo_path_resolves_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(
+            canonicalize_repo_path(Some(dir.path())).as_deref(),
+            expected.to_str()
+        );
+    }
+
+    #[test]
+    fn canonicalize_repo_path_defaults_to_cwd() {
+        let cwd = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
+        assert_eq!(canonicalize_repo_path(None).as_deref(), cwd.to_str());
+    }
+
+    #[test]
+    fn canonicalize_repo_path_missing_dir() {
+        assert!(canonicalize_repo_path(Some(Path::new("/nonexistent/parry/repo"))).is_none());
     }
 }

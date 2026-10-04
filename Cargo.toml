@@ -6,13 +6,12 @@ resolver = "2"
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/vaporif/parry"
-homepage = "https://github.com/vaporif/parry"
+repository = "https://github.com/vaporif/parry-guard"
+homepage = "https://github.com/vaporif/parry-guard"
 keywords = ["prompt-injection", "security", "scanner", "llm", "claude", "codex"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
-# Internal crates
 parry-guard-core = { path = "crates/core", version = "0.2.0", default-features = false }
 parry-guard-ml = { path = "crates/ml", version = "0.2.0", default-features = false }
 parry-guard-exfil = { path = "crates/exfil", version = "0.2.0" }
@@ -93,12 +92,12 @@ tokio-util = { version = "0.7", features = ["codec"] }
 redb = "3"
 blake3 = "1"
 
-# Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Dev dependencies
 tempfile = "3"
+indoc = "2"
 criterion = { version = "0.8", default-features = false }
 proptest = "1"
 rstest = "0.27"
@@ -106,3 +105,26 @@ rstest = "0.27"
 [workspace.lints.clippy]
 nursery = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+# Panics on untrusted input crash the hook instead of blocking cleanly.
+string_slice = "deny"
+indexing_slicing = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+map_err_ignore = "deny"
+infinite_loop = "deny"
+missing_assert_message = "deny"
+assertions_on_result_states = "deny"
+wildcard_enum_match_arm = "deny"
+# Contradicts rustc's `unreachable_pub`, which we prefer.
+redundant_pub_crate = "allow"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "deny"
+redundant_lifetimes = "deny"
+unit_bindings = "deny"
+unreachable_pub = "deny"

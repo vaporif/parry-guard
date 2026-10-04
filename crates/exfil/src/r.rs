@@ -1,10 +1,10 @@
-//! R-specific exfiltration detection.
+//! R exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct RDetector;
+pub(crate) struct RDetector;
 
 impl LangExfilDetector for RDetector {
     fn language(&self) -> Language {
@@ -12,7 +12,6 @@ impl LangExfilDetector for RDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(GET|POST|httr|curl|download\\.file|url|RCurl)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for RDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(readLines|read\\.csv|read\\.table|readRDS|scan|file)")

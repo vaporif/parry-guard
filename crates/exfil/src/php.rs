@@ -1,22 +1,18 @@
-//! PHP-specific exfiltration detection.
+//! PHP exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PhpDetector;
+pub(crate) struct PhpDetector;
 
 impl LangExfilDetector for PhpDetector {
     fn language(&self) -> Language {
-        tree_sitter_php::LANGUAGE_PHP.into()
+        // `php -r` code has no `<?php` open tag
+        tree_sitter_php::LANGUAGE_PHP_ONLY.into()
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - curl_exec(...)
-        // - file_get_contents('http...')
-        // - fopen('http...')
-        // - fsockopen(...)
         r#"
         (function_call_expression
           function: (name) @fn
@@ -26,11 +22,6 @@ impl LangExfilDetector for PhpDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - file_get_contents(path)
-        // - fopen(path, 'r')
-        // - file(path)
-        // - readfile(path)
         r#"
         (function_call_expression
           function: (name) @fn

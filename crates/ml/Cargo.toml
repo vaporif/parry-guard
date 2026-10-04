@@ -16,11 +16,11 @@ tokenizers.workspace = true
 hf-hub.workspace = true
 tracing.workspace = true
 
-# ONNX backend (optional)
+# ONNX backend
 ort = { workspace = true, optional = true }
 ndarray = { workspace = true, optional = true }
 
-# Candle backend (optional)
+# Candle backend
 candle-core = { workspace = true, optional = true }
 candle-nn = { workspace = true, optional = true }
 candle-transformers = { workspace = true, optional = true }
@@ -28,9 +28,9 @@ serde_json.workspace = true
 
 [features]
 default = ["onnx-fetch"]
-# ONNX with runtime dylib loading (user provides ORT_DYLIB_PATH)
+# ONNX, runtime loaded from ORT_DYLIB_PATH
 onnx = ["dep:ort", "dep:ndarray", "ort/load-dynamic"]
-# ONNX with auto-download of runtime (self-contained, larger binary)
+# ONNX, runtime bundled (larger binary)
 onnx-fetch = [
   "dep:ort",
   "dep:ndarray",
@@ -38,9 +38,9 @@ onnx-fetch = [
   "ort/copy-dylibs",
   "ort/tls-native",
 ]
-# ONNX with CoreML acceleration (Apple Silicon)
+# ONNX with CoreML (Apple Silicon)
 onnx-coreml = ["onnx-fetch", "ort/coreml"]
-# Pure Rust ML backend (no native deps)
+# Pure Rust backend, no native deps
 candle = [
   "dep:candle-core",
   "dep:candle-nn",
@@ -49,6 +49,7 @@ candle = [
 ]
 
 [dev-dependencies]
+proptest.workspace = true
 criterion.workspace = true
 
 [package.metadata.docs.rs]

@@ -1,0 +1,9 @@
+id: no-dash-in-comments
+language: rust
+severity: error
+message: Use a comma, colon, period, or parentheses instead of an em or en dash in comments.
+rule:
+  any:
+    - kind: line_comment
+    - kind: block_comment
+  regex: "[—–]"

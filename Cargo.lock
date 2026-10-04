@@ -1417,6 +1417,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "interprocess"
 version = "2.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1877,6 +1886,7 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "fork",
+ "indoc",
  "parry-guard-core",
  "parry-guard-daemon",
  "parry-guard-hook",
@@ -1898,10 +1908,12 @@ dependencies = [
  "dirs",
  "eyre",
  "html-escape",
+ "indoc",
  "percent-encoding",
  "proptest",
  "redb",
  "regex",
+ "rstest",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -1923,11 +1935,13 @@ dependencies = [
  "interprocess",
  "parry-guard-core",
  "parry-guard-ml",
+ "proptest",
  "redb",
  "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1935,7 +1949,10 @@ name = "parry-guard-destructive"
 version = "0.2.0"
 dependencies = [
  "dirs",
+ "indoc",
+ "proptest",
  "regex",
+ "rstest",
  "serde",
  "tempfile",
  "toml",
@@ -1949,9 +1966,12 @@ name = "parry-guard-exfil"
 version = "0.2.0"
 dependencies = [
  "dirs",
+ "indoc",
+ "proptest",
  "regex",
  "rstest",
  "serde",
+ "tempfile",
  "toml",
  "tracing",
  "tree-sitter",
@@ -1978,6 +1998,7 @@ version = "0.2.0"
 dependencies = [
  "blake3",
  "futures-util",
+ "indoc",
  "interprocess",
  "parry-guard-core",
  "parry-guard-daemon",
@@ -2004,6 +2025,7 @@ dependencies = [
  "ndarray",
  "ort",
  "parry-guard-core",
+ "proptest",
  "serde_json",
  "tokenizers 0.23.2",
  "tracing",

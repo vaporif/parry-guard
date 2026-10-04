@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/vaporif/parry"
+Repository = "https://github.com/vaporif/parry-guard"
 
 [tool.maturin]
 manifest-path = "bin/Cargo.toml"

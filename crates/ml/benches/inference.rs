@@ -1,10 +1,4 @@
-//! Benchmark ML inference across backends (candle vs onnx).
-//!
-//! Run with:
-//!   cargo bench -p parry-ml --bench inference                                              # candle
-//!   cargo bench -p parry-ml --bench inference --no-default-features --features onnx-fetch   # onnx
-//!
-//! Requires `HF_TOKEN` env var for gated model downloads.
+//! ML inference benchmark, candle vs onnx. Needs `HF_TOKEN` for gated models.
 
 use std::time::Duration;
 

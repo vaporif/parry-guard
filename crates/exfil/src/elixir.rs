@@ -1,10 +1,10 @@
-//! Elixir-specific exfiltration detection.
+//! Elixir exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct ElixirDetector;
+pub(crate) struct ElixirDetector;
 
 impl LangExfilDetector for ElixirDetector {
     fn language(&self) -> Language {
@@ -12,7 +12,6 @@ impl LangExfilDetector for ElixirDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "^(get|post|put|delete|request|get!|post!)$")
@@ -20,7 +19,6 @@ impl LangExfilDetector for ElixirDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "^(read|read!|stream!|open)$")

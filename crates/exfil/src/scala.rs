@@ -1,10 +1,10 @@
-//! Scala-specific exfiltration detection.
+//! Scala exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct ScalaDetector;
+pub(crate) struct ScalaDetector;
 
 impl LangExfilDetector for ScalaDetector {
     fn language(&self) -> Language {
@@ -12,7 +12,6 @@ impl LangExfilDetector for ScalaDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(fromURL|singleRequest|request|get|post|execute|URL|HttpURLConnection|Socket)")
@@ -20,7 +19,6 @@ impl LangExfilDetector for ScalaDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations via identifier patterns
         r#"
         (identifier) @fn
         (#match? @fn "(fromFile|readAllLines|readString|getLines|File|FileReader|FileInputStream|BufferedReader)")

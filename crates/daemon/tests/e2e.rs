@@ -1,3 +1,10 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::unreachable,
+    reason = "helpers outside #[test] fns aren't covered by allow-*-in-tests"
+)]
+
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -43,7 +50,7 @@ async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -
                 .await
                 .unwrap();
         if ready {
-            // Settle time so daemon re-enters accept loop after our ping
+            // let the daemon re-enter its accept loop after our ping
             tokio::time::sleep(Duration::from_millis(50)).await;
             return handle;
         }
@@ -59,7 +66,7 @@ async fn stop_daemon(handle: JoinHandle<()>) {
 async fn scan_with_retry(
     text: &str,
     config: &Config,
-) -> std::result::Result<ScanResult, parry_guard_core::ScanError> {
+) -> Result<ScanResult, parry_guard_core::ScanError> {
     let text = text.to_string();
     for attempt in 0u64..3 {
         if attempt > 0 {
@@ -79,12 +86,11 @@ async fn scan_with_retry(
     unreachable!()
 }
 
-/// All cases run in a single test to share daemon lifecycle.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn daemon_e2e() {
+    // single test so cases share the daemon lifecycle
     let t = Instant::now();
 
-    // ── ping/pong ──
     eprintln!("[ping/pong] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -102,7 +108,6 @@ async fn daemon_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── scan: clean, injection, secret (shared daemon) ──
     eprintln!("[scan] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -113,7 +118,7 @@ async fn daemon_e2e() {
         let result = scan_with_retry("The weather is nice today.", &config).await;
         if let Ok(r) = &result {
             assert!(r.is_clean(), "expected clean, got: {r:?}");
-        } // fail-closed without ML model - expected in CI
+        } // fail-closed without an ML model in CI
         eprintln!("[scan] clean text ok ({:?})", t.elapsed());
 
         eprintln!("[scan] injection (fast scan)...");
@@ -129,7 +134,6 @@ async fn daemon_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── idle timeout shutdown ──
     eprintln!("[idle] starting daemon (1s timeout)...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -152,18 +156,16 @@ async fn daemon_e2e() {
                 .await
                 .unwrap();
         assert!(!running);
-        let _ = handle.await; // ensure daemon cleanup completes before TempDir drop
+        let _ = handle.await; // cleanup must finish before TempDir drops
         eprintln!("[idle] ok ({:?})", t.elapsed());
     }
 }
 
-/// Requires HF token + model downloads. Run with: `cargo test -- --ignored`
 #[ignore = "requires HF token and model downloads"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ml_model_e2e() {
     let t = Instant::now();
 
-    // ── fast mode: DeBERTa v3 ──
     eprintln!("[fast] starting daemon (DeBERTa v3)...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -198,7 +200,6 @@ async fn ml_model_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── full mode: DeBERTa v3 + Llama Prompt Guard 2 (candle only) ──
     #[cfg(feature = "candle")]
     {
         eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");

@@ -1,6 +1,5 @@
 //! ML-based injection detection using `DeBERTa` v3.
 
-// Ensure at least one ML backend is enabled
 #[cfg(not(any(feature = "onnx", feature = "onnx-fetch", feature = "candle")))]
 compile_error!(
     "At least one ML backend must be enabled: 'onnx', 'onnx-fetch' (default), or 'candle'"
@@ -43,11 +42,8 @@ pub struct Scanner<B: MlBackend> {
 }
 
 impl MlScanner {
-    /// Load the ML scanner with the compile-time selected backend.
-    ///
     /// # Errors
-    ///
-    /// Returns an error if any model cannot be downloaded or loaded.
+    /// Fails if any model can't be downloaded or loaded.
     #[instrument(skip(config))]
     pub fn load(config: &Config) -> Result<Self> {
         let model_defs = config.resolve_models()?;
@@ -93,13 +89,10 @@ impl<B: MlBackend> Scanner<B> {
         Ok(score)
     }
 
-    /// Scan text using chunked strategy. Returns true if injection detected.
-    /// Uses OR ensemble: any model detecting injection returns true.
-    /// Per-model threshold overrides `request_threshold` when set.
+    /// True if any model flags any chunk; per-model thresholds override `request_threshold`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if scoring any chunk fails.
+    /// Fails if scoring any chunk fails.
     #[instrument(skip(self, text), fields(text_len = text.len(), models = self.instances.len()))]
     pub fn scan_chunked(&mut self, text: &str, request_threshold: f32) -> Result<bool> {
         for instance in &mut self.instances {
@@ -150,11 +143,11 @@ fn load_backend(repo: &hf_hub::api::sync::ApiRepo) -> Result<Backend> {
 
 #[cfg(any(feature = "onnx", feature = "onnx-fetch", feature = "candle", test))]
 pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
-    if logits.len() < 2 {
+    let [safe, _, ..] = logits else {
         return 0.0;
-    }
+    };
     let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let exp0 = (logits[0] - max).exp();
+    let exp0 = (safe - max).exp();
     let sum: f32 = logits.iter().map(|&l| (l - max).exp()).sum();
     // 1 - P(safe) handles both 2-class and 3+ class models where label 0 is "safe"
     1.0 - exp0 / sum
@@ -164,13 +157,21 @@ pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
 mod tests {
     use super::*;
 
+    /// Inputs longer than any sliding-window chunk (only the head+tail chunk).
+    const LONG_INPUT_TOKENS: usize = 300;
+
     struct MockBackend {
         score: f32,
+        long_input_score: f32,
     }
 
     impl MlBackend for MockBackend {
-        fn score(&mut self, _input_ids: &[u32], _attention_mask: &[u32]) -> Result<f32> {
-            Ok(self.score)
+        fn score(&mut self, input_ids: &[u32], _attention_mask: &[u32]) -> Result<f32> {
+            if input_ids.len() > LONG_INPUT_TOKENS {
+                Ok(self.long_input_score)
+            } else {
+                Ok(self.score)
+            }
         }
     }
 
@@ -178,6 +179,7 @@ mod tests {
         let tokenizer = Tokenizer::from_bytes(
             br###"{
             "version": "1.0",
+            "pre_tokenizer": {"type": "Whitespace"},
             "model": {
                 "type": "WordPiece",
                 "unk_token": "[UNK]",
@@ -189,7 +191,10 @@ mod tests {
         )
         .expect("minimal tokenizer");
         ModelInstance {
-            backend: MockBackend { score },
+            backend: MockBackend {
+                score,
+                long_input_score: score,
+            },
             tokenizer,
             threshold,
             repo: repo.to_string(),
@@ -231,7 +236,6 @@ mod tests {
 
     #[test]
     fn ensemble_per_model_threshold() {
-        // Per-model threshold overrides request threshold
         let mut scanner = Scanner {
             instances: vec![mock_instance(0.6, Some(0.5), "model-a")],
         };
@@ -250,6 +254,19 @@ mod tests {
         };
         assert!(scanner.scan_chunked("hello", 0.5).unwrap());
         assert!(!scanner.scan_chunked("hello", 0.7).unwrap());
+    }
+
+    #[test]
+    fn head_tail_chunk_detects_when_windows_clean() {
+        let mut instance = mock_instance(0.1, None, "model-a");
+        instance.backend.long_input_score = 0.9;
+        let mut scanner = Scanner {
+            instances: vec![instance],
+        };
+        // ~2 tokens per 4 chars: windows stay under LONG_INPUT_TOKENS, head+tail exceeds it
+        let text = "ab c ".repeat(400);
+        assert!(scanner.scan_chunked(&text, 0.5).unwrap());
+        assert!(!scanner.scan_chunked(&text, 0.95).unwrap());
     }
 
     #[test]

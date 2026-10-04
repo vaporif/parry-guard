@@ -1,4 +1,4 @@
-//! Runtime configuration for parry scanning.
+//! Runtime scan configuration.
 
 use std::path::PathBuf;
 
@@ -8,7 +8,7 @@ const DEFAULT_MODEL: &str = "ProtectAI/deberta-v3-small-prompt-injection-v2";
 #[cfg(feature = "candle")]
 const FULL_MODELS: &[&str] = &[DEFAULT_MODEL, "meta-llama/Llama-Prompt-Guard-2-86M"];
 
-/// Scan mode controlling which ML models are used.
+/// Which ML models to run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ScanMode {
     /// Single model (default `DeBERTa` v3).
@@ -16,12 +16,12 @@ pub enum ScanMode {
     Fast,
     /// Two-model ensemble (`DeBERTa` + Llama Prompt Guard).
     Full,
-    /// User-defined model list from `~/.config/parry/models.toml`.
+    /// User-defined model list from `<config dir>/parry-guard/models.toml`.
     Custom,
 }
 
 impl ScanMode {
-    /// String representation for CLI argument forwarding.
+    /// Form used when forwarding as a CLI argument.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -32,42 +32,36 @@ impl ScanMode {
     }
 }
 
-/// A single model definition for ML scanning.
+/// One ML model to load.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelDef {
-    /// `HuggingFace` repo ID (e.g. `"ProtectAI/deberta-v3-small-prompt-injection-v2"`).
+    /// `HuggingFace` repo ID.
     pub repo: String,
-    /// Optional per-model threshold; falls back to global `Config::threshold`.
+    /// Overrides `Config::threshold` for this model.
     pub threshold: Option<f32>,
 }
 
-/// TOML configuration for custom models (`~/.config/parry/models.toml`).
+/// Contents of `<config dir>/parry-guard/models.toml`.
 #[derive(Debug, Deserialize)]
 struct ModelsConfig {
     models: Vec<ModelDef>,
 }
 
-/// Default ML threshold for CLAUDE.md scanning (higher to reduce false positives).
 const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
 
-/// Runtime configuration for parry scanning.
 #[derive(Clone)]
 pub struct Config {
     pub hf_token: Option<String>,
     pub threshold: f32,
-    /// ML threshold for CLAUDE.md scanning (default 0.9).
-    ///
-    /// Higher than `threshold` because CLAUDE.md files are instructions
-    /// by design and `DeBERTa` scores them higher than normal text.
+    /// Higher than `threshold`: CLAUDE.md is instructions by design, so `DeBERTa` scores it high.
     pub claude_md_threshold: f32,
     pub scan_mode: ScanMode,
-    /// Explicit runtime directory for daemon IPC, caches, and taint files.
-    /// `None` means use default paths (`~/.parry-guard/` for daemon, cwd for hook files).
-    /// Set in tests to avoid process-global env var mutation.
+    /// Dir for daemon IPC, caches, and taint files; `None` uses defaults.
+    /// Tests set it to avoid mutating process-global env vars.
     pub runtime_dir: Option<PathBuf>,
 }
 
-// manual impl: Config is recorded by tracing spans, keep the token out of logs
+// manual impl keeps `hf_token` out of tracing spans
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
@@ -81,12 +75,18 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
-    /// Resolve the list of models to load based on `scan_mode`.
+    /// Models to load for `scan_mode`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if `Custom` mode config is missing or has no models.
+    /// Fails if the `Custom` config is missing or has no models.
     pub fn resolve_models(&self) -> crate::Result<Vec<ModelDef>> {
+        self.resolve_models_in(dirs::config_dir().as_deref())
+    }
+
+    fn resolve_models_in(
+        &self,
+        config_dir: Option<&std::path::Path>,
+    ) -> crate::Result<Vec<ModelDef>> {
         match self.scan_mode {
             ScanMode::Fast => Ok(vec![ModelDef {
                 repo: DEFAULT_MODEL.to_string(),
@@ -108,17 +108,14 @@ impl Config {
                     })
                     .collect())
             }
-            ScanMode::Custom => load_custom_models(),
+            ScanMode::Custom => load_custom_models(config_dir),
         }
     }
 }
 
-fn custom_models_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|p| p.join("parry-guard").join("models.toml"))
-}
-
-fn load_custom_models() -> crate::Result<Vec<ModelDef>> {
-    let path = custom_models_path()
+fn load_custom_models(config_dir: Option<&std::path::Path>) -> crate::Result<Vec<ModelDef>> {
+    let path = config_dir
+        .map(|p| p.join("parry-guard").join("models.toml"))
         .ok_or_else(|| eyre::eyre!("cannot resolve config directory for models.toml"))?;
 
     let content = std::fs::read_to_string(&path)
@@ -151,6 +148,41 @@ impl Default for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scan_mode_as_str() {
+        assert_eq!(ScanMode::Fast.as_str(), "fast");
+        assert_eq!(ScanMode::Full.as_str(), "full");
+        assert_eq!(ScanMode::Custom.as_str(), "custom");
+    }
+
+    #[test]
+    fn resolve_models_custom_reads_models_toml() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let dir = config_dir.path().join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("models.toml"),
+            indoc::indoc! {r#"
+                [[models]]
+                repo = "org/model"
+                threshold = 0.5
+            "#},
+        )
+        .unwrap();
+
+        let config = Config {
+            scan_mode: ScanMode::Custom,
+            ..Config::default()
+        };
+        let models = config.resolve_models_in(Some(config_dir.path())).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].repo, "org/model");
+        assert_eq!(
+            models[0].threshold.map(f32::to_bits),
+            Some(0.5f32.to_bits())
+        );
+    }
 
     #[test]
     fn default_scan_mode_is_fast() {
@@ -187,20 +219,27 @@ mod tests {
             scan_mode: ScanMode::Full,
             ..Config::default()
         };
-        assert!(config.resolve_models().is_err());
+        let err = config.resolve_models().unwrap_err();
+        assert!(
+            err.to_string().contains("requires the candle backend"),
+            "{err}"
+        );
     }
 
     #[test]
     fn resolve_models_custom_missing() {
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("HOME", dir.path()) };
         let config = Config {
             scan_mode: ScanMode::Custom,
             ..Config::default()
         };
-        let result = config.resolve_models();
-        unsafe { std::env::remove_var("HOME") };
-        assert!(result.is_err());
+        let err = config.resolve_models_in(Some(dir.path())).unwrap_err();
+        assert!(err.to_string().contains("failed to read"), "{err}");
+        let err = config.resolve_models_in(None).unwrap_err();
+        assert!(
+            err.to_string().contains("cannot resolve config directory"),
+            "{err}"
+        );
     }
 
     #[test]

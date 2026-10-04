@@ -1,3 +1,11 @@
 test_tool = "nextest"
 # Backend tests need model downloads (HF_TOKEN) and are ignored by default
 exclude_globs = ["crates/ml/src/candle.rs", "crates/ml/src/onnx.rs"]
+# Not observable from tests: log-only setup/warnings, the forking daemon entrypoint,
+# and backend loading (needs a model download)
+exclude_re = [
+  "bin/src/main.rs:.*replace init_tracing with \\(\\)",
+  "bin/src/main.rs:.*replace < with .* in main$",
+  "replace run_serve -> ExitCode with",
+  "replace load_backend -> Result<Backend> with",
+]

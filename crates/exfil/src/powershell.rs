@@ -1,10 +1,10 @@
-//! PowerShell-specific exfiltration detection.
+//! PowerShell exfil detector.
 
 use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PowerShellDetector;
+pub(crate) struct PowerShellDetector;
 
 impl LangExfilDetector for PowerShellDetector {
     fn language(&self) -> Language {
@@ -12,12 +12,6 @@ impl LangExfilDetector for PowerShellDetector {
     }
 
     fn network_sink_query(&self) -> &'static str {
-        // Match network operations:
-        // - Invoke-WebRequest
-        // - Invoke-RestMethod
-        // - New-Object Net.WebClient
-        // - System.Net.WebClient
-        // - [Net.WebClient]::new()
         r#"
         (command
           command_name: (_) @cmd
@@ -34,10 +28,6 @@ impl LangExfilDetector for PowerShellDetector {
     }
 
     fn file_source_query(&self) -> &'static str {
-        // Match file reading operations:
-        // - Get-Content
-        // - [IO.File]::ReadAllText
-        // - type (alias for Get-Content)
         r#"
         (command
           command_name: (_) @cmd

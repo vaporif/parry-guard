@@ -1,14 +1,14 @@
-//! Constant arrays used across exfil detection modules.
+//! Shared command and indicator lists.
 
-pub const NETWORK_SINKS: &[&str] = &[
+pub(crate) const NETWORK_SINKS: &[&str] = &[
     "curl", "wget", "http", "https", "xh", "curlie", "httpie", "aria2c", "axel", "wge", "curlx",
     "nc", "ncat", "netcat", "telnet", "socat", "openssl", "ssh", "scp", "sftp", "rsync", "ftp",
     "lftp", "rcp", "nslookup", "dig", "host", "aws", "gcloud", "gsutil", "az", "s3cmd", "rclone",
     "azcopy", "git",
 ];
 
-// Cloud storage upload commands (always suspicious with sensitive data)
-pub const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
+// Flagged when combined with sensitive data
+pub(crate) const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
     "aws s3 cp",
     "aws s3 mv",
     "aws s3 sync",
@@ -22,8 +22,7 @@ pub const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
     "s3cmd put",
 ];
 
-// Clipboard tools (data can be exfiltrated via copy-paste)
-pub const CLIPBOARD_TOOLS: &[&str] = &[
+pub(crate) const CLIPBOARD_TOOLS: &[&str] = &[
     "pbcopy",   // macOS
     "xclip",    // Linux X11
     "xsel",     // Linux X11
@@ -32,16 +31,16 @@ pub const CLIPBOARD_TOOLS: &[&str] = &[
 ];
 
 // Flagged unconditionally (no sensitive source required)
-pub const DNS_EXFIL_TOOLS: &[&str] = &[
+pub(crate) const DNS_EXFIL_TOOLS: &[&str] = &[
     "dnscat", "dnscat2", "iodine", "iodined", "dns2tcp", "dnsexfil",
 ];
 
-pub const SENSITIVE_SOURCES: &[&str] = &[
+pub(crate) const SENSITIVE_SOURCES: &[&str] = &[
     "cat", "head", "tail", "less", "more", "tee", "env", "printenv", "whoami", "id", "hostname",
     "aws", "gcloud", "az", "pass", "gpg", "security", "kubectl",
 ];
 
-pub const INTERPRETERS: &[&str] = &[
+pub(crate) const INTERPRETERS: &[&str] = &[
     "python",
     "python2",
     "python3",
@@ -59,6 +58,7 @@ pub const INTERPRETERS: &[&str] = &[
     "lua",
     "pwsh",
     "powershell",
+    "R",
     "Rscript",
     "elixir",
     "julia",
@@ -84,17 +84,17 @@ pub const INTERPRETERS: &[&str] = &[
     "gsed",
 ];
 
-pub const SHELL_INTERPRETERS: &[&str] = &[
+pub(crate) const SHELL_INTERPRETERS: &[&str] = &[
     "bash", "sh", "zsh", "dash", "ksh", "mksh", "oksh", "pdksh", "fish", "ash", "csh", "tcsh",
     "yash", "rc", "es",
 ];
 
-pub const INLINE_CODE_FLAGS: &[&str] = &[
+pub(crate) const INLINE_CODE_FLAGS: &[&str] = &[
     "-c", "-e", "-r", "--eval", "eval", "-script", "--expr", "--run",
 ];
 
-pub const CODE_NETWORK_INDICATORS: &[&str] = &[
-    // Python (TCP/UDP/HTTP)
+pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
+    // Python
     "urllib",
     "urlopen",
     "requests.post",
@@ -106,7 +106,7 @@ pub const CODE_NETWORK_INDICATORS: &[&str] = &[
     "socket.socket",
     "sock_dgram",
     "sock_stream",
-    // Node/JS (TCP/UDP/HTTP)
+    // Node/JS
     "fetch(",
     "http.request",
     "https.request",
@@ -116,18 +116,18 @@ pub const CODE_NETWORK_INDICATORS: &[&str] = &[
     "dgram.createsocket",
     "dgram.bind",
     "axios",
-    // Ruby (TCP/UDP/HTTP)
+    // Ruby
     "net::http",
     "tcpsocket",
     "udpsocket",
     "socket.new",
     "open-uri",
-    // Perl (TCP/UDP)
+    // Perl
     "io::socket",
     "io::socket::inet",
     "lwp::",
     "http::request",
-    // PHP (TCP/UDP)
+    // PHP
     "curl_exec",
     "file_get_contents('http",
     "file_get_contents(\"http",
@@ -136,7 +136,7 @@ pub const CODE_NETWORK_INDICATORS: &[&str] = &[
     "stream_socket_client",
     "fopen('http",
     "fopen(\"http",
-    // Lua (TCP/UDP)
+    // Lua
     "socket.http",
     "socket.tcp",
     "socket.udp",
@@ -144,7 +144,7 @@ pub const CODE_NETWORK_INDICATORS: &[&str] = &[
     "deno.open",
     "deno.connect",
     "bun.connect",
-    // PowerShell (TCP/UDP)
+    // PowerShell
     "invoke-webrequest",
     "invoke-restmethod",
     "new-object net.webclient",
@@ -191,7 +191,7 @@ pub const CODE_NETWORK_INDICATORS: &[&str] = &[
     "do shell script",
     "nsurl",
     "nsurlrequest",
-    // Go (inline via interpreters)
+    // Go
     "net.dial",
     "net.listen",
 ];

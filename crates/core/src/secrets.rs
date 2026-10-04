@@ -1,6 +1,4 @@
-//! Secret pattern detection with configurable overrides.
-//!
-//! Supports configuration via `~/.config/parry/patterns.toml` under `[secrets]`.
+//! Secret detection, overridable via `[secrets]` in `<config dir>/parry-guard/patterns.toml`.
 
 use regex::RegexSet;
 use serde::Deserialize;
@@ -11,13 +9,13 @@ use tracing::{trace, warn};
 static DEFAULT_SECRET_PATTERNS: &[&str] = &[
     // AWS Access Key ID
     r"AKIA[0-9A-Z]{16}",
-    // AWS Secret Access Key (40 chars, base64-ish)
+    // AWS Secret Access Key
     r#"(?i)aws.{0,20}secret.{0,20}['"][A-Za-z0-9/+=]{40}['"]"#,
-    // GitHub Personal Access Token (classic)
+    // GitHub classic PAT
     r"gh[ps]_[A-Za-z0-9_]{36,}",
-    // GitHub Fine-grained PAT
+    // GitHub fine-grained PAT
     r"github_pat_[A-Za-z0-9_]{82,}",
-    // GitLab Personal Access Token
+    // GitLab PAT
     r"glpat-[A-Za-z0-9\-_]{20,}",
     // Slack tokens
     r"xox[baprs]-[0-9a-zA-Z\-]{10,}",
@@ -33,13 +31,10 @@ static DEFAULT_SECRET_PATTERNS: &[&str] = &[
     r"GOCSPX-[A-Za-z0-9_-]{28}",
     // Firebase
     r"AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}",
-    // JWT token
+    // JWT
     r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+",
-    // Private key header
     r"-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-    // npm token
     r"npm_[A-Za-z0-9]{36}",
-    // PyPI token
     r"pypi-[A-Za-z0-9]{16,}",
     // SendGrid API key
     r"SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}",
@@ -47,31 +42,25 @@ static DEFAULT_SECRET_PATTERNS: &[&str] = &[
     r"SK[a-f0-9]{32}",
     // Discord bot token
     r"[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}",
-    // Heroku API key
     r"[hH]eroku.{0,20}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
     // Datadog API key
     r#"(?i)datadog.{0,20}['"][a-f0-9]{32}['"]"#,
     // Datadog APP key
     r#"(?i)datadog.{0,20}['"][a-f0-9]{40}['"]"#,
-    // Netlify access token
     r#"(?i)netlify.{0,20}['"][A-Za-z0-9_-]{40,}['"]"#,
-    // Vercel token
     r#"(?i)vercel.{0,20}['"][A-Za-z0-9]{24}['"]"#,
     // Supabase key (anon/service)
     r"sbp_[a-f0-9]{40}",
     // Supabase JWT-style key
     r"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
-    // Azure Storage Account Key (88 chars base64)
+    // Azure Storage Account Key
     r#"(?i)azure.{0,20}(account|storage).{0,20}key.{0,20}['"][A-Za-z0-9+/]{86}==['"]"#,
     // Azure Client Secret
     r#"(?i)azure.{0,20}(client|app).{0,20}secret.{0,20}['"][A-Za-z0-9~._-]{34}['"]"#,
-    // MongoDB connection string with password
+    // DB connection strings with passwords
     r"mongodb(\+srv)?://[^:]+:[^@]+@[^/]+",
-    // PostgreSQL connection string with password
     r"postgres(ql)?://[^:]+:[^@]+@[^/]+",
-    // MySQL connection string with password
     r"mysql://[^:]+:[^@]+@[^/]+",
-    // Redis connection string with password
     r"redis://:[^@]+@[^/]+",
     // Mailgun API key
     r"key-[a-f0-9]{32}",
@@ -95,7 +84,7 @@ static DEFAULT_SECRET_PATTERNS: &[&str] = &[
     r"pul-[a-f0-9]{40}",
 ];
 
-/// Configuration for secret pattern overrides.
+/// User additions and removals for the built-in patterns.
 #[derive(Debug, Default, Deserialize)]
 pub struct SecretConfig {
     #[serde(default)]
@@ -104,7 +93,7 @@ pub struct SecretConfig {
     pub remove: Vec<String>,
 }
 
-/// Full patterns config (only secrets section used here).
+/// `patterns.toml` root; only `[secrets]` is read.
 #[derive(Debug, Default, Deserialize)]
 struct PatternConfig {
     #[serde(default)]
@@ -113,8 +102,11 @@ struct PatternConfig {
 
 impl PatternConfig {
     fn load() -> Self {
-        let Some(path) = dirs::config_dir().map(|p| p.join("parry-guard").join("patterns.toml"))
-        else {
+        Self::load_from(dirs::config_dir().as_deref())
+    }
+
+    fn load_from(config_dir: Option<&std::path::Path>) -> Self {
+        let Some(path) = config_dir.map(|p| p.join("parry-guard").join("patterns.toml")) else {
             return Self::default();
         };
         if !path.exists() {
@@ -139,18 +131,17 @@ pub struct CompiledSecrets {
 }
 
 impl CompiledSecrets {
-    /// Load patterns with configuration overrides.
+    /// Load with overrides from `patterns.toml`.
     #[must_use]
     pub fn load() -> Self {
         let config = PatternConfig::load();
         Self::from_config(&config.secrets)
     }
 
-    /// Create from an explicit config.
+    /// Build from an explicit config.
     ///
     /// # Panics
-    ///
-    /// Panics if hardcoded default regex patterns are invalid.
+    /// If the built-in patterns fail to compile.
     #[must_use]
     pub fn from_config(config: &SecretConfig) -> Self {
         let remove_set: std::collections::HashSet<&str> =
@@ -164,6 +155,7 @@ impl CompiledSecrets {
 
         patterns.extend(config.add.iter().map(String::as_str));
 
+        #[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
         let regex_set = RegexSet::new(&patterns).unwrap_or_else(|e| {
             warn!(%e, "failed to compile secret patterns, using defaults");
             RegexSet::new(DEFAULT_SECRET_PATTERNS).expect("valid regex")
@@ -174,17 +166,16 @@ impl CompiledSecrets {
         }
     }
 
-    /// Check if text contains a secret pattern.
+    /// True if text matches any secret pattern.
     #[must_use]
     pub fn has_secret(&self, text: &str) -> bool {
         self.patterns.is_match(text)
     }
 }
 
-/// Global compiled patterns (loaded once).
 static SECRETS: LazyLock<CompiledSecrets> = LazyLock::new(CompiledSecrets::load);
 
-/// Check if text contains a secret pattern (convenience function).
+/// Check text against the global patterns.
 pub fn has_secret(text: &str) -> bool {
     let matched = SECRETS.has_secret(text);
     if matched {
@@ -373,8 +364,6 @@ mod tests {
         assert!(has_secret(&format!("GOCSPX-{}", "a".repeat(28))));
     }
 
-    // Config override tests
-
     #[test]
     fn config_add_pattern() {
         let config = SecretConfig {
@@ -393,5 +382,25 @@ mod tests {
         };
         let secrets = CompiledSecrets::from_config(&config);
         assert!(!secrets.has_secret("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn pattern_config_loads_from_config_dir() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let dir = config_dir.path().join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("patterns.toml"),
+            indoc::indoc! {r#"
+                [secrets]
+                add = ["CUSTOM_[0-9]{4}"]
+                remove = ["AKIA[0-9A-Z]{16}"]
+            "#},
+        )
+        .unwrap();
+
+        let config = PatternConfig::load_from(Some(config_dir.path()));
+        assert_eq!(config.secrets.add, ["CUSTOM_[0-9]{4}"]);
+        assert_eq!(config.secrets.remove, ["AKIA[0-9A-Z]{16}"]);
     }
 }

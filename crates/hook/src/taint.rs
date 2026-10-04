@@ -33,8 +33,7 @@ impl TaintContext<'_> {
     }
 }
 
-/// Mark the current project as tainted with context about what triggered it.
-/// Returns `true` if the taint file was written successfully.
+/// Mark the current project tainted; `true` if the taint file was written.
 pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) -> bool {
     use std::fmt::Write;
     let Some(path) = taint_file(runtime_dir) else {
@@ -49,8 +48,7 @@ pub fn mark(ctx: &TaintContext<'_>, runtime_dir: Option<&Path>) -> bool {
     if let Some(src) = ctx.source() {
         let _ = write!(body, "\nsource: {src}");
     }
-    // don't store the actual malicious content - it would get echoed back
-    // into Claude's context via the deny reason, re-polluting the conversation.
+    // omit the malicious content: the deny reason would echo it back into context
 
     if let Err(e) = std::fs::write(&path, body) {
         tracing::warn!(path = %path.display(), %e, "failed to write taint file");
@@ -226,6 +224,6 @@ mod tests {
         let ctx = read_context(rd).unwrap();
         let ts_line = ctx.lines().next().unwrap();
         let ts_val = ts_line.strip_prefix("timestamp: ").unwrap();
-        assert!(ts_val.parse::<u64>().is_ok());
+        assert!(ts_val.parse::<u64>().unwrap() > 0, "timestamp {ts_val}");
     }
 }

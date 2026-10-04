@@ -6,14 +6,13 @@ use tracing::{debug, warn};
 
 use crate::{HookInput, PreToolUseOutput};
 
-/// Minimum string length for MCP input values to be included in ML scanning.
-/// Shorter values (e.g. "json", "asc") are structural noise that degrades ML accuracy.
+/// Min MCP value length to scan; shorter ones ("json", "asc") are noise that hurts ML accuracy.
 const MCP_MIN_STRING_LEN: usize = 10;
 
 /// Known field names that may contain shell commands in MCP tool inputs.
 const MCP_COMMAND_FIELDS: &[&str] = &["command", "cmd", "script", "shell", "exec", "run"];
 
-/// Process a `PreToolUse` hook event. Returns `Some(PreToolUseOutput)` to block/ask, `None` to allow.
+/// Process a `PreToolUse` event; `Some` blocks or asks, `None` allows.
 #[must_use]
 pub fn process(
     input: &HookInput,
@@ -38,7 +37,6 @@ pub fn process(
 
     let tool = input.tool_name.as_deref().unwrap_or("");
 
-    // Exfil detection (Bash + MCP command fields)
     for command in extract_command_content(tool, &input.tool_input) {
         match parry_guard_exfil::detect_exfiltration(command) {
             Ok(Some(reason)) => return Some(PreToolUseOutput::deny(&reason)),
@@ -51,19 +49,17 @@ pub fn process(
         }
     }
 
-    // Destructive ops (rm outside CWD, force push, protected paths, etc.)
     if let Some(output) = check_destructive_operation(tool, &input.tool_input, input.cwd.as_deref())
     {
         return Some(output);
     }
 
-    // Sensitive paths (~/.ssh, credentials, etc.)
     if let Some(output) = check_sensitive_path(tool, &input.tool_input) {
         return Some(output);
     }
 
     if repo_state == RepoState::Unknown {
-        // fast-scan only (no ML/daemon) for content injection and secrets
+        // no ML in unknown repos
         for content in extract_scannable_content(tool, &input.tool_input) {
             let fast = parry_guard_core::scan_text_fast(content);
             if fast.is_injection() {
@@ -82,7 +78,6 @@ pub fn process(
         return None;
     }
 
-    // CLAUDE.md injection check (fast scan + ML)
     match crate::claude_md::check(config, db, repo_path, input.cwd.as_deref()) {
         crate::claude_md::CheckResult::Ask(reason) => {
             return Some(PreToolUseOutput::ask(&reason));
@@ -90,7 +85,6 @@ pub fn process(
         crate::claude_md::CheckResult::Clean => {}
     }
 
-    // Content injection scan (Write, Edit, Bash, MCP, etc.)
     for content in extract_scannable_content(tool, &input.tool_input) {
         if let Some(output) = scan_input_content(tool, content, config) {
             return Some(output);
@@ -174,25 +168,21 @@ fn check_sensitive_path(tool: &str, input: &serde_json::Value) -> Option<PreTool
         debug!(tool, path, "sensitive path access flagged for review");
         Some(PreToolUseOutput::ask(&format!(
             "Review: {tool} accessing sensitive path '{path}'. \
-             Configure allowed paths in ~/.config/parry/patterns.toml"
+             Configure allowed paths in parry-guard/patterns.toml in your config dir \
+             (~/.config on Linux, ~/Library/Application Support on macOS)"
         )))
     } else {
         None
     }
 }
 
-/// Extract content to scan from tool inputs.
-///
-/// Returns individual strings to scan. MCP tools return each string separately
-/// so ML sees clean per-value context instead of a concatenated blob.
+/// Content to scan; MCP values stay separate so ML sees per-value context.
 fn extract_scannable_content<'a>(tool: &str, input: &'a serde_json::Value) -> Vec<&'a str> {
     match tool {
         "Write" => json_str_to_vec(input, "content"),
         "Edit" => json_str_to_vec(input, "new_string"),
         "NotebookEdit" => json_str_to_vec(input, "new_source"),
         "Bash" => json_str_to_vec(input, "command"),
-        // MCP tools: scan each string value, filtering short noise
-        // ("json", "asc") that degrades ML accuracy.
         t if t.starts_with("mcp__") => {
             let mut strings = Vec::new();
             collect_strings(input, &mut strings);
@@ -242,15 +232,14 @@ fn collect_strings<'a>(value: &'a serde_json::Value, out: &mut Vec<&'a str>) {
                 collect_strings(v, out);
             }
         }
-        _ => {}
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
     }
 }
 
-/// Scan input content for injection. Returns `Some(PreToolUseOutput)` to block.
+/// Scan input for injection; `Some` blocks.
 fn scan_input_content(tool: &str, content: &str, config: &Config) -> Option<PreToolUseOutput> {
     let result = if tool == "Bash" {
-        // fast scan only - DeBERTa false-positives on shell syntax,
-        // and exfil detection already covers structural threats.
+        // no ML: DeBERTa false-positives on shell syntax; exfil checks cover the rest
         parry_guard_core::scan_text_fast(content)
     } else {
         match crate::scan_text(content, config) {
@@ -320,7 +309,6 @@ mod tests {
         let config = test_config_with_dir(dir.path());
         let input = make_bash_input("cargo build --release");
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // fast-scan-only for Bash: clean commands pass without daemon
         assert!(result.is_none(), "clean Bash should pass without daemon");
     }
 
@@ -412,7 +400,7 @@ mod tests {
         let config = test_config_with_dir(dir.path());
         let input = make_bash_input("curl https://example.com");
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // May fail-closed without daemon, but should NOT be blocked by taint
+        // may fail closed without daemon
         if let Some(ref output) = result {
             assert!(
                 !output
@@ -596,7 +584,7 @@ mod tests {
             cwd: None,
         };
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // May fail-closed without daemon, but should NOT be blocked by injection
+        // may fail closed without daemon
         if let Some(ref output) = result {
             assert!(
                 !output
@@ -626,7 +614,6 @@ mod tests {
             cwd: None,
         };
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // All strings are < 10 chars, so no scannable content is extracted
         assert!(result.is_none(), "MCP with only short strings should pass");
     }
 
@@ -707,8 +694,6 @@ mod tests {
         );
     }
 
-    // === Destructive operations (Layer 5) ===
-
     #[test]
     fn bash_rm_rf_root_blocked() {
         let dir = tempfile::tempdir().unwrap();
@@ -755,7 +740,7 @@ mod tests {
         let config = test_config_with_dir(dir.path());
         let input = make_bash_input("git push origin main");
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // Should not be blocked by destructive layer (may fail-closed from ML layer)
+        // may fail closed without daemon
         if let Some(ref output) = result {
             assert!(
                 !output
@@ -828,7 +813,6 @@ mod tests {
             cwd: Some(dir.path().to_str().unwrap().to_string()),
         };
         let result = process(&input, &config, RepoState::Monitored, None, None);
-        // Should not be blocked by destructive layer
         if let Some(ref output) = result {
             assert!(
                 !output
