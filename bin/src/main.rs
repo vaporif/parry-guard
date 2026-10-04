@@ -10,6 +10,10 @@ use std::time::Duration;
 use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
+/// The only exit code that makes Claude Code and Codex block a tool call; other
+/// non-zero codes are reported as non-blocking errors and the call goes ahead.
+const BLOCK_EXIT: u8 = 2;
+
 fn init_tracing() {
     let filter = EnvFilter::try_from_env("PARRY_LOG").unwrap_or_else(|_| EnvFilter::new("warn"));
 
@@ -53,11 +57,12 @@ fn init_tracing() {
 
 fn main() -> ExitCode {
     init_tracing();
-    // fail-closed: panics exit with failure
+    // fail-closed: a panic must block, not let the tool call through
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_hook(info);
-        std::process::exit(1);
+        eprintln!("parry-guard crashed, blocking for safety");
+        std::process::exit(i32::from(BLOCK_EXIT));
     }));
 
     let cli = cli::Cli::parse();
@@ -108,10 +113,18 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
+    // lets e2e tests exercise the panic path
+    #[cfg(debug_assertions)]
+    assert!(
+        std::env::var_os("PARRY_TEST_PANIC").is_none(),
+        "PARRY_TEST_PANIC is set"
+    );
+
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         warn!("failed to read stdin (fail-closed)");
-        return ExitCode::FAILURE;
+        eprintln!("parry-guard could not read hook input, blocking for safety");
+        return ExitCode::from(BLOCK_EXIT);
     }
 
     let input = input.trim();
@@ -124,7 +137,8 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
         Ok(v) => v,
         Err(e) => {
             warn!(%e, "invalid hook JSON (fail-closed)");
-            return ExitCode::FAILURE;
+            eprintln!("parry-guard got invalid hook JSON, blocking for safety: {e}");
+            return ExitCode::from(BLOCK_EXIT);
         }
     };
     let hook_runner = hook_envelope.runner();
@@ -194,7 +208,7 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
                 if output.is_deny() || (hook_runner.blocks_ask_decisions() && output.is_ask()) {
                     info!(tool, "tool denied by PreToolUse");
                     eprintln!("{}", output.reason());
-                    return ExitCode::from(2);
+                    return ExitCode::from(BLOCK_EXIT);
                 }
                 info!(tool, "tool requires approval (PreToolUse)");
                 match serde_json::to_string(&output) {
@@ -303,11 +317,8 @@ fn run_audit(
                     "parry: project audit failed - ML scanner unavailable. \
                      Run `parry serve` and retry. Error: {e}"
                 );
-                let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-                if let Ok(json) = serde_json::to_string(&output) {
-                    println!("{json}");
-                }
-                return ExitCode::FAILURE;
+                eprintln!("{message}");
+                return ExitCode::from(BLOCK_EXIT);
             }
         }
     };

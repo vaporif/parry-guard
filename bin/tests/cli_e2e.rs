@@ -641,9 +641,29 @@ fn empty_stdin() {
 }
 
 #[test]
-fn invalid_json() {
+fn invalid_json_blocks() {
     let dir = isolated_dir();
-    assert!(!run_hook(dir.path(), "not json at all").status.success());
+    let out = run_hook(dir.path(), "not json at all");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "only exit 2 blocks the tool call"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("blocking"));
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn panic_blocks() {
+    let dir = isolated_dir();
+    let json = pre_tool_json("Bash", serde_json::json!({ "command": "ls" }));
+    let out = run_hook_rt(dir.path(), &json, None, &[("PARRY_TEST_PANIC", "1")]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "only exit 2 blocks the tool call"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("blocking"));
 }
 
 #[test]
