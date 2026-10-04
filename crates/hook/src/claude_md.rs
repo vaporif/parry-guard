@@ -137,7 +137,8 @@ fn claude_md_paths(hook_cwd: Option<&str>) -> Vec<PathBuf> {
 
 fn hash_content(content: &str) -> u64 {
     let hash = blake3::hash(content.as_bytes());
-    u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
+    let &[b0, b1, b2, b3, b4, b5, b6, b7, ..] = hash.as_bytes();
+    u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7])
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use crate::patterns;
 use crate::{BASH_SUBSTRING_REGEX, OD_REGEX, XXD_REGEX};
 
 /// Check for command obfuscation patterns that might bypass AST-based detection.
-pub fn check_obfuscation_patterns(command: &str) -> Option<String> {
+pub(crate) fn check_obfuscation_patterns(command: &str) -> Option<String> {
     let lower = command.to_lowercase();
 
     // 1. Base64 decoding patterns: $(echo xxx | base64 -d), $(base64 -d <<< xxx)

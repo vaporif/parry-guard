@@ -1,3 +1,10 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::unreachable,
+    reason = "helpers outside #[test] fns aren't covered by allow-*-in-tests"
+)]
+
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -59,7 +66,7 @@ async fn stop_daemon(handle: JoinHandle<()>) {
 async fn scan_with_retry(
     text: &str,
     config: &Config,
-) -> std::result::Result<ScanResult, parry_guard_core::ScanError> {
+) -> Result<ScanResult, parry_guard_core::ScanError> {
     let text = text.to_string();
     for attempt in 0u64..3 {
         if attempt > 0 {

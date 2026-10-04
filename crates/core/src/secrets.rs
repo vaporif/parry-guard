@@ -167,6 +167,7 @@ impl CompiledSecrets {
 
         patterns.extend(config.add.iter().map(String::as_str));
 
+        #[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
         let regex_set = RegexSet::new(&patterns).unwrap_or_else(|e| {
             warn!(%e, "failed to compile secret patterns, using defaults");
             RegexSet::new(DEFAULT_SECRET_PATTERNS).expect("valid regex")

@@ -226,7 +226,11 @@ mod tests {
             scan_mode: ScanMode::Full,
             ..Config::default()
         };
-        assert!(config.resolve_models().is_err());
+        let err = config.resolve_models().unwrap_err();
+        assert!(
+            err.to_string().contains("requires the candle backend"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -236,8 +240,13 @@ mod tests {
             scan_mode: ScanMode::Custom,
             ..Config::default()
         };
-        assert!(config.resolve_models_in(Some(dir.path())).is_err());
-        assert!(config.resolve_models_in(None).is_err());
+        let err = config.resolve_models_in(Some(dir.path())).unwrap_err();
+        assert!(err.to_string().contains("failed to read"), "{err}");
+        let err = config.resolve_models_in(None).unwrap_err();
+        assert!(
+            err.to_string().contains("cannot resolve config directory"),
+            "{err}"
+        );
     }
 
     #[test]

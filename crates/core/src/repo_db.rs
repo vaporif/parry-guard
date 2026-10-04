@@ -51,16 +51,15 @@ fn encode_state(state: RepoState, remote: Option<&str>) -> Vec<u8> {
 
 /// Decode repo state value.
 fn decode_state(bytes: &[u8]) -> (RepoState, Option<String>) {
-    if bytes.is_empty() {
+    let Some((&state, remote)) = bytes.split_first() else {
         return (RepoState::Unknown, None);
-    }
-    let state = RepoState::from_u8(bytes[0]);
-    let remote = if bytes.len() > 1 {
-        String::from_utf8(bytes[1..].to_vec()).ok()
-    } else {
-        None
     };
-    (state, remote)
+    let remote = if remote.is_empty() {
+        None
+    } else {
+        String::from_utf8(remote.to_vec()).ok()
+    };
+    (RepoState::from_u8(state), remote)
 }
 
 /// Centralized repository state database.

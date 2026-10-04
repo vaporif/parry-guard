@@ -49,8 +49,9 @@ impl ScanRequest {
         buf.put_u8(self.scan_type as u8);
         buf.put_f32_le(self.threshold);
         let text = self.text.as_bytes();
-        let len = u32::try_from(text.len())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "text too large"))?;
+        let len = u32::try_from(text.len()).map_err(|e| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("text too large: {e}"))
+        })?;
         buf.put_u32_le(len);
         buf.put_slice(text);
         Ok(())
@@ -58,13 +59,14 @@ impl ScanRequest {
 
     /// Decode from a `BytesMut` buffer. Returns `Ok(None)` if not enough data yet.
     fn decode(src: &mut BytesMut) -> io::Result<Option<Self>> {
-        if src.len() < HEADER_LEN {
+        let Some(&[scan_type, t0, t1, t2, t3, l0, l1, l2, l3]) = src.first_chunk::<HEADER_LEN>()
+        else {
             return Ok(None);
-        }
+        };
 
-        let scan_type = ScanType::from_byte(src[0])?;
-        let threshold = f32::from_le_bytes([src[1], src[2], src[3], src[4]]);
-        let text_len = u32::from_le_bytes([src[5], src[6], src[7], src[8]]);
+        let scan_type = ScanType::from_byte(scan_type)?;
+        let threshold = f32::from_le_bytes([t0, t1, t2, t3]);
+        let text_len = u32::from_le_bytes([l0, l1, l2, l3]);
 
         if text_len > MAX_TEXT_LEN {
             return Err(io::Error::new(
@@ -241,7 +243,8 @@ mod tests {
         buf.put_u8(0x00);
         buf.put_f32_le(0.5);
         buf.put_u32_le(MAX_TEXT_LEN + 1);
-        assert!(DaemonCodec.decode(&mut buf).is_err());
+        let err = DaemonCodec.decode(&mut buf).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
     }
 
     #[test]
@@ -272,7 +275,8 @@ mod tests {
         buf.put_u8(0xFF);
         buf.put_f32_le(0.5);
         buf.put_u32_le(0);
-        assert!(DaemonCodec.decode(&mut buf).is_err());
+        let err = DaemonCodec.decode(&mut buf).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
     }
 
     #[test]
@@ -294,7 +298,8 @@ mod tests {
     #[test]
     fn sync_rejects_unknown_response() {
         let buf = [0xFF];
-        assert!(read_response(&mut &buf[..]).is_err());
+        let err = read_response(&mut &buf[..]).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
     }
 
     #[test]

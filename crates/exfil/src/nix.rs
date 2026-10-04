@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct NixDetector;
+pub(crate) struct NixDetector;
 
 impl LangExfilDetector for NixDetector {
     fn language(&self) -> Language {

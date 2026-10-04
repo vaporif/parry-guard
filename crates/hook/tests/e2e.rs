@@ -1,3 +1,9 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "helpers outside #[test] fns aren't covered by allow-*-in-tests"
+)]
+
 use std::path::Path;
 use std::time::Duration;
 

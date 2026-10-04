@@ -102,6 +102,10 @@ pub fn has_invisible_unicode(text: &str) -> bool {
     let mut cf_count = 0u32;
 
     for ch in text.chars() {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "only three of the ~30 Unicode categories matter"
+        )]
         match get_general_category(ch) {
             GeneralCategory::PrivateUse => {
                 trace!(char = ?ch, "private-use character detected");

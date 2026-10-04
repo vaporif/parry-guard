@@ -112,8 +112,11 @@ fn find_high_entropy_regions(text: &str) -> Vec<&str> {
             .get(idx + ENTROPY_WINDOW)
             .copied()
             .unwrap_or(text.len());
-        if shannon_entropy(&text[start..end]) >= ENTROPY_THRESHOLD {
-            high[start..end].fill(true);
+        let window = text.get(start..end).unwrap_or_default();
+        if shannon_entropy(window) >= ENTROPY_THRESHOLD {
+            if let Some(flags) = high.get_mut(start..end) {
+                flags.fill(true);
+            }
         }
     }
 
@@ -124,14 +127,14 @@ fn find_high_entropy_regions(text: &str) -> Vec<&str> {
         match (h, start) {
             (true, None) => start = Some(i),
             (false, Some(s)) => {
-                regions.push(&text[s..i]);
+                regions.extend(text.get(s..i));
                 start = None;
             }
             _ => {}
         }
     }
     if let Some(s) = start {
-        regions.push(&text[s..]);
+        regions.extend(text.get(s..));
     }
     regions
 }
@@ -140,7 +143,9 @@ fn shannon_entropy(s: &str) -> f64 {
     let mut counts = [0u32; 256];
     let mut total = 0u32;
     for &b in s.as_bytes() {
-        counts[b as usize] += 1;
+        if let Some(count) = counts.get_mut(usize::from(b)) {
+            *count += 1;
+        }
         total += 1;
     }
     if total == 0 {
@@ -403,7 +408,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "byte noise for the fixture"
+    )]
     fn entropy_random_bytes_above_threshold() {
         // Random-ish bytes produce high-entropy base64 (simulates encrypted/compressed data)
         let random_bytes: Vec<u8> = (0u16..64)

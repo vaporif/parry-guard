@@ -226,6 +226,6 @@ mod tests {
         let ctx = read_context(rd).unwrap();
         let ts_line = ctx.lines().next().unwrap();
         let ts_val = ts_line.strip_prefix("timestamp: ").unwrap();
-        assert!(ts_val.parse::<u64>().is_ok());
+        assert!(ts_val.parse::<u64>().unwrap() > 0, "timestamp {ts_val}");
     }
 }

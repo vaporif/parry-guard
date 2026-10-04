@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct JuliaDetector;
+pub(crate) struct JuliaDetector;
 
 impl LangExfilDetector for JuliaDetector {
     fn language(&self) -> Language {

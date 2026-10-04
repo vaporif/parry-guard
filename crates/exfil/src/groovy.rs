@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct GroovyDetector;
+pub(crate) struct GroovyDetector;
 
 impl LangExfilDetector for GroovyDetector {
     fn language(&self) -> Language {

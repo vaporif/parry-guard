@@ -91,13 +91,7 @@ fn main() -> ExitCode {
             extensions,
             full,
         }) => run_diff(&config, &git_ref, extensions.as_deref(), full),
-        Some(
-            cmd @ (cli::Command::Ignore { .. }
-            | cli::Command::Monitor { .. }
-            | cli::Command::Reset { .. }
-            | cli::Command::Status { .. }
-            | cli::Command::Repos),
-        ) => run_repo_command(cmd, &config),
+        Some(cli::Command::Repo(cmd)) => run_repo_command(cmd, &config),
         Some(cli::Command::Hook) => run_hook(&config, &ignore_dirs, ask_on_new_project),
         None => {
             if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
@@ -400,7 +394,7 @@ fn resolve_repo_path(path: Option<&std::path::Path>) -> Result<String, ExitCode>
     })
 }
 
-fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
+fn run_repo_command(subcommand: cli::RepoCommand, config: &Config) -> ExitCode {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     let db = match RepoDb::open(config.runtime_dir.as_deref()) {
@@ -412,7 +406,7 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
     };
 
     match subcommand {
-        cli::Command::Ignore { path } => {
+        cli::RepoCommand::Ignore { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -422,9 +416,8 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!("Set {canonical} to ignored");
-            ExitCode::SUCCESS
         }
-        cli::Command::Monitor { path } => {
+        cli::RepoCommand::Monitor { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -434,17 +427,15 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!("Set {canonical} to monitored");
-            ExitCode::SUCCESS
         }
-        cli::Command::Reset { path } => {
+        cli::RepoCommand::Reset { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
             db.reset_repo(&canonical);
             println!("Reset {canonical} to unknown (caches cleared)");
-            ExitCode::SUCCESS
         }
-        cli::Command::Status { path } => {
+        cli::RepoCommand::Status { path } => {
             let Ok(canonical) = resolve_repo_path(path.as_deref()) else {
                 return ExitCode::FAILURE;
             };
@@ -471,10 +462,8 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                     println!("Audit:   unavailable ({e})");
                 }
             }
-
-            ExitCode::SUCCESS
         }
-        cli::Command::Repos => {
+        cli::RepoCommand::Repos => {
             let repos = db.list_repos();
             if repos.is_empty() {
                 println!("No known repos.");
@@ -490,10 +479,9 @@ fn run_repo_command(subcommand: cli::Command, config: &Config) -> ExitCode {
                     );
                 }
             }
-            ExitCode::SUCCESS
         }
-        _ => unreachable!(),
     }
+    ExitCode::SUCCESS
 }
 
 fn format_repo_entry(path: &str, state: &str, remote: Option<&str>) -> String {

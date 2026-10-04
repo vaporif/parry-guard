@@ -126,7 +126,8 @@ fn hash_state(state: &AuditState) -> u64 {
     }
 
     let hash = hasher.finalize();
-    u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
+    let &[b0, b1, b2, b3, b4, b5, b6, b7, ..] = hash.as_bytes();
+    u64::from_le_bytes([b0, b1, b2, b3, b4, b5, b6, b7])
 }
 
 fn hash_path_entries(hasher: &mut blake3::Hasher, entries: &[(PathBuf, String)]) {

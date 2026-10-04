@@ -9,7 +9,7 @@ use crate::consts;
 use crate::paths;
 
 /// Walk a tree-sitter AST node looking for destructive operations.
-pub fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+pub(crate) fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     match node.kind() {
         "command" => check_command(node, source, cwd),
         _ => check_children(node, source, cwd),

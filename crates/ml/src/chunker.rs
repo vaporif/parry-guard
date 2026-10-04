@@ -20,8 +20,7 @@ pub fn chunks(text: &str) -> Vec<&str> {
     let mut start = 0;
     while start < text.len() {
         let end = text.floor_char_boundary((start + CHUNK_SIZE).min(text.len()));
-        let chunk = &text[start..end];
-        if !chunk.trim().is_empty() {
+        if let Some(chunk) = text.get(start..end).filter(|c| !c.trim().is_empty()) {
             result.push(chunk);
         }
         start = text.floor_char_boundary(start + step);
@@ -38,9 +37,9 @@ pub fn head_tail(text: &str) -> Option<String> {
         return None;
     }
     let head_end = text.floor_char_boundary(HEAD_TAIL_SIZE.min(text.len()));
-    let head = &text[..head_end];
+    let (head, _) = text.split_at(head_end);
     let tail_start = text.floor_char_boundary(text.len().saturating_sub(HEAD_TAIL_SIZE));
-    let tail = &text[tail_start..];
+    let (_, tail) = text.split_at(tail_start);
     Some(format!("{head} {tail}"))
 }
 

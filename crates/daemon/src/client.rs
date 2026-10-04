@@ -171,19 +171,15 @@ fn wait_for_ready(runtime_dir: Option<&Path>) -> bool {
 fn send_request(req: &ScanRequest, runtime_dir: Option<&Path>) -> Result<ScanResult, ScanError> {
     let mut stream = Stream::connect(SCAN_TIMEOUT, runtime_dir)?;
     protocol::write_request(&mut stream, req)?;
-    let resp = protocol::read_response(&mut stream)?;
-    match resp {
-        ScanResponse::Error => Err(ScanError::DaemonScanFailed),
-        resp => Ok(response_to_scan_result(resp)),
-    }
+    response_to_scan_result(protocol::read_response(&mut stream)?)
 }
 
-fn response_to_scan_result(resp: ScanResponse) -> ScanResult {
+const fn response_to_scan_result(resp: ScanResponse) -> Result<ScanResult, ScanError> {
     match resp {
-        ScanResponse::Clean | ScanResponse::Pong => ScanResult::Clean,
-        ScanResponse::Injection => ScanResult::Injection,
-        ScanResponse::Secret => ScanResult::Secret,
-        ScanResponse::Error => unreachable!("Error handled before conversion"),
+        ScanResponse::Clean | ScanResponse::Pong => Ok(ScanResult::Clean),
+        ScanResponse::Injection => Ok(ScanResult::Injection),
+        ScanResponse::Secret => Ok(ScanResult::Secret),
+        ScanResponse::Error => Err(ScanError::DaemonScanFailed),
     }
 }
 
@@ -193,24 +189,38 @@ mod tests {
 
     #[test]
     fn response_clean_maps_to_clean() {
-        assert!(response_to_scan_result(ScanResponse::Clean).is_clean());
+        assert!(response_to_scan_result(ScanResponse::Clean)
+            .unwrap()
+            .is_clean());
     }
 
     #[test]
     fn response_pong_maps_to_clean() {
-        assert!(response_to_scan_result(ScanResponse::Pong).is_clean());
+        assert!(response_to_scan_result(ScanResponse::Pong)
+            .unwrap()
+            .is_clean());
     }
 
     #[test]
     fn response_injection_maps_to_injection() {
-        assert!(response_to_scan_result(ScanResponse::Injection).is_injection());
+        assert!(response_to_scan_result(ScanResponse::Injection)
+            .unwrap()
+            .is_injection());
     }
 
     #[test]
     fn response_secret_maps_to_secret() {
         assert!(matches!(
             response_to_scan_result(ScanResponse::Secret),
-            ScanResult::Secret
+            Ok(ScanResult::Secret)
+        ));
+    }
+
+    #[test]
+    fn response_error_maps_to_scan_failed() {
+        assert!(matches!(
+            response_to_scan_result(ScanResponse::Error),
+            Err(ScanError::DaemonScanFailed)
         ));
     }
 

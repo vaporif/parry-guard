@@ -41,7 +41,10 @@ impl HookInput {
                 }
             }
             serde_json::Value::Null => None,
-            other => Some(other.to_string()),
+            other @ (serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::Array(_)
+            | serde_json::Value::Object(_)) => Some(other.to_string()),
         }
     }
 }
@@ -178,7 +181,7 @@ pub(crate) mod test_util {
     static CWD_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// RAII guard that serializes cwd access and restores it on drop.
-    pub struct CwdGuard<'a> {
+    pub(crate) struct CwdGuard<'a> {
         prev_cwd: PathBuf,
         _lock: MutexGuard<'a, ()>,
     }
@@ -203,23 +206,23 @@ pub(crate) mod test_util {
         }
     }
 
-    pub fn test_config_with_dir(dir: &Path) -> parry_guard_core::Config {
+    pub(crate) fn test_config_with_dir(dir: &Path) -> parry_guard_core::Config {
         parry_guard_core::Config {
             runtime_dir: Some(dir.to_path_buf()),
             ..parry_guard_core::Config::default()
         }
     }
 
-    pub fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
+    pub(crate) fn test_db(dir: &Path) -> parry_guard_core::repo_db::RepoDb {
         parry_guard_core::repo_db::RepoDb::open(Some(dir)).unwrap()
     }
 
     /// Text containing this marker is reported as injection by [`fake_daemon`].
-    pub const FAKE_ML_INJECTION: &str = "FAKE_ML_INJECTION_MARKER";
+    pub(crate) const FAKE_ML_INJECTION: &str = "FAKE_ML_INJECTION_MARKER";
 
     /// Serve the daemon protocol from `runtime_dir` without loading a model.
     /// Answers `Injection` for text containing [`FAKE_ML_INJECTION`], `Clean` otherwise.
-    pub fn fake_daemon(runtime_dir: &Path) {
+    pub(crate) fn fake_daemon(runtime_dir: &Path) {
         use futures_util::{SinkExt, StreamExt};
         use interprocess::local_socket::traits::tokio::Listener as _;
         use parry_guard_daemon::protocol::{DaemonCodec, ScanResponse, ScanType};

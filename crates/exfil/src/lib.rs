@@ -29,12 +29,15 @@ mod scala;
 mod util;
 
 /// Regex for detecting `xxd` as a command (word boundary).
+#[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static XXD_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bxxd\b").expect("valid regex"));
 
 /// Regex for detecting `od` as a command (word boundary).
+#[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static OD_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bod\b").expect("valid regex"));
 
 /// Regex for bash substring/parameter expansion: ${var:0:1}
+#[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static BASH_SUBSTRING_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$\{[^}]+:\d+").expect("valid regex"));
 
@@ -1347,8 +1350,8 @@ mod tests {
 
     #[test]
     fn parse_bash_malformed_returns_err() {
-        let result = parse_bash("((({{{");
-        assert!(result.is_err());
+        let err = parse_bash("((({{{").unwrap_err();
+        assert!(err.contains("unparsable syntax"), "{err}");
     }
 
     #[test]

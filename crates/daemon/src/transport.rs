@@ -75,7 +75,9 @@ fn is_process_alive(pid: u32) -> bool {
         return false;
     }
     // SAFETY: signal 0 just checks if the process exists, doesn't actually signal.
-    unsafe { kill(pid, 0) == 0 }
+    #[expect(unsafe_code, reason = "FFI call to kill(2)")]
+    let alive = unsafe { kill(pid, 0) == 0 };
+    alive
 }
 
 #[cfg(not(unix))]

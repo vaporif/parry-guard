@@ -120,9 +120,13 @@ map_err_ignore = "deny"
 infinite_loop = "deny"
 missing_assert_message = "deny"
 assertions_on_result_states = "deny"
+wildcard_enum_match_arm = "deny"
+# Contradicts rustc's `unreachable_pub`, which we prefer.
+redundant_pub_crate = "allow"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
 unused_qualifications = "deny"
 redundant_lifetimes = "deny"
 unit_bindings = "deny"
+unreachable_pub = "deny"

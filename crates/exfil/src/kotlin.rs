@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct KotlinDetector;
+pub(crate) struct KotlinDetector;
 
 impl LangExfilDetector for KotlinDetector {
     fn language(&self) -> Language {

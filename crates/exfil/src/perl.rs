@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PerlDetector;
+pub(crate) struct PerlDetector;
 
 impl LangExfilDetector for PerlDetector {
     fn language(&self) -> Language {

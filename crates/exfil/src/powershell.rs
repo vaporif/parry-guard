@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PowerShellDetector;
+pub(crate) struct PowerShellDetector;
 
 impl LangExfilDetector for PowerShellDetector {
     fn language(&self) -> Language {

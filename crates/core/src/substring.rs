@@ -2,6 +2,7 @@ use aho_corasick::AhoCorasick;
 use std::sync::LazyLock;
 use tracing::debug;
 
+#[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static SECURITY_SUBSTRINGS: LazyLock<AhoCorasick> = LazyLock::new(|| {
     AhoCorasick::builder()
         .ascii_case_insensitive(true)

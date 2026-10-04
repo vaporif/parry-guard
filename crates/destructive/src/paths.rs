@@ -8,6 +8,7 @@ use regex::Regex;
 use crate::commands::{CompiledDestructive, CONFIG};
 
 /// WSL drive letter pattern: /mnt/[a-z]/
+#[expect(clippy::expect_used, reason = "literal pattern, exercised by tests")]
 static WSL_DRIVE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/mnt/[a-z]/").expect("valid regex"));
 
@@ -116,7 +117,9 @@ fn lexical_normalize(path: &Path) -> PathBuf {
                 }
             }
             std::path::Component::CurDir => {}
-            other => components.push(other),
+            other @ (std::path::Component::Prefix(_)
+            | std::path::Component::RootDir
+            | std::path::Component::Normal(_)) => components.push(other),
         }
     }
     components.iter().collect()
@@ -163,7 +166,7 @@ fn matches_protected_prefix(resolved_str: &str, config: &CompiledDestructive) ->
 }
 
 fn matches_wsl_prefix(resolved_with_slash: &str) -> Option<String> {
-    let after_drive = &resolved_with_slash[WSL_DRIVE.find(resolved_with_slash)?.end()..];
+    let after_drive = resolved_with_slash.get(WSL_DRIVE.find(resolved_with_slash)?.end()..)?;
     if after_drive.is_empty() {
         return Some("WSL drive root".to_string());
     }
@@ -189,7 +192,7 @@ fn matches_wsl_prefix(resolved_with_slash: &str) -> Option<String> {
 /// Returns `Some(reason)` if the path is protected and not under CWD.
 /// CWD and its subdirectories are excluded from protection.
 #[must_use]
-pub fn check_protected(path: &str, cwd: &str) -> Option<String> {
+pub(crate) fn check_protected(path: &str, cwd: &str) -> Option<String> {
     let resolved = resolve_path(path, cwd);
     let cwd_path = lexical_normalize(Path::new(cwd));
 
@@ -210,7 +213,7 @@ pub fn check_protected(path: &str, cwd: &str) -> Option<String> {
 
 /// Check if a path resolves to CWD itself (not a subdirectory).
 #[must_use]
-pub fn is_cwd_itself(path: &str, cwd: &str) -> bool {
+pub(crate) fn is_cwd_itself(path: &str, cwd: &str) -> bool {
     let resolved = resolve_path(path, cwd);
     let cwd_path = lexical_normalize(Path::new(cwd));
     resolved == cwd_path
@@ -218,7 +221,7 @@ pub fn is_cwd_itself(path: &str, cwd: &str) -> bool {
 
 /// Check if a path resolves to somewhere outside CWD.
 #[must_use]
-pub fn is_outside_cwd(path: &str, cwd: &str) -> bool {
+pub(crate) fn is_outside_cwd(path: &str, cwd: &str) -> bool {
     let resolved = resolve_path(path, cwd);
     let cwd_path = lexical_normalize(Path::new(cwd));
     !is_under_cwd(&resolved, &cwd_path)

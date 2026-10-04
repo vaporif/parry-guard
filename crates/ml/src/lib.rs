@@ -149,11 +149,11 @@ fn load_backend(repo: &hf_hub::api::sync::ApiRepo) -> Result<Backend> {
 
 #[cfg(any(feature = "onnx", feature = "onnx-fetch", feature = "candle", test))]
 pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
-    if logits.len() < 2 {
+    let [safe, _, ..] = logits else {
         return 0.0;
-    }
+    };
     let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let exp0 = (logits[0] - max).exp();
+    let exp0 = (safe - max).exp();
     let sum: f32 = logits.iter().map(|&l| (l - max).exp()).sum();
     // 1 - P(safe) handles both 2-class and 3+ class models where label 0 is "safe"
     1.0 - exp0 / sum

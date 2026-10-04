@@ -25,13 +25,16 @@ use crate::r::RDetector;
 use crate::ruby::RubyDetector;
 use crate::scala::ScalaDetector;
 
-pub fn check_interpreter_inline_code(node: Node, source: &[u8], cmd_name: &str) -> Option<String> {
+pub(crate) fn check_interpreter_inline_code(
+    node: Node,
+    source: &[u8],
+    cmd_name: &str,
+) -> Option<String> {
     let mut cursor = node.walk();
     let children: Vec<_> = node.children(&mut cursor).collect();
 
     let mut i = 0;
-    while i < children.len() {
-        let child = children[i];
+    while let Some(&child) = children.get(i) {
         let text = node_text(child, source);
 
         if INLINE_CODE_FLAGS.contains(&text) {
@@ -128,13 +131,12 @@ fn check_code_string_for_exfil(code: &str, cmd_name: &str) -> Option<String> {
 
 /// For shell interpreters (bash -c, sh -c, etc.), re-parse the inner string
 /// through the full detection pipeline rather than keyword matching.
-pub fn check_shell_inline_code(node: Node, source: &[u8], cmd_name: &str) -> Option<String> {
+pub(crate) fn check_shell_inline_code(node: Node, source: &[u8], cmd_name: &str) -> Option<String> {
     let mut cursor = node.walk();
     let children: Vec<_> = node.children(&mut cursor).collect();
 
     let mut i = 0;
-    while i < children.len() {
-        let child = children[i];
+    while let Some(&child) = children.get(i) {
         let text = node_text(child, source);
 
         if text == "-c" {

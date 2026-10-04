@@ -174,6 +174,10 @@ fn drop_legacy_table(db: &redb::Database) {
 }
 
 /// Background task that periodically prunes expired cache entries.
+#[expect(
+    clippy::infinite_loop,
+    reason = "async fns can't return `!`; the daemon aborts this task"
+)]
 pub async fn prune_task(cache: &ScanCache) {
     let mut interval = tokio::time::interval(PRUNE_INTERVAL);
     // first tick fires immediately - skip it, no need to prune right at startup

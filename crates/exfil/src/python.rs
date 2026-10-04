@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct PythonDetector;
+pub(crate) struct PythonDetector;
 
 impl LangExfilDetector for PythonDetector {
     fn language(&self) -> Language {

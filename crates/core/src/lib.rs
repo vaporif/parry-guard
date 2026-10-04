@@ -101,7 +101,7 @@ pub fn scan_injection_only(text: &str) -> ScanResult {
 /// Get a runtime path for parry files (taint file, guard db, etc).
 /// If `runtime_dir` is `Some`, uses that directory. Otherwise falls back to cwd.
 #[must_use]
-pub fn runtime_path(runtime_dir: Option<&std::path::Path>, filename: &str) -> Option<PathBuf> {
+pub fn runtime_path(runtime_dir: Option<&Path>, filename: &str) -> Option<PathBuf> {
     runtime_dir
         .map(Path::to_path_buf)
         .or_else(|| {

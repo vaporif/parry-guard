@@ -38,7 +38,11 @@ impl super::backend::MlBackend for OnnxBackend {
             .session
             .run(ort::inputs![input_ids_tensor, attention_mask_tensor])?;
 
-        let logits_view = outputs[0].try_extract_array::<f32>()?;
+        let first_output = outputs
+            .values()
+            .next()
+            .ok_or_else(|| eyre::eyre!("model produced no outputs"))?;
+        let logits_view = first_output.try_extract_array::<f32>()?;
         let logits = logits_view
             .as_slice()
             .ok_or_else(|| eyre::eyre!("non-contiguous logits tensor"))?;

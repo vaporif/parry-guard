@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct ScalaDetector;
+pub(crate) struct ScalaDetector;
 
 impl LangExfilDetector for ScalaDetector {
     fn language(&self) -> Language {

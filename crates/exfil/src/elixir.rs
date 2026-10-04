@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct ElixirDetector;
+pub(crate) struct ElixirDetector;
 
 impl LangExfilDetector for ElixirDetector {
     fn language(&self) -> Language {

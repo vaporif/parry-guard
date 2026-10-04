@@ -242,7 +242,7 @@ fn collect_strings<'a>(value: &'a serde_json::Value, out: &mut Vec<&'a str>) {
                 collect_strings(v, out);
             }
         }
-        _ => {}
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
     }
 }
 

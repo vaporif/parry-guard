@@ -12,7 +12,7 @@ use crate::util::{
     is_network_sink, is_sensitive_source_cmd, is_shell_interpreter, node_text, strip_quotes,
 };
 
-pub fn check_node(node: Node, source: &[u8]) -> Option<String> {
+pub(crate) fn check_node(node: Node, source: &[u8]) -> Option<String> {
     match node.kind() {
         "pipeline" => check_pipeline(node, source),
         "command" => check_command(node, source),

@@ -24,7 +24,7 @@ fn parse_scan_mode(s: &str) -> Result<ScanMode, String> {
 
 #[derive(Parser)]
 #[command(name = "parry-guard", about = "Prompt injection scanner", version)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// `HuggingFace` token (direct value)
     #[arg(long, env = "HF_TOKEN")]
     pub hf_token: Option<String>,
@@ -63,7 +63,7 @@ pub struct Cli {
 impl Cli {
     /// Resolve the HF token from `--hf-token`, `--hf-token-path`, or default paths.
     #[must_use]
-    pub fn resolve_hf_token(&self) -> Option<String> {
+    pub(crate) fn resolve_hf_token(&self) -> Option<String> {
         // 1. Direct token value (--hf-token or HF_TOKEN env)
         if let Some(ref token) = self.hf_token {
             let trimmed = token.trim();
@@ -92,7 +92,7 @@ fn read_token_file(path: &std::path::Path) -> Option<String> {
 }
 
 #[derive(Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// Claude Code hook mode (JSON stdin -> JSON stdout)
     Hook,
     /// Run as a daemon with the ML model loaded in memory
@@ -113,25 +113,32 @@ pub enum Command {
         #[arg(long)]
         full: bool,
     },
+    #[command(flatten)]
+    Repo(RepoCommand),
+}
+
+/// Per-repo state management subcommands.
+#[derive(Subcommand)]
+pub(crate) enum RepoCommand {
     /// Set repo to ignored (no scanning)
     Ignore {
         /// Repo path (defaults to CWD)
-        path: Option<std::path::PathBuf>,
+        path: Option<PathBuf>,
     },
     /// Set repo to monitored (scan silently, alert on findings)
     Monitor {
         /// Repo path (defaults to CWD)
-        path: Option<std::path::PathBuf>,
+        path: Option<PathBuf>,
     },
     /// Reset repo to unknown (clear state + caches)
     Reset {
         /// Repo path (defaults to CWD)
-        path: Option<std::path::PathBuf>,
+        path: Option<PathBuf>,
     },
     /// Show current repo state
     Status {
         /// Repo path (defaults to CWD)
-        path: Option<std::path::PathBuf>,
+        path: Option<PathBuf>,
     },
     /// List all known repos and their states
     Repos,
@@ -152,8 +159,8 @@ mod tests {
 
     #[test]
     fn parse_scan_mode_invalid() {
-        assert!(parse_scan_mode("turbo").is_err());
-        assert!(parse_scan_mode("").is_err());
+        parse_scan_mode("turbo").unwrap_err();
+        parse_scan_mode("").unwrap_err();
     }
 
     #[test]
@@ -189,9 +196,9 @@ mod tests {
 
     #[test]
     fn threshold_rejects_out_of_range() {
-        assert!(threshold_in_range("-0.1").is_err());
-        assert!(threshold_in_range("1.01").is_err());
-        assert!(threshold_in_range("abc").is_err());
+        threshold_in_range("-0.1").unwrap_err();
+        threshold_in_range("1.01").unwrap_err();
+        threshold_in_range("abc").unwrap_err();
     }
 
     fn cli_with(hf_token: Option<&str>, hf_token_path: Option<PathBuf>) -> Cli {

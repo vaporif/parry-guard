@@ -6,6 +6,15 @@
 //! Tests that need Monitored state use `monitored_dir()` which creates an
 //! isolated runtime dir per test to avoid redb lock contention.
 
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    clippy::missing_assert_message,
+    reason = "helpers outside #[test] fns aren't covered by allow-*-in-tests"
+)]
+
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -197,7 +206,10 @@ fn git_commit(dir: &Path, name: &str, content: &str) {
         .unwrap();
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     serde_json::json!({
         "tool_name": tool,
@@ -207,7 +219,10 @@ fn pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     .to_string()
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn codex_pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     serde_json::json!({
         "session_id": "session-test",
@@ -224,7 +239,10 @@ fn codex_pre_tool_json(tool: &str, input: serde_json::Value) -> String {
     .to_string()
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers pass json! temporaries"
+)]
 fn post_tool_json(tool: &str, input: serde_json::Value, response: serde_json::Value) -> String {
     serde_json::json!({
         "tool_name": tool,

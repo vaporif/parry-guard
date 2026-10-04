@@ -29,7 +29,7 @@ impl MlState {
         let attempt = match *self {
             Self::NotLoaded => Some(0),
             Self::Failed(n) if n < MAX_ML_RETRIES => Some(n),
-            _ => None,
+            Self::Loaded(_) | Self::Failed(_) => None,
         };
         if let Some(attempt) = attempt {
             info!(
@@ -54,7 +54,7 @@ impl MlState {
         }
         match self {
             Self::Loaded(scanner) => Some(scanner),
-            _ => None,
+            Self::NotLoaded | Self::Failed(_) => None,
         }
     }
 }
@@ -82,7 +82,7 @@ impl Drop for CleanupGuard {
             return;
         }
         let _ = std::fs::remove_file(&self.pid_path);
-        crate::transport::cleanup_stale_state(self.runtime_dir.as_deref());
+        transport::cleanup_stale_state(self.runtime_dir.as_deref());
     }
 }
 
@@ -100,7 +100,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     }
 
     // stale socket: nobody answered the ping
-    crate::transport::cleanup_stale_state(rd);
+    transport::cleanup_stale_state(rd);
     let listener = transport::bind_async(rd)?;
 
     let pid_path = transport::pid_file_path(rd)?;
@@ -267,8 +267,8 @@ fn handle_request(
 
         let result = run_full_scan(&req.text, req.threshold, ml_scanner);
         // don't cache errors: the model may load after a restart
-        if result != ScanResponse::Error {
-            c.put(&hash, response_to_result(result));
+        if let Some(cacheable) = response_to_result(result) {
+            c.put(&hash, cacheable);
         }
         result
     } else {
@@ -305,12 +305,12 @@ fn run_full_scan(text: &str, threshold: f32, ml_scanner: Option<&mut MlScanner>)
     }
 }
 
-fn response_to_result(resp: ScanResponse) -> ScanResult {
+const fn response_to_result(resp: ScanResponse) -> Option<ScanResult> {
     match resp {
-        ScanResponse::Injection => ScanResult::Injection,
-        ScanResponse::Secret => ScanResult::Secret,
-        ScanResponse::Clean | ScanResponse::Pong => ScanResult::Clean,
-        ScanResponse::Error => unreachable!("Error responses must not be cached"),
+        ScanResponse::Injection => Some(ScanResult::Injection),
+        ScanResponse::Secret => Some(ScanResult::Secret),
+        ScanResponse::Clean | ScanResponse::Pong => Some(ScanResult::Clean),
+        ScanResponse::Error => None,
     }
 }
 

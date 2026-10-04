@@ -70,14 +70,9 @@ impl Pattern {
                 return true;
             }
         }
-        if text.ends_with(&self.lower) {
-            let prefix_byte_len = text.len() - self.lower.len();
-            if prefix_byte_len == 0 {
-                return true;
-            }
-            // safe: ends_with guarantees this is a char boundary
-            let prev_char = text[..prefix_byte_len].chars().next_back();
-            if prev_char == Some('/') || prev_char == Some('\\') {
+        if let Some(prefix) = text.strip_suffix(self.lower.as_str()) {
+            let prev_char = prefix.chars().next_back();
+            if prev_char.is_none() || prev_char == Some('/') || prev_char == Some('\\') {
                 return true;
             }
         }
@@ -108,26 +103,20 @@ impl Pattern {
         };
 
         let mut pos = 0;
-        while let Some(idx) = text[pos..].find(&self.lower) {
+        while let Some(idx) = text.get(pos..).and_then(|rest| rest.find(&self.lower)) {
             let abs_idx = pos + idx;
-            let pattern_end = abs_idx + self.lower.len();
+            let before = text.get(..abs_idx).unwrap_or_default();
+            let after = text.get(abs_idx + self.lower.len()..).unwrap_or_default();
 
-            let at_start = abs_idx == 0
-                || text[..abs_idx]
-                    .chars()
-                    .next_back()
-                    .is_some_and(boundary_chars);
-            let at_end = pattern_end >= text.len()
-                || text[pattern_end..]
-                    .chars()
-                    .next()
-                    .is_some_and(boundary_chars);
+            let at_start = before.chars().next_back().is_none_or(boundary_chars);
+            let at_end = after.chars().next().is_none_or(boundary_chars);
 
             if at_start && at_end {
                 return true;
             }
 
-            pos = abs_idx + 1;
+            // step past one whole char so the next slice starts on a char boundary
+            pos = abs_idx + self.lower.chars().next().map_or(1, char::len_utf8);
         }
 
         false
@@ -369,7 +358,14 @@ impl CompiledPatterns {
         }
     }
 
-    #[allow(clippy::trivial_regex)]
+    #[expect(
+        clippy::trivial_regex,
+        reason = "never-matching regex for an empty list"
+    )]
+    #[expect(
+        clippy::expect_used,
+        reason = "domains are escaped, so the pattern is always valid"
+    )]
     fn build_domain_regex(domains: &[String]) -> Regex {
         if domains.is_empty() {
             return Regex::new(r"^$").expect("valid regex");
@@ -416,6 +412,13 @@ pub fn has_exfil_domain(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_segment_with_multibyte_start_does_not_panic() {
+        let pattern = Pattern::path_segment("ésecret");
+        assert!(!pattern.matches("cat xésecretx"));
+        assert!(pattern.matches("cat 'ésecret'"));
+    }
 
     #[test]
     fn path_segment_matches_exact() {

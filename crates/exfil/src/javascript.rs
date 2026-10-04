@@ -4,7 +4,7 @@ use tree_sitter::Language;
 
 use super::lang::LangExfilDetector;
 
-pub struct JavaScriptDetector;
+pub(crate) struct JavaScriptDetector;
 
 impl LangExfilDetector for JavaScriptDetector {
     fn language(&self) -> Language {

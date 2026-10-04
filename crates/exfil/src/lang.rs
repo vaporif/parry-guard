@@ -29,7 +29,7 @@ pub trait LangExfilDetector: Send + Sync {
 
 /// Result of analyzing code for exfiltration patterns.
 #[derive(Debug, Default)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools, reason = "independent detection flags")]
 struct AnalysisResult {
     has_network_sink: bool,
     has_file_source: bool,
