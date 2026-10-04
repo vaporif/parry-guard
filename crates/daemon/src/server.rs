@@ -1,4 +1,4 @@
-//! Async daemon server.
+//! Daemon server.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -67,7 +67,7 @@ pub struct DaemonConfig {
     pub idle_timeout: Duration,
 }
 
-/// RAII cleanup for PID file and socket.
+/// Removes PID file and socket on drop.
 struct CleanupGuard {
     pid_path: PathBuf,
     runtime_dir: Option<PathBuf>,
@@ -86,11 +86,8 @@ impl Drop for CleanupGuard {
     }
 }
 
-/// Run the daemon server. ML model loads lazily on first scan request.
-///
 /// # Errors
-///
-/// Returns an error if another daemon is running or the socket cannot be bound.
+/// Fails if another daemon is running or the socket can't be bound.
 #[instrument(skip(config, daemon_config), fields(idle_timeout = ?daemon_config.idle_timeout))]
 pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<()> {
     let rd = config.runtime_dir.as_deref();
@@ -101,7 +98,6 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
-    // stale socket: nobody answered the ping
     transport::cleanup_stale_state(rd);
     let listener = transport::bind_async(rd)?;
 

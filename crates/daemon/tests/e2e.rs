@@ -50,7 +50,7 @@ async fn start_daemon_with(dir: &Path, config: Config, idle_timeout: Duration) -
                 .await
                 .unwrap();
         if ready {
-            // Settle time so daemon re-enters accept loop after our ping
+            // let the daemon re-enter its accept loop after our ping
             tokio::time::sleep(Duration::from_millis(50)).await;
             return handle;
         }
@@ -88,10 +88,9 @@ async fn scan_with_retry(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn daemon_e2e() {
-    // One test for all cases so they share the daemon lifecycle.
+    // single test so cases share the daemon lifecycle
     let t = Instant::now();
 
-    // ── ping/pong ──
     eprintln!("[ping/pong] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -109,7 +108,6 @@ async fn daemon_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── scan: clean, injection, secret (shared daemon) ──
     eprintln!("[scan] starting daemon...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -120,7 +118,7 @@ async fn daemon_e2e() {
         let result = scan_with_retry("The weather is nice today.", &config).await;
         if let Ok(r) = &result {
             assert!(r.is_clean(), "expected clean, got: {r:?}");
-        } // fail-closed without ML model - expected in CI
+        } // fail-closed without an ML model in CI
         eprintln!("[scan] clean text ok ({:?})", t.elapsed());
 
         eprintln!("[scan] injection (fast scan)...");
@@ -136,7 +134,6 @@ async fn daemon_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── idle timeout shutdown ──
     eprintln!("[idle] starting daemon (1s timeout)...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -159,7 +156,7 @@ async fn daemon_e2e() {
                 .await
                 .unwrap();
         assert!(!running);
-        let _ = handle.await; // wait for daemon cleanup before TempDir drops
+        let _ = handle.await; // cleanup must finish before TempDir drops
         eprintln!("[idle] ok ({:?})", t.elapsed());
     }
 }
@@ -169,7 +166,6 @@ async fn daemon_e2e() {
 async fn ml_model_e2e() {
     let t = Instant::now();
 
-    // ── fast mode: DeBERTa v3 ──
     eprintln!("[fast] starting daemon (DeBERTa v3)...");
     {
         let dir = tempfile::tempdir().unwrap();
@@ -204,7 +200,6 @@ async fn ml_model_e2e() {
         stop_daemon(handle).await;
     }
 
-    // ── full mode: DeBERTa v3 + Llama Prompt Guard 2 (candle only) ──
     #[cfg(feature = "candle")]
     {
         eprintln!("[full] starting daemon (DeBERTa v3 + Llama PG2)...");

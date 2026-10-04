@@ -1,7 +1,4 @@
-//! Scan result cache with TTL.
-//!
-//! Caches `ScanResult` keyed by content hash (blake3, 32 bytes) with a 30-day lazy expiry.
-//! DB lives at `~/.parry-guard/scan-cache.redb` (respects `PARRY_RUNTIME_DIR`).
+//! `ScanResult` cache keyed by blake3 content hash, with lazy 30-day expiry.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -12,16 +9,15 @@ use tracing::{debug, warn};
 const DB_FILE: &str = "scan-cache.redb";
 const TABLE: redb::TableDefinition<&[u8; 32], (u8, u64)> = redb::TableDefinition::new("scan_cache");
 const OLD_TABLE: redb::TableDefinition<u64, (u8, u64)> = redb::TableDefinition::new("scan_cache");
-const TTL_SECS: u64 = 30 * 24 * 60 * 60; // 30 days
+const TTL_SECS: u64 = 30 * 24 * 60 * 60;
 const PRUNE_INTERVAL: Duration = Duration::from_hours(1);
 
-/// Hash text content to a blake3 digest.
 #[must_use]
 pub fn hash_content(text: &str) -> [u8; 32] {
     blake3::hash(text.as_bytes()).into()
 }
 
-/// Hash text content with threshold and model fingerprint included in the digest.
+/// Cache key that also covers threshold and models, so results don't leak across configs.
 #[must_use]
 pub fn hash_content_with_threshold(
     text: &str,
@@ -35,7 +31,7 @@ pub fn hash_content_with_threshold(
     hasher.finalize().into()
 }
 
-/// Compute a fingerprint from the model repo IDs used for scanning.
+/// Order-sensitive digest of the model repo IDs.
 #[must_use]
 pub fn model_fingerprint(model_repos: &[String]) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
@@ -79,10 +75,7 @@ pub struct ScanCache {
 }
 
 impl ScanCache {
-    /// Open (or create) the scan cache database.
-    ///
-    /// Returns `None` if the DB path cannot be determined or the database
-    /// cannot be opened.
+    /// Opens or creates the cache DB; `None` if unavailable.
     pub fn open(runtime_dir: Option<&std::path::Path>) -> Option<Self> {
         let path = crate::transport::parry_dir(runtime_dir).ok()?.join(DB_FILE);
 
@@ -103,7 +96,7 @@ impl ScanCache {
         }
     }
 
-    /// Look up a cached scan result. Returns `None` on miss or expiry.
+    /// `None` on miss or expiry.
     pub fn get(&self, hash: &[u8; 32]) -> Option<ScanResult> {
         let txn = self.db.begin_read().ok()?;
         let table = txn.open_table(TABLE).ok()?;
@@ -118,7 +111,6 @@ impl ScanCache {
         code_to_result(code)
     }
 
-    /// Store a scan result in the cache.
     pub fn put(&self, hash: &[u8; 32], result: ScanResult) {
         let Ok(txn) = self.db.begin_write() else {
             return;
@@ -131,7 +123,6 @@ impl ScanCache {
         let _ = txn.commit();
     }
 
-    /// Remove all entries older than TTL.
     pub fn prune_expired(&self) {
         let Ok(txn) = self.db.begin_write() else {
             return;
@@ -180,7 +171,7 @@ fn drop_legacy_table(db: &redb::Database) {
 )]
 pub async fn prune_task(cache: &ScanCache) {
     let mut interval = tokio::time::interval(PRUNE_INTERVAL);
-    // first tick fires immediately - skip it, no need to prune right at startup
+    // first tick fires immediately; skip pruning at startup
     interval.tick().await;
 
     loop {
@@ -280,7 +271,6 @@ mod tests {
         let cache = make_cache(dir.path());
 
         let hash = hash_content("old text");
-        // Insert with a timestamp far in the past
         let txn = cache.db.begin_write().unwrap();
         {
             let mut table = txn.open_table(TABLE).unwrap();
@@ -303,7 +293,6 @@ mod tests {
             "different thresholds must produce different hashes"
         );
 
-        // Same threshold produces same hash
         let hash_same = hash_content_with_threshold(text, 0.7, &TEST_FP);
         assert_eq!(hash_low, hash_same);
     }
@@ -337,17 +326,13 @@ mod tests {
         let hash_low = hash_content_with_threshold(text, 0.7, &TEST_FP);
         let hash_high = hash_content_with_threshold(text, 0.9, &TEST_FP);
 
-        // Cache injection at low threshold
         cache.put(&hash_low, ScanResult::Injection);
-        // High threshold should be a miss (not poisoned by low threshold result)
         assert!(
             cache.get(&hash_high).is_none(),
             "high threshold should not see low threshold cached result"
         );
 
-        // Cache clean at high threshold
         cache.put(&hash_high, ScanResult::Clean);
-        // Both should coexist independently
         assert_eq!(cache.get(&hash_low), Some(ScanResult::Injection));
         assert_eq!(cache.get(&hash_high), Some(ScanResult::Clean));
     }
@@ -358,7 +343,6 @@ mod tests {
         let cache = make_cache(dir.path());
 
         let old_hash = hash_content("old");
-        // Insert expired entry
         {
             let txn = cache.db.begin_write().unwrap();
             {
@@ -368,14 +352,11 @@ mod tests {
             txn.commit().unwrap();
         }
 
-        // Insert fresh entry
         let fresh_hash = hash_content("fresh");
         cache.put(&fresh_hash, ScanResult::Clean);
 
-        // Prune expired entries
         cache.prune_expired();
 
-        // Verify old entry was pruned
         let txn = cache.db.begin_read().unwrap();
         let table = txn.open_table(TABLE).unwrap();
         assert!(

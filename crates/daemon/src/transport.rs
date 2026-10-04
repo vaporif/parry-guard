@@ -1,4 +1,4 @@
-//! IPC transport layer for daemon communication.
+//! Daemon IPC transport.
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -6,12 +6,10 @@ use std::time::Duration;
 
 use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
 
-/// Returns the parry runtime directory.
-/// If `runtime_dir` is `Some`, returns it directly. Otherwise returns `~/.parry-guard/`.
+/// `runtime_dir` if set, else `~/.parry-guard/`.
 ///
 /// # Errors
-///
-/// Returns an error if the home directory cannot be determined (when `runtime_dir` is `None`).
+/// Fails if the home directory can't be determined.
 pub fn parry_dir(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
     if let Some(dir) = runtime_dir {
         return Ok(dir.to_path_buf());
@@ -37,7 +35,6 @@ fn socket_path(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
     Ok(parry_dir(runtime_dir)?.join("parry-guard.sock"))
 }
 
-/// Check if the daemon socket file exists on disk.
 #[must_use]
 pub fn socket_exists(runtime_dir: Option<&Path>) -> bool {
     socket_path(runtime_dir).is_ok_and(|p| p.exists())
@@ -46,23 +43,18 @@ pub fn socket_exists(runtime_dir: Option<&Path>) -> bool {
 fn socket_name(
     runtime_dir: Option<&Path>,
 ) -> io::Result<interprocess::local_socket::Name<'static>> {
-    // Use filesystem paths so cleanup works. Namespaced sockets (Linux abstract,
-    // Windows named pipes) leave stale refs that cause "Address already in use".
+    // filesystem paths, since namespaced sockets leave stale refs ("Address already in use")
     socket_path(runtime_dir)?
         .to_fs_name::<GenericFilePath>()
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
 }
 
 /// # Errors
-///
-/// Returns an error if the parry runtime directory cannot be determined.
+/// Fails if the runtime directory can't be determined.
 pub fn pid_file_path(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
     Ok(parry_dir(runtime_dir)?.join("daemon.pid"))
 }
 
-// ─── Stale state cleanup ─────────────────────────────────────────────────────
-
-/// Check if a process with the given PID is alive.
 #[cfg(unix)]
 fn is_process_alive(pid: u32) -> bool {
     extern "C" {
@@ -74,7 +66,7 @@ fn is_process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
-    // SAFETY: signal 0 just checks if the process exists, doesn't actually signal.
+    // SAFETY: signal 0 only checks existence, nothing is delivered.
     #[expect(unsafe_code, reason = "FFI call to kill(2)")]
     let alive = unsafe { kill(pid, 0) == 0 };
     alive
@@ -82,17 +74,16 @@ fn is_process_alive(pid: u32) -> bool {
 
 #[cfg(not(unix))]
 fn is_process_alive(_pid: u32) -> bool {
-    // can't verify on non-Unix; assume alive to be safe.
+    // can't verify on non-Unix; assume alive to be safe
     true
 }
 
-/// Remove stale daemon state (PID file and socket) if the recorded process is no longer alive.
+/// Removes the PID file and socket if the recorded process is dead.
 pub fn cleanup_stale_state(runtime_dir: Option<&Path>) {
     let Ok(pid_path) = pid_file_path(runtime_dir) else {
         return;
     };
 
-    // if PID file exists, verify the process is still alive
     if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
         match pid_str.trim().parse::<u32>() {
             Ok(pid) if is_process_alive(pid) => return,
@@ -106,7 +97,7 @@ pub fn cleanup_stale_state(runtime_dir: Option<&Path>) {
         let _ = std::fs::remove_file(&pid_path);
     }
 
-    // orphaned socket cleanup (PID file may have been missing)
+    // socket may be orphaned even without a PID file
     if let Ok(sock) = socket_path(runtime_dir) {
         if sock.exists() {
             tracing::info!("removing stale socket");
@@ -115,20 +106,14 @@ pub fn cleanup_stale_state(runtime_dir: Option<&Path>) {
     }
 }
 
-// ─── Async listener (for daemon server) ──────────────────────────────────────
-
-/// Create an async tokio listener for the daemon.
-///
 /// # Errors
-///
-/// Returns an error if the socket cannot be created.
+/// Fails if the socket can't be created.
 pub fn bind_async(
     runtime_dir: Option<&Path>,
 ) -> io::Result<interprocess::local_socket::tokio::Listener> {
     let dir = parry_dir(runtime_dir)?;
     std::fs::create_dir_all(&dir)?;
 
-    // stale socket from previous run
     let sock_path = socket_path(runtime_dir)?;
     if sock_path.exists() {
         let _ = std::fs::remove_file(&sock_path);
@@ -138,18 +123,13 @@ pub fn bind_async(
     ListenerOptions::new().name(name).create_tokio()
 }
 
-// ─── Sync stream (for daemon client) ────────────────────────────────────────
-
 pub struct Stream {
     inner: interprocess::local_socket::Stream,
 }
 
 impl Stream {
-    /// Connect to the daemon with a timeout.
-    ///
     /// # Errors
-    ///
-    /// Returns an error if the connection cannot be established.
+    /// Fails if the connection can't be established in time.
     pub fn connect(timeout: Duration, runtime_dir: Option<&Path>) -> io::Result<Self> {
         let name = socket_name(runtime_dir)?;
         let inner = interprocess::local_socket::Stream::connect(name)?;

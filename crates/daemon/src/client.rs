@@ -1,4 +1,4 @@
-//! Daemon client for IPC communication.
+//! Daemon IPC client.
 
 use std::path::Path;
 use std::time::Duration;
@@ -9,26 +9,19 @@ use tracing::{debug, info, trace, warn};
 use crate::protocol::{self, ScanRequest, ScanResponse, ScanType};
 use crate::transport::Stream;
 
-/// Timeout for ping/liveness checks (must be fast).
 const PING_TIMEOUT: Duration = Duration::from_millis(50);
 
-/// Timeout for scan requests (model loading on first call can take tens of seconds).
+/// Generous because the first scan may load the model (tens of seconds).
 const SCAN_TIMEOUT: Duration = Duration::from_mins(2);
 
-/// Run a full scan (with ML) via the daemon.
-///
 /// # Errors
-///
-/// Returns `ScanError::DaemonIo` if the daemon is unreachable.
+/// `ScanError::DaemonIo` if the daemon is unreachable.
 pub fn scan_full(text: &str, config: &Config) -> Result<ScanResult, ScanError> {
     scan_full_with_threshold(text, config, config.threshold)
 }
 
-/// Run a full scan with a custom ML threshold.
-///
 /// # Errors
-///
-/// Returns `ScanError::DaemonIo` if the daemon is unreachable.
+/// `ScanError::DaemonIo` if the daemon is unreachable.
 pub fn scan_full_with_threshold(
     text: &str,
     config: &Config,
@@ -46,7 +39,6 @@ pub fn scan_full_with_threshold(
     send_request(&req, config.runtime_dir.as_deref())
 }
 
-/// Check if a daemon is running by sending a ping.
 #[must_use]
 pub fn is_daemon_running(runtime_dir: Option<&Path>) -> bool {
     trace!("checking if daemon is running");
@@ -71,12 +63,10 @@ pub fn is_daemon_running(runtime_dir: Option<&Path>) -> bool {
     running
 }
 
-/// Spawn the daemon as a detached background process.
+/// Spawns a detached daemon process.
 ///
 /// # Errors
-///
-/// Returns `ScanError::DaemonStart` if the executable path cannot be resolved
-/// or the process fails to spawn.
+/// `ScanError::DaemonStart` if the executable can't be resolved or spawned.
 pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
     let exe = std::env::current_exe()
         .map_err(|e| ScanError::DaemonStart(format!("failed to resolve executable: {e}")))?;
@@ -96,9 +86,7 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
         cmd.arg("--hf-token-path").arg(&token_file);
     }
 
-    // runtime_dir is not passed to the child. It's test-only; production always
-    // uses None (hardcoded in main.rs). No CLI flag needed: an attacker who can
-    // inject --runtime-dir already has code execution.
+    // runtime_dir is test-only and not forwarded; no --runtime-dir flag on purpose.
     cmd.arg("serve");
 
     cmd.stdin(std::process::Stdio::null())
@@ -110,7 +98,7 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
     Ok(())
 }
 
-/// Write `contents` to a file that is owner-only before any byte lands in it.
+/// Writes `contents` to a file that is owner-only before any byte lands.
 fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     #[cfg(unix)]
@@ -127,11 +115,10 @@ fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
     file.write_all(contents.as_bytes())
 }
 
-/// Ensure the daemon is running. Spawns it if needed and waits for readiness.
+/// Spawns the daemon if needed and waits for readiness.
 ///
 /// # Errors
-///
-/// Returns `ScanError::DaemonStart` if the daemon fails to start within the timeout.
+/// `ScanError::DaemonStart` if it isn't ready within the timeout.
 pub fn ensure_running(config: &Config) -> Result<(), ScanError> {
     let rd = config.runtime_dir.as_deref();
     if is_daemon_running(rd) {

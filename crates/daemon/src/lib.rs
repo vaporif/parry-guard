@@ -1,7 +1,4 @@
-//! Async daemon for persistent ML model loading.
-//!
-//! The daemon keeps the ML model loaded in memory and serves scan requests
-//! via IPC, avoiding repeated model loading overhead.
+//! Daemon that keeps the ML model loaded and serves scans over IPC.
 
 pub mod client;
 pub mod protocol;

@@ -1,25 +1,19 @@
-//! Wire protocol for daemon IPC.
-//!
-//! Wire format:
-//! - Request: `[1B scan_type][4B threshold_le][4B text_len_le][text...]`
-//! - Response: `[1B response_code]`
+//! Daemon IPC wire protocol.
+//! Request `[1B scan_type][4B threshold_le][4B text_len_le][text]`, response `[1B code]`.
 
 use std::io::{self, Read, Write};
 
 use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-/// Maximum text payload: 16 MB.
 const MAX_TEXT_LEN: u32 = 16 * 1024 * 1024;
 
-/// Header size: 1 byte type + 4 bytes threshold + 4 bytes text length.
 const HEADER_LEN: usize = 9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScanType {
-    /// Full scan including ML.
     Full = 0x00,
-    /// Ping to check if daemon is alive.
+    /// Liveness check.
     Ping = 0x02,
 }
 
@@ -44,7 +38,6 @@ pub struct ScanRequest {
 }
 
 impl ScanRequest {
-    /// Encode to wire format into any `BufMut`.
     fn encode(&self, buf: &mut impl BufMut) -> io::Result<()> {
         buf.put_u8(self.scan_type as u8);
         buf.put_f32_le(self.threshold);
@@ -57,7 +50,7 @@ impl ScanRequest {
         Ok(())
     }
 
-    /// Decode from a `BytesMut` buffer. Returns `Ok(None)` if not enough data yet.
+    /// `Ok(None)` until a full frame is buffered.
     fn decode(src: &mut BytesMut) -> io::Result<Option<Self>> {
         let Some(&[scan_type, t0, t1, t2, t3, l0, l1, l2, l3]) = src.first_chunk::<HEADER_LEN>()
         else {
@@ -121,9 +114,7 @@ impl ScanResponse {
     }
 }
 
-// ─── Tokio codec (async server) ─────────────────────────────────────────────
-
-/// Codec for the daemon wire protocol. Delegates to `ScanRequest`/`ScanResponse` methods.
+/// Tokio codec for the server side.
 pub struct DaemonCodec;
 
 impl Decoder for DaemonCodec {
@@ -144,13 +135,8 @@ impl Encoder<ScanResponse> for DaemonCodec {
     }
 }
 
-// ─── Sync helpers (client) ──────────────────────────────────────────────────
-
-/// Write a scan request to a sync writer.
-///
 /// # Errors
-///
-/// Returns an error if writing to the stream fails or text exceeds size limit.
+/// Fails on write error or oversized text.
 pub fn write_request<W: Write>(w: &mut W, req: &ScanRequest) -> io::Result<()> {
     let mut buf = Vec::with_capacity(HEADER_LEN + req.text.len());
     req.encode(&mut buf)?;
@@ -158,11 +144,8 @@ pub fn write_request<W: Write>(w: &mut W, req: &ScanRequest) -> io::Result<()> {
     w.flush()
 }
 
-/// Read a scan response from a sync reader.
-///
 /// # Errors
-///
-/// Returns an error if reading fails or the response byte is unknown.
+/// Fails on read error or unknown response byte.
 pub fn read_response<R: Read>(r: &mut R) -> io::Result<ScanResponse> {
     let mut buf = [0u8; 1];
     r.read_exact(&mut buf)?;
@@ -207,7 +190,6 @@ mod tests {
             text: "hello".to_string(),
         };
         let full = encode_request(&req);
-        // Only provide header + partial text
         let mut buf = BytesMut::from(&full[..HEADER_LEN + 2]);
         assert!(DaemonCodec.decode(&mut buf).unwrap().is_none());
     }
@@ -289,7 +271,6 @@ mod tests {
         let mut buf = Vec::new();
         write_request(&mut buf, &req).unwrap();
 
-        // Verify response round-trip
         let resp_buf = [ScanResponse::Injection as u8];
         let resp = read_response(&mut &resp_buf[..]).unwrap();
         assert_eq!(resp, ScanResponse::Injection);

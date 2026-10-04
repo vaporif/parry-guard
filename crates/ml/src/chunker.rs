@@ -1,13 +1,11 @@
-//! Text chunking strategy for ML scanning.
+//! Text chunking for ML scanning.
 
 pub const CHUNK_SIZE: usize = 256;
 pub const CHUNK_OVERLAP: usize = 25;
 const HEAD_TAIL_THRESHOLD: usize = 1024;
 const HEAD_TAIL_SIZE: usize = 512;
 
-/// Yields overlapping chunks of text for ML scanning.
-/// For short text (<= `CHUNK_SIZE`), yields a single chunk.
-/// For long text, yields sliding windows + a head+tail chunk.
+/// Overlapping sliding windows plus a head+tail chunk; short text is one chunk.
 #[must_use]
 pub fn chunks(text: &str) -> Vec<&str> {
     if text.len() <= CHUNK_SIZE {
@@ -29,8 +27,7 @@ pub fn chunks(text: &str) -> Vec<&str> {
     result
 }
 
-/// Returns the head and tail joined by a space, or `None` if the text is at most
-/// `HEAD_TAIL_THRESHOLD` (1024) bytes. Catches injection appended at the very end.
+/// Head and tail joined by a space, to catch injection appended at the end.
 #[must_use]
 pub fn head_tail(text: &str) -> Option<String> {
     if text.len() <= HEAD_TAIL_THRESHOLD {
@@ -60,7 +57,6 @@ mod tests {
         let text = "a".repeat(600);
         let c = chunks(&text);
         assert!(c.len() > 1);
-        // Each chunk should be <= CHUNK_SIZE
         for chunk in &c {
             assert!(chunk.len() <= CHUNK_SIZE);
         }
@@ -104,7 +100,6 @@ mod tests {
 
     #[test]
     fn chunks_emoji_at_boundary() {
-        // '🔥' is 4 bytes
         let text = "a".repeat(254) + "🔥" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {

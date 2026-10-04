@@ -10,8 +10,7 @@ pub struct OnnxBackend {
 
 impl OnnxBackend {
     /// # Errors
-    ///
-    /// Returns an error if the ONNX session cannot be loaded.
+    /// Fails if the ONNX session can't be loaded.
     pub fn load(model_path: &str) -> Result<Self> {
         let builder = Session::builder()?;
 

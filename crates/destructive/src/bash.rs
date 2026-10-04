@@ -1,5 +1,3 @@
-//! AST-based bash command analysis for destructive operations.
-
 use std::path::Path;
 
 use tree_sitter::Node;
@@ -8,7 +6,6 @@ use crate::commands::CONFIG;
 use crate::consts;
 use crate::paths;
 
-/// Walk a tree-sitter AST node looking for destructive operations.
 pub(crate) fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     match node.kind() {
         "command" => check_command(node, source, cwd),
@@ -32,7 +29,6 @@ fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 }
 
 fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
-    // user allowlisted this command
     if CONFIG.is_removed_command(cmd_name) {
         return None;
     }
@@ -43,78 +39,65 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
         ));
     }
 
-    // privilege escalation goes first since it wraps other commands
+    // Checked first since it wraps other commands.
     if consts::PRIV_ESC.contains(&cmd_name) {
         return Some(format!(
             "Privilege escalation via '{cmd_name}' - all elevated commands require confirmation"
         ));
     }
 
-    // unconditional filesystem destruction (shred, wipefs, etc.)
     if consts::UNCONDITIONAL_DESTRUCTIVE.contains(&cmd_name) {
         return Some(format!(
             "'{cmd_name}' is a destructive filesystem operation"
         ));
     }
 
-    // disk / mount
     if consts::DISK_COMMANDS.contains(&cmd_name) {
         return Some(format!("'{cmd_name}' modifies disk/mount state"));
     }
 
-    // process / service management
     if let Some(reason) = check_process_service(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // rm / rmdir / unlink: needs path analysis
     if matches!(cmd_name, "rm" | "rmdir" | "unlink") {
         return check_rm(cmd_name, node, source, cwd);
     }
 
-    // mv/cp: taint file protection
     if matches!(cmd_name, "mv" | "cp") {
         if let Some(reason) = check_taint_file_in_args(cmd_name, node, source) {
             return Some(reason);
         }
     }
 
-    // permissions on protected paths
     if matches!(cmd_name, "chmod" | "chown" | "chgrp") {
         return check_permissions(cmd_name, node, source, cwd);
     }
 
-    // package managers
     if let Some(reason) = check_package_manager(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // git destructive ops
     if cmd_name == "git" {
         return check_git(node, source);
     }
 
-    // database / storage
     if let Some(reason) = check_database(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // container / orchestration
     if let Some(reason) = check_container(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // system admin
     if let Some(reason) = check_sysadmin(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // nix
     if let Some(reason) = check_nix(cmd_name, node, source) {
         return Some(reason);
     }
 
-    // docker (needs subcommand inspection)
     if cmd_name == "docker" {
         return check_docker(node, source);
     }
@@ -156,7 +139,6 @@ fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
     node.utf8_text(source).unwrap_or("")
 }
 
-/// Collect all arguments (non-command-name children that are words/strings).
 fn get_args<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut args = Vec::new();
     let mut cursor = node.walk();
@@ -171,20 +153,17 @@ fn get_args<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     args
 }
 
-/// Check if any of the given flags appear in the args list.
-/// Handles combined flags like `-rf` matching both `-r` and `-f`.
+/// Also matches combined short flags (`-rf` has `-r` and `-f`).
 fn has_flag(args: &[&str], flag: &str) -> bool {
     let flag_char =
         flag.strip_prefix('-')
             .and_then(|s| if s.len() == 1 { s.chars().next() } else { None });
 
     for arg in args {
-        // exact match (-r, --force, etc.)
         if *arg == flag {
             return true;
         }
-        // combined short flags: -rf means both -r and -f
-        // cap at 4 chars to avoid matching single-dash long opts like -forward
+        // Length cap avoids single-dash long opts like `-forward`.
         if let Some(fc) = flag_char {
             if let Some(rest) = arg.strip_prefix('-') {
                 let len = rest.len();
@@ -201,7 +180,6 @@ fn has_flag(args: &[&str], flag: &str) -> bool {
     false
 }
 
-/// Extract non-flag arguments (paths, subcommands, etc.)
 fn get_path_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
     args.iter()
         .filter(|a| !a.starts_with('-'))
@@ -245,7 +223,6 @@ fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<St
         ));
     }
 
-    // unquoted args: rejoin and re-parse as a command
     if !words.is_empty() {
         let joined = words.join(" ");
         if let Some(reason) = crate::detect_destructive(&joined, cwd) {
@@ -257,8 +234,6 @@ fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<St
 
     None
 }
-
-// --- category checks ---
 
 const TAINT_FILE: &str = ".parry-tainted";
 
@@ -291,7 +266,7 @@ fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<Stri
 
         let clean = unquote(path);
 
-        // rm -rf . / rm -rf ./: wipes the project dir
+        // `rm -rf .` would wipe the whole project.
         if paths::is_cwd_itself(&clean, cwd) {
             return Some(format!("'{cmd_name}' targets project directory itself"));
         }
@@ -336,7 +311,6 @@ fn check_process_service(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
         return Some(format!("'launchctl {first_arg}' modifies system services"));
     }
 
-    // service <name> <action>
     let service_action = path_args.get(1).copied().unwrap_or("");
     if cmd_name == "service" && consts::SERVICE_DESTRUCTIVE.contains(&service_action) {
         return Some(format!(
@@ -352,14 +326,12 @@ fn check_package_manager(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
     let path_args = get_path_args(&args);
     let first_arg = path_args.first().copied().unwrap_or("");
 
-    // standard package managers
     for &(pm, destructive_subcmds) in consts::PKG_MANAGER_DESTRUCTIVE {
         if cmd_name == pm && destructive_subcmds.contains(&first_arg) {
             return Some(format!("'{cmd_name} {first_arg}' removes packages"));
         }
     }
 
-    // npm: only flag with -g
     if cmd_name == "npm"
         && consts::NPM_GLOBAL_UNINSTALL.contains(&first_arg)
         && has_flag(&args, "-g")
@@ -375,7 +347,6 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
     let path_args = get_path_args(&args);
     let subcmd = path_args.first().copied().unwrap_or("");
 
-    // history rewriting
     if consts::GIT_HISTORY_REWRITE.contains(&subcmd) {
         return Some(format!("'git {subcmd}' rewrites repository history"));
     }
@@ -405,7 +376,6 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
             }
         }
         "checkout" => {
-            // git checkout . or git checkout -- .
             if args.contains(&".") {
                 Some("'git checkout .' discards all unstaged changes".into())
             } else {
@@ -413,7 +383,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
             }
         }
         "restore" => {
-            // only the wildcard form, not specific files
+            // Only the wildcard form, not specific files.
             if path_args.len() == 2 && path_args.get(1).copied() == Some(".") {
                 Some("'git restore .' discards all unstaged changes".into())
             } else {
@@ -443,7 +413,6 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
 }
 
 fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
-    // git push --force / -f (but NOT --force-with-lease)
     let has_force = has_flag(args, "--force") || has_flag(args, "-f");
     let has_force_with_lease = args.iter().any(|a| a.starts_with("--force-with-lease"));
 
@@ -451,13 +420,11 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
         return Some("'git push --force' overwrites remote history".into());
     }
 
-    // git push origin --delete branch
     if has_flag(args, "--delete") {
         return Some("'git push --delete' deletes remote branch".into());
     }
 
-    // git push origin :branch (colon-prefix deletes remote branch)
-    // skip "push" itself: the remote name may be omitted
+    // `:branch` deletes remotely; only `push` is skipped since the remote may be omitted.
     for arg in path_args.iter().skip(1) {
         if arg.starts_with(':') {
             return Some(format!("'git push {arg}' deletes remote branch"));
@@ -645,12 +612,10 @@ fn check_docker(node: Node, source: &[u8]) -> Option<String> {
 fn check_sysadmin(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
 
-    // crontab -r
     if cmd_name == "crontab" && has_flag(&args, "-r") {
         return Some("'crontab -r' removes all scheduled jobs".into());
     }
 
-    // iptables -F / ip6tables -F
     if consts::FIREWALL_COMMANDS.contains(&cmd_name) {
         for flag in consts::FIREWALL_FLUSH_FLAGS {
             if has_flag(&args, flag) {
@@ -659,7 +624,6 @@ fn check_sysadmin(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // nft flush ruleset
     if cmd_name == "nft" {
         let path_args = get_path_args(&args);
         let first_arg = path_args.first().copied().unwrap_or("");
@@ -672,7 +636,6 @@ fn check_sysadmin(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
 }
 
 fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
-    // always destructive
     if consts::NIX_UNCONDITIONAL.contains(&cmd_name) {
         return Some(format!("'{cmd_name}' removes Nix store entries"));
     }
@@ -680,10 +643,9 @@ fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
     let path_args = get_path_args(&args);
 
-    // destructive only with certain subcommands
     for &(cmd, destructive_subcmds) in consts::NIX_DESTRUCTIVE {
         if cmd_name == cmd {
-            // join args for multi-word subcommands like "store gc"
+            // Joined for multi-word subcommands like `store gc`.
             let subcmd_str = path_args.join(" ");
             for subcmd in destructive_subcmds {
                 if subcmd_str.starts_with(subcmd) {
@@ -736,7 +698,6 @@ mod tests {
 
     #[test]
     fn has_flag_rejects_single_dash_long_option() {
-        // -forward should NOT match -f (it's not a combined short flag)
         assert!(!has_flag(&["-forward"], "-f"));
         assert!(!has_flag(&["-format"], "-f"));
     }

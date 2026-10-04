@@ -1,4 +1,4 @@
-//! Candle ML backend
+//! Candle ML backend.
 
 use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
@@ -17,12 +17,7 @@ pub struct CandleBackend {
 
 impl CandleBackend {
     /// # Errors
-    ///
-    /// Returns an error if the safetensors model or config cannot be loaded.
-    ///
-    /// # Safety
-    ///
-    /// Uses memory-mapped safetensors via `VarBuilder::from_mmaped_safetensors`.
+    /// Fails if the safetensors model or config can't be loaded.
     pub fn load(safetensors_path: &str, config_path: &str) -> Result<Self> {
         let device = Device::Cpu;
 

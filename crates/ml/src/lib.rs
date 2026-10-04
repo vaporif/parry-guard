@@ -42,11 +42,8 @@ pub struct Scanner<B: MlBackend> {
 }
 
 impl MlScanner {
-    /// Load the ML scanner with the compile-time selected backend.
-    ///
     /// # Errors
-    ///
-    /// Returns an error if any model cannot be downloaded or loaded.
+    /// Fails if any model can't be downloaded or loaded.
     #[instrument(skip(config))]
     pub fn load(config: &Config) -> Result<Self> {
         let model_defs = config.resolve_models()?;
@@ -92,13 +89,10 @@ impl<B: MlBackend> Scanner<B> {
         Ok(score)
     }
 
-    /// Scan text using chunked strategy. Returns true if injection detected.
-    /// Uses OR ensemble: any model detecting injection returns true.
-    /// Per-model threshold overrides `request_threshold` when set.
+    /// True if any model flags any chunk; per-model thresholds override `request_threshold`.
     ///
     /// # Errors
-    ///
-    /// Returns an error if scoring any chunk fails.
+    /// Fails if scoring any chunk fails.
     #[instrument(skip(self, text), fields(text_len = text.len(), models = self.instances.len()))]
     pub fn scan_chunked(&mut self, text: &str, request_threshold: f32) -> Result<bool> {
         for instance in &mut self.instances {
@@ -242,7 +236,6 @@ mod tests {
 
     #[test]
     fn ensemble_per_model_threshold() {
-        // Per-model threshold overrides request threshold
         let mut scanner = Scanner {
             instances: vec![mock_instance(0.6, Some(0.5), "model-a")],
         };
