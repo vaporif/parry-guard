@@ -1,7 +1,4 @@
-//! Language-specific exfiltration detection using tree-sitter queries.
-//!
-//! Parses interpreter inline code and flags it when it has both network
-//! operations and sensitive file access.
+//! Tree-sitter exfil detection for interpreter inline code.
 
 use tracing::{debug, trace};
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
@@ -9,25 +6,21 @@ use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 use crate::patterns;
 use crate::util::{contains_ip_url, has_sensitive_path};
 
-/// Trait for language-specific exfiltration detection.
+/// Per-language tree-sitter queries.
 pub trait LangExfilDetector: Send + Sync {
-    /// Returns the tree-sitter language for this detector.
+    /// Grammar to parse with.
     fn language(&self) -> Language;
 
-    /// Returns the tree-sitter query pattern for network sink calls.
-    /// Query should capture the call/expression as @call.
+    /// Network sink calls, captured as `@call`.
     fn network_sink_query(&self) -> &'static str;
 
-    /// Returns the tree-sitter query pattern for file source calls.
-    /// Query should capture the call/expression as @call.
+    /// File read calls, captured as `@call`.
     fn file_source_query(&self) -> &'static str;
 
-    /// Returns the tree-sitter query pattern for string literals.
-    /// Query should capture the string as @string.
+    /// String literals, captured as `@string`.
     fn string_literal_query(&self) -> &'static str;
 }
 
-/// Result of analyzing code for exfiltration patterns.
 #[derive(Debug, Default)]
 #[expect(clippy::struct_excessive_bools, reason = "independent detection flags")]
 struct AnalysisResult {
@@ -37,8 +30,7 @@ struct AnalysisResult {
     has_ip_url: bool,
 }
 
-/// Analyze inline code for exfiltration using the given language detector.
-/// `interpreter` is shown in error messages as the actual command.
+/// Returns a reason if `code` exfiltrates; `interpreter` names the command in it.
 pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
     code: &str,
     detector: &L,
@@ -55,7 +47,6 @@ pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
     let tree = parser.parse(code, None)?;
     if tree.root_node().has_error() {
         trace!("parse error, falling back to keyword matching");
-        // parse failed: fall back to keywords
         return None;
     }
 
@@ -110,7 +101,6 @@ pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
         }
     }
 
-    // fire if: network + sensitive file, exfil domain, or raw IP URL
     if result.has_network_sink && result.has_file_source {
         debug!(interpreter, "detected network + sensitive file exfil");
         return Some(format!(

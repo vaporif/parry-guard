@@ -1,8 +1,7 @@
 use parry_guard_destructive::{detect_destructive, is_protected_path};
 use proptest::prelude::*;
 
-/// Shell-ish fragments mixed with arbitrary text, so commands reach the parsers and
-/// detectors instead of failing at the first byte.
+/// Shell-ish tokens plus noise, so inputs get past the parser to the detectors.
 fn shell_like() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         Just("curl".to_string()),
