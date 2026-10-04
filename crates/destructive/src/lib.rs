@@ -1046,11 +1046,80 @@ mod tests {
         assert!(reason.contains(expected), "{reason}");
     }
 
-    #[test]
-    fn gap_xargs_targets_from_pipe() {
-        // Known gap: xargs reads its targets from the upstream stage. Flip the assert once fixed.
+    #[rstest]
+    #[case::echo_into_xargs("echo /etc | xargs rm -rf")]
+    #[case::echo_flags_into_xargs("echo -n /etc | xargs rm -rf")]
+    #[case::printf_into_xargs(r#"printf "/etc\n" | xargs rm -rf"#)]
+    #[case::printf_format_into_xargs(r"printf '%s\n' /etc | xargs rm -rf")]
+    #[case::xargs_replace_string("echo /etc | xargs -I{} rm -rf {}")]
+    #[case::find_into_xargs("find /etc -type f | xargs rm -f")]
+    #[case::find_print0_into_xargs("find /etc -print0 | xargs -0 rm -f")]
+    #[case::find_symlink_option_into_xargs("find -L /etc | xargs rm")]
+    #[case::xargs_mid_pipeline("echo /etc | xargs rm -rf | cat")]
+    #[case::find_delete("find /etc -delete")]
+    #[case::find_delete_with_predicate("find /etc -name '*.conf' -delete")]
+    #[case::find_delete_several_roots("find ./target /etc -delete")]
+    #[case::find_delete_project_root("find . -delete")]
+    #[case::find_delete_default_root("find -delete")]
+    #[case::find_exec_plus("find /etc -exec rm -rf {} +")]
+    #[case::find_exec_semicolon(r"find /etc -type f -exec rm {} \;")]
+    #[case::find_exec_quoted_semicolon("find /etc -exec rm {} ';'")]
+    #[case::find_execdir(r"find /etc -execdir rm {} \;")]
+    #[case::find_ok(r"find /etc -ok rm {} \;")]
+    #[case::find_okdir(r"find /etc -okdir rm {} \;")]
+    #[case::find_exec_project_root("find . -exec rm -rf {} +")]
+    #[case::find_exec_explicit_target(r"find . -name x -exec rm -rf /etc \;")]
+    #[case::find_exec_privilege(r"find . -exec sudo ls \;")]
+    #[case::find_exec_second_action(r"find /etc -exec ls {} \; -exec rm {} \;")]
+    fn pipeline_and_find_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
-        assert_eq!(detect_destructive("echo /etc | xargs rm -rf", cwd), None);
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::echo_project_path_into_xargs("echo ./target | xargs rm -rf")]
+    #[case::echo_into_safe_xargs("echo /etc | xargs ls")]
+    #[case::echo_into_bare_xargs("echo /etc | xargs")]
+    #[case::echo_into_wc("echo /etc | wc -l")]
+    #[case::find_in_project_into_xargs(r#"find . -name "*.o" | xargs rm -f"#)]
+    #[case::find_subdir_into_xargs("find ./target -type f | xargs rm -f")]
+    #[case::find_into_grep("find /etc -type f | xargs grep foo")]
+    #[case::find_delete_in_subdir("find ./target -delete")]
+    #[case::find_delete_with_name(r#"find . -name "*.o" -delete"#)]
+    #[case::find_delete_default_root_with_name(r#"find -name "*.o" -delete"#)]
+    #[case::find_delete_with_depth_and_type("find . -maxdepth 1 -type f -name '*.tmp' -delete")]
+    #[case::find_read_only("find /etc -name passwd")]
+    #[case::find_exec_grep(r"find /etc -exec grep x {} \;")]
+    #[case::find_exec_cat("find /etc -exec cat {} +")]
+    #[case::find_exec_rm_narrowed(r#"find . -name "*.o" -exec rm {} \;"#)]
+    #[case::find_exec_unterminated("find /etc -exec rm")]
+    fn pipeline_and_find_allow_safe(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::pipeline("echo /etc | xargs rm -rf", "'xargs' runs: 'rm' targets '/etc'")]
+    #[case::find_delete("find /etc -delete", "'find -delete' targets '/etc'")]
+    #[case::find_exec("find /etc -exec rm {} +", "'find -exec' runs: 'rm' targets '/etc'")]
+    fn pipeline_and_find_reason(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
+    }
+
+    #[test]
+    fn gap_xargs_targets_from_unknown_stage() {
+        // Known gap: targets printed by a stage we can't evaluate. Flip the assert once fixed.
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert_eq!(detect_destructive("cat list.txt | xargs rm -rf", cwd), None);
     }
 }
