@@ -146,3 +146,36 @@ pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
         0,
     ),
 ];
+
+/// `find` actions that run a command per match, ended by `;` or `+`.
+pub(crate) const FIND_EXEC_ACTIONS: &[&str] = &["-exec", "-execdir", "-ok", "-okdir"];
+
+/// `find` arguments that don't narrow which files match: options, operators, output actions.
+pub(crate) const FIND_NON_TESTS: &[&str] = &[
+    "-delete",
+    "-depth",
+    "-d",
+    "-maxdepth",
+    "-mindepth",
+    "-xdev",
+    "-mount",
+    "-follow",
+    "-noleaf",
+    "-ignore_readdir_race",
+    "-regextype",
+    "-true",
+    "-print",
+    "-print0",
+    "-printf",
+    "-fprint",
+    "-fprint0",
+    "-fprintf",
+    "-ls",
+    "-fls",
+    "-a",
+    "-and",
+    "-not",
+];
+
+/// `find` operators that make a later action run on files the earlier tests rejected.
+pub(crate) const FIND_OR: &[&str] = &["-o", "-or", ","];

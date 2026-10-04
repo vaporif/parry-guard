@@ -9,6 +9,7 @@ use crate::paths;
 pub(crate) fn check_node(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     match node.kind() {
         "command" => check_command(node, source, cwd),
+        "pipeline" => check_pipeline(node, source, cwd),
         _ => check_children(node, source, cwd),
     }
 }
@@ -19,6 +20,149 @@ fn check_children(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         .children(&mut cursor)
         .find_map(|child| check_node(child, source, cwd));
     reason
+}
+
+/// `xargs` turns what the previous stage prints into arguments, so when that
+/// output is known (`echo`, `printf`, `find`) it is checked as part of the command.
+fn check_pipeline(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    let stages: Vec<Node> = node.named_children(&mut cursor).collect();
+    let reason = stages.windows(2).find_map(|pair| {
+        let [upstream, stage] = pair else {
+            return None;
+        };
+        if !matches!(get_command_name(*stage, source), Some(CommandName::Static(name)) if name == "xargs")
+        {
+            return None;
+        }
+        // TODO: output of any other stage (`cat list | xargs rm`) is unknown, so it's allowed.
+        let input = stage_output(*upstream, source, cwd)?;
+        check_wrapper("xargs", *stage, source, cwd, &input)
+    });
+    reason.or_else(|| check_children(node, source, cwd))
+}
+
+/// Words a pipeline stage prints, when they can be known without running it.
+fn stage_output(node: Node, source: &[u8], cwd: &str) -> Option<Vec<String>> {
+    let Some(CommandName::Static(name)) = get_command_name(node, source) else {
+        return None;
+    };
+    let args = arguments(node, source);
+    match name.as_str() {
+        "echo" => Some(
+            args.iter()
+                .filter(|arg| !arg.starts_with('-'))
+                .map(|arg| unquote(arg))
+                .collect(),
+        ),
+        // keep `\n` as a separator instead of letting unquote turn it into `n`
+        "printf" => Some(
+            args.iter()
+                .flat_map(|arg| {
+                    arg.trim_matches(['"', '\''])
+                        .replace("\\n", " ")
+                        .split_whitespace()
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .collect(),
+        ),
+        "find" => Some(find_targets(&parse_find(node, source), cwd)),
+        _ => None,
+    }
+}
+
+/// What a `find` command searches and what it does with each match.
+struct FindCommand<'a> {
+    roots: Vec<String>,
+    /// `(action, command words)` for `-exec`, `-execdir`, `-ok` and `-okdir`.
+    actions: Vec<(&'a str, Vec<&'a str>)>,
+    deletes: bool,
+    /// A test such as `-name` limits the matches, so a root isn't wiped wholesale.
+    narrowed: bool,
+}
+
+fn parse_find<'a>(node: Node, source: &'a [u8]) -> FindCommand<'a> {
+    let args = arguments(node, source);
+    let mut rest = args
+        .iter()
+        .copied()
+        .skip_while(|arg| matches!(*arg, "-H" | "-L" | "-P"))
+        .peekable();
+    let mut roots = Vec::new();
+    while let Some(root) = rest.next_if(|arg| !arg.starts_with(['-', '(', '!'])) {
+        roots.push(unquote(root));
+    }
+    if roots.is_empty() {
+        roots.push(".".to_owned());
+    }
+
+    let mut find = FindCommand {
+        roots,
+        actions: Vec::new(),
+        deletes: false,
+        narrowed: false,
+    };
+    let mut has_or = false;
+    while let Some(arg) = rest.next() {
+        if arg == "-delete" {
+            find.deletes = true;
+        } else if consts::FIND_EXEC_ACTIONS.contains(&arg) {
+            let mut command = Vec::new();
+            let terminated = rest.by_ref().any(|word| {
+                let end = matches!(unquote(word).as_str(), ";" | "+");
+                if !end {
+                    command.push(word);
+                }
+                end
+            });
+            // find refuses to run an unterminated action
+            if terminated {
+                find.actions.push((arg, command));
+            }
+        } else if consts::FIND_OR.contains(&arg) {
+            has_or = true;
+        } else if arg.starts_with('-') && !consts::FIND_NON_TESTS.contains(&arg) {
+            find.narrowed = true;
+        }
+    }
+    find.narrowed &= !has_or;
+    find
+}
+
+/// Paths a `find` action may touch. A narrowed search drops the project root,
+/// so `find . -name '*.o' -delete` stays allowed while `find . -delete` doesn't.
+fn find_targets(find: &FindCommand, cwd: &str) -> Vec<String> {
+    find.roots
+        .iter()
+        .filter(|root| !(find.narrowed && paths::is_cwd_itself(root, cwd)))
+        .cloned()
+        .collect()
+}
+
+fn check_find(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let find = parse_find(node, source);
+    let targets = find_targets(&find, cwd);
+    if find.deletes {
+        if let Some(reason) = check_rm_paths("find -delete", &targets, cwd) {
+            return Some(reason);
+        }
+    }
+    find.actions.iter().find_map(|(action, words)| {
+        let command = words
+            .iter()
+            .map(|word| {
+                if unquote(word) == "{}" {
+                    targets.join(" ")
+                } else {
+                    (*word).to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        crate::detect_destructive(&command, cwd)
+            .map(|reason| format!("'find {action}' runs: {reason}"))
+    })
 }
 
 /// Always walks nested children so a harmless outer command cannot hide `$(rm -rf /)`.
@@ -38,7 +182,15 @@ fn check_dynamic_command(name: &str, node: Node, source: &[u8], cwd: &str) -> Op
 
 /// Check what a wrapper such as `env` or `xargs` runs: skip the wrapper's own
 /// options, then parse the rest of the line as a command of its own.
-fn check_wrapper(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
+///
+/// `input` holds words piped into `xargs`, which it appends to the command.
+fn check_wrapper(
+    cmd_name: &str,
+    node: Node,
+    source: &[u8],
+    cwd: &str,
+    input: &[String],
+) -> Option<String> {
     let &(_, value_options, operands) = consts::COMMAND_WRAPPERS
         .iter()
         .find(|(name, ..)| *name == cmd_name)?;
@@ -99,6 +251,10 @@ fn check_wrapper(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option
                 inner.push_str(&unquote(words.trim()));
             }
         }
+        for word in input {
+            inner.push(' ');
+            inner.push_str(word);
+        }
     }
 
     crate::detect_destructive(&inner, cwd).map(|reason| format!("'{cmd_name}' runs: {reason}"))
@@ -122,7 +278,7 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
         ));
     }
 
-    if let Some(reason) = check_wrapper(cmd_name, node, source, cwd) {
+    if let Some(reason) = check_wrapper(cmd_name, node, source, cwd, &[]) {
         return Some(reason);
     }
 
@@ -138,6 +294,10 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
 
     if let Some(reason) = check_process_service(cmd_name, node, source) {
         return Some(reason);
+    }
+
+    if cmd_name == "find" {
+        return check_find(node, source, cwd);
     }
 
     if matches!(cmd_name, "rm" | "rmdir" | "unlink") {
@@ -232,6 +392,15 @@ fn unquote(s: &str) -> String {
         }
     }
     out
+}
+
+fn arguments<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut cursor = node.walk();
+    let args = node
+        .children_by_field_name("argument", &mut cursor)
+        .map(|arg| node_text(arg, source))
+        .collect();
+    args
 }
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -356,9 +525,11 @@ fn check_taint_file_in_args(cmd_name: &str, node: Node, source: &[u8]) -> Option
 
 fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let args = get_args(node, source);
-    let path_args = get_path_args(&args);
+    check_rm_paths(cmd_name, &get_path_args(&args), cwd)
+}
 
-    for path in &path_args {
+fn check_rm_paths<S: AsRef<str>>(cmd_name: &str, paths: &[S], cwd: &str) -> Option<String> {
+    for path in paths.iter().map(AsRef::as_ref) {
         if is_taint_file(path) {
             return Some(taint_file_reason(cmd_name));
         }
