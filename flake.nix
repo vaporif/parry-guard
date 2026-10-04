@@ -75,7 +75,6 @@
         "aarch64-darwin"
       ];
 
-      # Candle
       candleArgs =
         commonArgs
         // {
@@ -88,7 +87,6 @@
           inherit meta;
         });
 
-      # ONNX
       onnxArgs =
         commonArgs
         // {
@@ -114,7 +112,6 @@
           inherit meta;
         };
 
-      # Dev shell toolchain, plus cross targets
       devToolchain = let
         withTargets = targets:
           fenixPkgs.combine (map (c: rust.${c}) rustToolchain.components ++ map targetStd targets);

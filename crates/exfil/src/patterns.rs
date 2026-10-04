@@ -1,6 +1,4 @@
-//! Pattern matching for sensitive paths and exfil domains.
-//!
-//! Supports configuration overrides via `<config dir>/parry-guard/patterns.toml`.
+//! Sensitive path and exfil domain patterns, overridable via `<config dir>/parry-guard/patterns.toml`.
 
 use std::sync::LazyLock;
 
@@ -8,18 +6,16 @@ use regex::Regex;
 use serde::Deserialize;
 use tracing::{trace, warn};
 
-/// How a pattern should be matched.
+/// How a pattern matches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchKind {
-    /// Match as a path segment (between `/` or at boundaries).
-    /// Example: `".env"` matches `/home/user/.env` but not `.environment`.
+    /// Whole path segment: `.env` matches `/home/user/.env`, not `.environment`.
     #[default]
     PathSegment,
-    /// Match as a filename suffix (extension check).
-    /// Example: `"_rsa"` matches `id_rsa` but not `rsa_util`.
+    /// Suffix: `/id_rsa` matches `~/.ssh/id_rsa`, not `id_rsa_backup`.
     Suffix,
-    /// Match anywhere as substring (use sparingly: high false positive risk).
+    /// Anywhere in the text (high false positive risk).
     Substring,
 }
 
@@ -50,7 +46,7 @@ impl Pattern {
         Self::new(value, MatchKind::Substring)
     }
 
-    /// Check if this pattern matches the given text.
+    /// Case-insensitive match against `text`.
     #[must_use]
     pub fn matches(&self, text: &str) -> bool {
         let lower = text.to_lowercase();
@@ -79,7 +75,7 @@ impl Pattern {
         self.matches_in_quoted_string(text)
     }
 
-    /// Check if pattern appears at a word boundary (for code like `open('.env')`).
+    /// Word-boundary match, for code like `open('.env')`.
     fn matches_in_quoted_string(&self, text: &str) -> bool {
         let boundary_chars = |c: char| -> bool {
             c.is_whitespace()
@@ -115,7 +111,7 @@ impl Pattern {
                 return true;
             }
 
-            // step past one whole char so the next slice starts on a char boundary
+            // advance a whole char to stay on a UTF-8 boundary
             pos = abs_idx + self.lower.chars().next().map_or(1, char::len_utf8);
         }
 
@@ -123,7 +119,7 @@ impl Pattern {
     }
 }
 
-/// Configuration for pattern overrides.
+/// User overrides from `patterns.toml`.
 #[derive(Debug, Default, Deserialize)]
 pub struct PatternConfig {
     #[serde(default)]
@@ -156,7 +152,7 @@ pub struct ListOverrides {
 }
 
 impl PatternConfig {
-    /// Load configuration from the default path.
+    /// Missing or invalid config yields defaults.
     #[must_use]
     pub fn load() -> Self {
         Self::load_from_path(Self::default_path())
@@ -189,7 +185,7 @@ impl PatternConfig {
 /// Built-in sensitive path patterns.
 static DEFAULT_SENSITIVE_PATHS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
     vec![
-        // Environment files (path segment match)
+        // Environment files
         Pattern::path_segment(".env"),
         Pattern::path_segment(".envrc"),
         // Shell config
@@ -230,7 +226,7 @@ static DEFAULT_SENSITIVE_PATHS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
         Pattern::path_segment(".netrc"),
         Pattern::path_segment(".curlrc"),
         Pattern::path_segment(".wgetrc"),
-        // System files (use substring - these are explicit absolute paths)
+        // System files (absolute paths, so substring)
         Pattern::substring("/etc/passwd"),
         Pattern::substring("/etc/shadow"),
         Pattern::substring("/etc/sudoers"),
@@ -252,7 +248,7 @@ static DEFAULT_SENSITIVE_PATHS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
 /// Built-in exfil domains.
 static DEFAULT_EXFIL_DOMAINS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     vec![
-        // Request catchers (commonly used for exfil)
+        // Request catchers
         "webhook.site",
         "requestbin.com",
         "requestcatcher.com",
@@ -308,14 +304,14 @@ pub struct CompiledPatterns {
 }
 
 impl CompiledPatterns {
-    /// Load patterns with configuration overrides.
+    /// Defaults with user config overrides applied.
     #[must_use]
     pub fn load() -> Self {
         let config = PatternConfig::load();
         Self::from_config(&config)
     }
 
-    /// Create from explicit config (useful for testing).
+    /// Builds from an explicit config.
     #[must_use]
     pub fn from_config(config: &PatternConfig) -> Self {
         let mut sensitive_paths: Vec<Pattern> = DEFAULT_SENSITIVE_PATHS
@@ -375,23 +371,23 @@ impl CompiledPatterns {
         Regex::new(&pattern).expect("valid regex")
     }
 
-    /// Check if text contains a sensitive path.
+    /// Whether `text` contains a sensitive path.
     #[must_use]
     pub fn has_sensitive_path(&self, text: &str) -> bool {
         self.sensitive_paths.iter().any(|p| p.matches(text))
     }
 
-    /// Check if text contains an exfil domain.
+    /// Whether `text` contains an exfil domain.
     #[must_use]
     pub fn has_exfil_domain(&self, text: &str) -> bool {
         self.exfil_regex.is_match(text)
     }
 }
 
-/// Global compiled patterns (loaded once).
+/// Global patterns, loaded once.
 pub static PATTERNS: LazyLock<CompiledPatterns> = LazyLock::new(CompiledPatterns::load);
 
-/// Check if text contains a sensitive path (convenience function).
+/// [`CompiledPatterns::has_sensitive_path`] on the global [`PATTERNS`].
 pub fn has_sensitive_path(text: &str) -> bool {
     let matched = PATTERNS.has_sensitive_path(text);
     if matched {
@@ -400,7 +396,7 @@ pub fn has_sensitive_path(text: &str) -> bool {
     matched
 }
 
-/// Check if text contains an exfil domain (convenience function).
+/// [`CompiledPatterns::has_exfil_domain`] on the global [`PATTERNS`].
 pub fn has_exfil_domain(text: &str) -> bool {
     let matched = PATTERNS.has_exfil_domain(text);
     if matched {
@@ -436,7 +432,7 @@ mod tests {
     fn path_segment_rejects_substring() {
         let p = Pattern::path_segment(".env");
         assert!(!p.matches(".environment"));
-        assert!(!p.matches("/path/.env.local")); // Different segment
+        assert!(!p.matches("/path/.env.local"));
         assert!(!p.matches("myenv"));
     }
 
@@ -467,7 +463,7 @@ mod tests {
         let p = Pattern::substring("secret");
         assert!(p.matches("my_secret_key"));
         assert!(p.matches("/path/secrets/file"));
-        assert!(p.matches("SECRET")); // case insensitive
+        assert!(p.matches("SECRET"));
     }
 
     #[test]
@@ -510,7 +506,6 @@ mod tests {
 
     #[test]
     fn rejects_partial_domain_match() {
-        // Should not match if domain is substring of larger domain
         assert!(!has_exfil_domain("https://notwebhook.site.com/"));
         assert!(!has_exfil_domain("https://mypastebin.com/"));
     }

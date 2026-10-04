@@ -1,10 +1,8 @@
-# Custom model configuration for parry
-# Place at ~/.config/parry/models.toml
-# Used when --scan-mode=custom (or PARRY_SCAN_MODE=custom)
+# Custom models: place at ~/.config/parry/models.toml, used with --scan-mode=custom (PARRY_SCAN_MODE=custom)
 
 [[models]]
 repo = "ProtectAI/deberta-v3-small-prompt-injection-v2"
-# threshold = 0.7  # Optional: falls back to global --threshold
+# threshold = 0.7  # optional, defaults to --threshold
 
 [[models]]
 repo = "meta-llama/Llama-Prompt-Guard-2-86M"

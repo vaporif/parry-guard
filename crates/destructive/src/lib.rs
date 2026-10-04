@@ -1,7 +1,4 @@
-//! AST-based destructive operation detection.
-//!
-//! Detects potentially destructive system operations in bash commands
-//! and checks file paths against protected system locations.
+//! AST-based detection of destructive bash commands and protected file paths.
 
 use std::sync::Mutex;
 
@@ -13,13 +10,10 @@ pub mod commands;
 mod consts;
 mod paths;
 
-/// Mutex to serialize tree-sitter parser creation (C runtime is not thread-safe during init).
+/// Tree-sitter's C runtime is not thread-safe during parser init.
 static PARSER_LOCK: Mutex<()> = Mutex::new(());
 
-/// Parse a bash command into a tree-sitter AST.
-///
-/// Returns `Err` if the parser mutex is poisoned (fail-closed).
-/// Returns `Ok(None)` if parsing fails or the AST contains errors (fail-open for unparsable input).
+/// `Err` on poisoned mutex or AST errors (fail-closed); `Ok(None)` if the parser itself fails.
 fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     let tree = {
         let _guard = PARSER_LOCK.lock().map_err(|e| {
@@ -49,10 +43,7 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
     }
 }
 
-/// Check if a Bash command contains destructive operations.
-///
-/// Returns a human-readable reason on match. `cwd` is resolved by the caller
-/// (from `HookInput.cwd` or `std::env::current_dir()`).
+/// Reason if `command` is destructive; `cwd` is resolved by the caller.
 #[must_use]
 #[instrument(skip(command), fields(command_len = command.len()))]
 pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
@@ -70,9 +61,7 @@ pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
     result
 }
 
-/// Check if a file path targets a protected location.
-///
-/// CWD and subdirectories are excluded. `cwd` is resolved by the caller.
+/// Reason if `path` is protected; CWD and its subdirectories are exempt.
 #[must_use]
 pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
     paths::check_protected(path, cwd)
@@ -107,7 +96,6 @@ mod tests {
     fn rm_rf_target_within_cwd_allowed() {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_str().unwrap();
-        // Create a target dir inside cwd
         let target = dir.path().join("target");
         std::fs::create_dir(&target).unwrap();
         let target_str = target.to_str().unwrap();
@@ -975,5 +963,86 @@ mod tests {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("eval rm -rf /", cwd).is_some());
+    }
+
+    #[rstest]
+    #[case::substitution_name("$(echo rm) -rf /etc")]
+    #[case::backtick_name("`echo rm` -rf /etc")]
+    #[case::double_quoted_name(r#""rm" -rf /etc"#)]
+    #[case::single_quoted_name("'rm' -rf /etc")]
+    #[case::escaped_name(r"\rm -rf /etc")]
+    #[case::split_raw_string_name("r''m -rf /etc")]
+    #[case::split_string_name(r#"r"m" -rf /etc"#)]
+    #[case::variable_name("X=rm; $X -rf /etc")]
+    #[case::default_expansion_name("${X:-rm} -rf /etc")]
+    #[case::command_wrapper("command rm -rf /etc")]
+    #[case::env_wrapper("env rm -rf /etc")]
+    #[case::env_with_flags_and_vars("env -i FOO=1 rm -rf /etc")]
+    #[case::env_split_string(r#"env -S "rm -rf /etc""#)]
+    #[case::nice_wrapper("nice -n 5 rm -rf /etc")]
+    #[case::nohup_wrapper("nohup rm -rf /etc")]
+    #[case::exec_wrapper("exec rm -rf /etc")]
+    #[case::time_wrapper("time rm -rf /etc")]
+    #[case::timeout_wrapper("timeout 5 rm -rf /etc")]
+    #[case::timeout_with_signal("timeout -s KILL 5 rm -rf /etc")]
+    #[case::stdbuf_wrapper("stdbuf -oL rm -rf /etc")]
+    #[case::xargs_with_args("xargs rm -rf /etc")]
+    #[case::xargs_herestring("xargs rm -rf <<< /etc")]
+    #[case::xargs_with_flags("xargs -n 1 -P 4 rm -rf <<< /etc")]
+    #[case::nested_wrappers("nohup nice env rm -rf /etc")]
+    #[case::wrapped_kill("env kill 1")]
+    #[case::wrapped_sudo("nohup sudo ls")]
+    fn obfuscated_command_name_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::editor_variable("$EDITOR README.md")]
+    #[case::all_args(r#""$@""#)]
+    #[case::default_interpreter("${PYTHON:-python3} build.py")]
+    #[case::which_substitution("$(which python3) script.py")]
+    #[case::dynamic_name_in_cwd("$X -rf ./target")]
+    #[case::quoted_name_in_cwd(r#""rm" -rf ./target"#)]
+    #[case::env_vars("env FOO=1 cargo test")]
+    #[case::env_unset("env -u HOME ls")]
+    #[case::env_alone("env")]
+    #[case::nice_build("nice -n 5 cargo build")]
+    #[case::timeout_test("timeout 5 cargo test")]
+    #[case::time_build("time cargo build")]
+    #[case::xargs_grep("xargs grep foo")]
+    #[case::xargs_rm_in_cwd("xargs rm -rf <<< ./target")]
+    #[case::env_rm_in_cwd("env rm -rf ./target")]
+    #[case::command_lookup("command -v rm")]
+    #[case::command_describe("command -V rm")]
+    #[case::exec_shell("exec bash")]
+    fn obfuscation_guard_allows_safe(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
+    #[case::wrapper("env rm -rf /etc", "'env' runs: 'rm' targets '/etc'")]
+    #[case::dynamic("$(echo rm) -rf /etc", "'$(echo rm)' is resolved at runtime")]
+    #[case::quoted(r#""rm" -rf /etc"#, "'rm' targets '/etc'")]
+    fn obfuscated_reason_names_the_operation(#[case] command: &str, #[case] expected: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd).unwrap();
+        assert!(reason.contains(expected), "{reason}");
+    }
+
+    #[test]
+    fn gap_xargs_targets_from_pipe() {
+        // Known gap, flip the assert once fixed. Bypass: xargs reads its targets from the upstream stage
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert_eq!(detect_destructive("echo /etc | xargs rm -rf", cwd), None);
     }
 }
