@@ -452,6 +452,20 @@ fn get_path_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Positional arguments after the tool's global options, so `git -C dir push`
+/// starts with `push`. `--opt=value` is a single flag word and needs no skipping.
+fn subcommand_args<'a>(cmd_name: &str, args: &[&'a str]) -> Vec<&'a str> {
+    let value_options = consts::GLOBAL_VALUE_OPTIONS
+        .iter()
+        .find(|(name, _)| *name == cmd_name)
+        .map_or(&[][..], |&(_, options)| options);
+    let mut start = 0;
+    while let Some(arg) = args.get(start).filter(|arg| arg.starts_with('-')) {
+        start += if value_options.contains(arg) { 2 } else { 1 };
+    }
+    get_path_args(args.get(start..).unwrap_or_default())
+}
+
 fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let mut has_variable = false;
     let mut words = Vec::new();
@@ -611,7 +625,7 @@ fn check_package_manager(cmd_name: &str, node: Node, source: &[u8]) -> Option<St
 
 fn check_git(node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
-    let path_args = get_path_args(&args);
+    let path_args = subcommand_args("git", &args);
     let subcmd = path_args.first().copied().unwrap_or("");
 
     if consts::GIT_HISTORY_REWRITE.contains(&subcmd) {
@@ -643,7 +657,7 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
             }
         }
         "checkout" => {
-            if args.contains(&".") {
+            if path_args.contains(&".") {
                 Some("'git checkout .' discards all unstaged changes".into())
             } else {
                 None
@@ -742,7 +756,7 @@ fn check_database(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
         return check_redis(&args);
     }
 
-    let path_args = get_path_args(&args);
+    let path_args = subcommand_args(cmd_name, &args);
     let first_arg = path_args.first().copied().unwrap_or("");
 
     if cmd_name == "ldb" && consts::LDB_DESTRUCTIVE.contains(&first_arg) {
@@ -835,7 +849,7 @@ fn check_etcdctl(first_arg: &str, args: &[&str]) -> Option<String> {
 
 fn check_container(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
-    let path_args = get_path_args(&args);
+    let path_args = subcommand_args(cmd_name, &args);
     let first_arg = path_args.first().copied().unwrap_or("");
 
     for &(cmd, destructive_subcmds) in consts::CONTAINER_DESTRUCTIVE {
@@ -851,7 +865,7 @@ fn check_container(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> 
 
 fn check_docker(node: Node, source: &[u8]) -> Option<String> {
     let args = get_args(node, source);
-    let path_args = get_path_args(&args);
+    let path_args = subcommand_args("docker", &args);
     let first_arg = path_args.first().copied().unwrap_or("");
 
     match first_arg {

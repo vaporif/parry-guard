@@ -66,6 +66,40 @@ pub(crate) const CONTAINER_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("helm", &["uninstall"]),
 ];
 
+/// Global options taking a value that may come before the subcommand: `git -C dir push`.
+pub(crate) const GLOBAL_VALUE_OPTIONS: &[(&str, &[&str])] = &[
+    (
+        "git",
+        &[
+            "-C",
+            "-c",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "--exec-path",
+        ],
+    ),
+    (
+        "kubectl",
+        &[
+            "-n",
+            "--namespace",
+            "--context",
+            "--cluster",
+            "--kubeconfig",
+            "-s",
+            "--server",
+            "--user",
+        ],
+    ),
+    (
+        "helm",
+        &["-n", "--namespace", "--kube-context", "--kubeconfig"],
+    ),
+    ("docker", &["-H", "--host", "-c", "--context", "--config"]),
+    ("celery", &["-A", "--app", "-b", "--broker"]),
+];
+
 pub(crate) const FIREWALL_COMMANDS: &[&str] = &["iptables", "ip6tables"];
 pub(crate) const FIREWALL_FLUSH_FLAGS: &[&str] = &["-F", "--flush"];
 
@@ -96,6 +130,7 @@ pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
 
 /// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
 pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
+    ("builtin", &[], 0),
     ("command", &[], 0),
     ("exec", &["-a"], 0),
     ("env", &["-u", "--unset", "-C", "--chdir"], 0),

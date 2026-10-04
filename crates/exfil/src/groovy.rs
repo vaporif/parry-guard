@@ -18,13 +18,6 @@ impl LangExfilDetector for GroovyDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(getText|readLines|eachLine|newReader|File|FileReader|FileInputStream)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string_literal) @string

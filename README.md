@@ -267,6 +267,20 @@ Use `fast` for interactive work. Use `full` for high security or batch scans (`p
 Custom patterns go in `parry-guard/patterns.toml` under your config dir: `~/.config` on Linux, `~/Library/Application Support` on macOS. You can add or remove sensitive paths, exfil domains, and secret patterns.
 Custom models go in `parry-guard/models.toml` in the same dir and are used with `--scan-mode custom`. See `examples/models.toml`.
 
+`patterns.toml` also tunes destructive-command detection:
+
+```toml
+[destructive_paths]
+add = ["~/work/shared/"]   # extra protected path prefixes (Write/Edit, chmod/chown)
+remove = ["~/.cargo/"]     # stop protecting these prefixes
+
+[destructive_commands]
+add = ["terraform"]        # always ask before running these
+remove = ["kill"]          # never flag these
+```
+
+`destructive_paths.remove` also unprotects built-in prefixes. For example, `remove = ["~/.cargo/"]` lets Write, Edit and `chmod` touch `~/.cargo/` without asking. `rm` outside the project still asks. Remove a prefix only if you trust every agent session with it. The file is only read from your user config dir, never from the project, so a repository can't ship its own overrides.
+
 <details>
 <summary><h2>ML backends</h2></summary>
 

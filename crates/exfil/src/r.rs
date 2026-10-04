@@ -18,13 +18,6 @@ impl LangExfilDetector for RDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(readLines|read\\.csv|read\\.table|readRDS|scan|file)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string) @string

@@ -1,6 +1,7 @@
 //! Daemon server.
 
 use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,19 +18,33 @@ const MAX_ML_RETRIES: u8 = 3;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const ML_LOAD_TIMEOUT: Duration = Duration::from_mins(2);
 
-enum MlState {
+/// `S` is the scanner; tests use a stand-in so no model is needed.
+enum MlState<S = MlScanner> {
     NotLoaded,
-    Loaded(MlScanner),
+    /// A load thread is running. Requests wait on its result instead of starting another.
+    Loading {
+        result: Receiver<Option<S>>,
+        attempt: u8,
+        timeouts: u8,
+    },
+    Loaded(S),
     Failed(u8),
 }
 
-impl MlState {
-    /// Return the scanner, loading it first unless it already failed `MAX_ML_RETRIES` times.
-    fn get_or_load(&mut self, load: impl FnOnce() -> Option<MlScanner>) -> Option<&mut MlScanner> {
+impl<S> MlState<S> {
+    /// Return the scanner, starting a load unless one is running or `MAX_ML_RETRIES` failed.
+    ///
+    /// A load still running after `timeout` keeps going. Later requests wait on it
+    /// again, `MAX_ML_RETRIES` times at most, then only check whether it has finished.
+    fn get_or_load(
+        &mut self,
+        start_load: impl FnOnce() -> Receiver<Option<S>>,
+        timeout: Duration,
+    ) -> Option<&mut S> {
         let attempt = match *self {
             Self::NotLoaded => Some(0),
             Self::Failed(n) if n < MAX_ML_RETRIES => Some(n),
-            Self::Loaded(_) | Self::Failed(_) => None,
+            Self::Loading { .. } | Self::Loaded(_) | Self::Failed(_) => None,
         };
         if let Some(attempt) = attempt {
             info!(
@@ -37,24 +52,51 @@ impl MlState {
                 max = MAX_ML_RETRIES,
                 "loading ML model"
             );
-            *self = load().map_or_else(
-                || {
+            *self = Self::Loading {
+                result: start_load(),
+                attempt,
+                timeouts: 0,
+            };
+        }
+        if let Self::Loading {
+            result,
+            attempt,
+            timeouts,
+        } = self
+        {
+            let received = if *timeouts < MAX_ML_RETRIES {
+                result.recv_timeout(timeout)
+            } else {
+                result.try_recv().map_err(|e| match e {
+                    TryRecvError::Empty => RecvTimeoutError::Timeout,
+                    TryRecvError::Disconnected => RecvTimeoutError::Disconnected,
+                })
+            };
+            match received {
+                Ok(Some(scanner)) => {
+                    info!(ml = "loaded", "ML model ready");
+                    *self = Self::Loaded(scanner);
+                }
+                Ok(None) | Err(RecvTimeoutError::Disconnected) => {
                     warn!(
-                        attempt = attempt + 1,
+                        attempt = *attempt + 1,
                         max = MAX_ML_RETRIES,
                         "ML model failed to load, scans will fail-close"
                     );
-                    Self::Failed(attempt + 1)
-                },
-                |scanner| {
-                    info!(ml = "loaded", "ML model ready");
-                    Self::Loaded(scanner)
-                },
-            );
+                    *self = Self::Failed(*attempt + 1);
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    *timeouts = timeouts.saturating_add(1);
+                    warn!(
+                        waited_secs = timeout.as_secs(),
+                        "ML model still loading, scans will fail-close until it is ready"
+                    );
+                }
+            }
         }
         match self {
             Self::Loaded(scanner) => Some(scanner),
-            Self::NotLoaded | Self::Failed(_) => None,
+            Self::NotLoaded | Self::Loading { .. } | Self::Failed(_) => None,
         }
     }
 }
@@ -172,40 +214,30 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     Ok(())
 }
 
-/// On timeout the background thread keeps running. `MlState::Failed`
-/// stops concurrent loads from piling up.
-fn load_ml_scanner(config: &Config) -> Option<MlScanner> {
+/// Load the scanner on a thread of its own and hand back the result channel.
+/// The thread outlives any wait on it, so a slow load can still finish.
+fn spawn_ml_load(config: &Config) -> Receiver<Option<MlScanner>> {
     let config = config.clone();
     let (tx, rx) = std::sync::mpsc::channel();
 
     std::thread::spawn(move || {
         let result =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| MlScanner::load(&config)));
-        let _ = tx.send(result);
+        let scanner = match result {
+            Ok(Ok(scanner)) => Some(scanner),
+            Ok(Err(e)) => {
+                warn!(%e, "ML scanner failed to load");
+                None
+            }
+            Err(_) => {
+                warn!("ML scanner panicked during load");
+                None
+            }
+        };
+        let _ = tx.send(scanner);
     });
 
-    match rx.recv_timeout(ML_LOAD_TIMEOUT) {
-        Ok(Ok(Ok(scanner))) => Some(scanner),
-        Ok(Ok(Err(e))) => {
-            warn!(%e, "ML scanner failed to load");
-            None
-        }
-        Ok(Err(_)) => {
-            warn!("ML scanner panicked during load");
-            None
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            warn!(
-                "ML scanner load timed out after {}s",
-                ML_LOAD_TIMEOUT.as_secs()
-            );
-            None
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            warn!("ML scanner load thread terminated unexpectedly");
-            None
-        }
-    }
+    rx
 }
 
 async fn handle_connection(
@@ -232,7 +264,7 @@ async fn handle_connection(
     let resp = match req.scan_type {
         ScanType::Ping => ScanResponse::Pong,
         ScanType::Full => {
-            let scanner = ml_state.get_or_load(|| load_ml_scanner(config));
+            let scanner = ml_state.get_or_load(|| spawn_ml_load(config), ML_LOAD_TIMEOUT);
             handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
@@ -338,22 +370,91 @@ mod tests {
         (guard, pid_path, sock)
     }
 
+    const SHORT_WAIT: Duration = Duration::from_millis(10);
+
+    fn finished_load(scanner: Option<u8>) -> Receiver<Option<u8>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(scanner).unwrap();
+        rx
+    }
+
     #[test]
     fn ml_load_gives_up_after_max_retries() {
         // a subscriber makes the log fields evaluate, so they're covered
         let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
         let _guard = tracing::subscriber::set_default(subscriber);
-        let mut state = MlState::NotLoaded;
+        let mut state = MlState::<u8>::NotLoaded;
         let mut loads = 0;
         for _ in 0..MAX_ML_RETRIES + 2 {
-            let scanner = state.get_or_load(|| {
-                loads += 1;
-                None
-            });
+            let scanner = state.get_or_load(
+                || {
+                    loads += 1;
+                    finished_load(None)
+                },
+                SHORT_WAIT,
+            );
             assert!(scanner.is_none());
         }
         assert_eq!(loads, MAX_ML_RETRIES);
         assert!(matches!(state, MlState::Failed(MAX_ML_RETRIES)));
+    }
+
+    #[test]
+    fn slow_load_is_awaited_not_restarted() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut pending = Some(rx);
+        let mut loads = 0;
+        let mut state = MlState::<u8>::NotLoaded;
+        for _ in 0..2 {
+            let scanner = state.get_or_load(
+                || {
+                    loads += 1;
+                    pending.take().unwrap()
+                },
+                SHORT_WAIT,
+            );
+            assert_eq!(scanner, None, "the load has not finished yet");
+        }
+        assert_eq!(loads, 1, "a timed-out load must not start another thread");
+
+        tx.send(Some(7)).unwrap();
+        let scanner = state.get_or_load(|| unreachable!("load already running"), SHORT_WAIT);
+        assert_eq!(scanner.copied(), Some(7), "a late success still installs");
+    }
+
+    #[test]
+    fn hung_load_stops_blocking_after_max_waits() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut state = MlState::<u8>::Loading {
+            result: rx,
+            attempt: 0,
+            timeouts: MAX_ML_RETRIES,
+        };
+        // past the wait budget only a non-blocking check runs, so this returns at once
+        let scanner = state.get_or_load(|| unreachable!(), Duration::from_hours(1));
+        assert_eq!(scanner, None);
+
+        tx.send(Some(7)).unwrap();
+        let scanner = state.get_or_load(|| unreachable!(), Duration::from_hours(1));
+        assert_eq!(scanner.copied(), Some(7));
+    }
+
+    #[test]
+    fn failed_load_after_wait_allows_retry() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut pending = Some(rx);
+        let mut state = MlState::<u8>::NotLoaded;
+        assert_eq!(
+            state.get_or_load(|| pending.take().unwrap(), SHORT_WAIT),
+            None
+        );
+
+        tx.send(None).unwrap();
+        assert_eq!(state.get_or_load(|| unreachable!(), SHORT_WAIT), None);
+        assert!(matches!(state, MlState::Failed(1)));
+
+        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);
+        assert_eq!(scanner.copied(), Some(3));
     }
 
     #[test]

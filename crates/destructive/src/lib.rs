@@ -945,6 +945,43 @@ mod tests {
     }
 
     #[rstest]
+    #[case::git_dir_push_force("git -C . push --force")]
+    #[case::git_config_reset_hard("git -c a=b reset --hard")]
+    #[case::git_long_option_with_value("git --git-dir .git --work-tree . clean -fd")]
+    #[case::git_equals_value("git --git-dir=.git branch -D main")]
+    #[case::kubectl_namespace_delete("kubectl -n prod delete deploy x")]
+    #[case::kubectl_several_globals("kubectl --context c --kubeconfig k delete ns x")]
+    #[case::kubectl_equals_value("kubectl --namespace=prod delete deploy x")]
+    #[case::helm_namespace_uninstall("helm -n ns uninstall x")]
+    #[case::docker_host_system_prune("docker -H tcp://h:2375 system prune")]
+    #[case::docker_context_volume_rm("docker --context c volume rm v")]
+    #[case::celery_app_purge("celery -A proj purge")]
+    #[case::celery_broker_purge("celery -b redis://h purge")]
+    fn global_option_before_subcommand_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert!(
+            detect_destructive(command, cwd).is_some(),
+            "{command} should be blocked"
+        );
+    }
+
+    #[rstest]
+    #[case::git_dir_status("git -C . status")]
+    #[case::git_dir_checkout_branch("git -C . checkout main")]
+    #[case::git_config_push("git -c a=b push origin main")]
+    #[case::kubectl_namespace_get("kubectl -n prod get pods")]
+    #[case::kubectl_delete_as_value("kubectl -n delete get pods")]
+    #[case::helm_namespace_list("helm -n ns list")]
+    #[case::docker_host_ps("docker -H tcp://h:2375 ps")]
+    #[case::celery_app_worker("celery -A proj worker")]
+    fn global_option_before_subcommand_allowed(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[rstest]
     #[case::mv("mv .parry-tainted /tmp/gone", "'mv' targets parry-guard safety file")]
     #[case::rm("rm .parry-tainted", "'rm' targets parry-guard safety file")]
     #[case::mongo(r#"mongosh --eval "db.dropDatabase()""#, "dropdatabase")]
@@ -974,7 +1011,7 @@ mod tests {
     #[case::split_raw_string_name("r''m -rf /etc")]
     #[case::split_string_name(r#"r"m" -rf /etc"#)]
     #[case::variable_name("X=rm; $X -rf /etc")]
-    #[case::default_expansion_name("${X:-rm} -rf /etc")]
+    #[case::default_expansion_name(&format!("${{X:-rm}} -rf /etc"))]
     #[case::command_wrapper("command rm -rf /etc")]
     #[case::env_wrapper("env rm -rf /etc")]
     #[case::env_with_flags_and_vars("env -i FOO=1 rm -rf /etc")]
@@ -982,6 +1019,8 @@ mod tests {
     #[case::nice_wrapper("nice -n 5 rm -rf /etc")]
     #[case::nohup_wrapper("nohup rm -rf /etc")]
     #[case::exec_wrapper("exec rm -rf /etc")]
+    #[case::builtin_eval(r#"builtin eval "rm -rf /etc""#)]
+    #[case::builtin_command("builtin command rm -rf /etc")]
     #[case::time_wrapper("time rm -rf /etc")]
     #[case::timeout_wrapper("timeout 5 rm -rf /etc")]
     #[case::timeout_with_signal("timeout -s KILL 5 rm -rf /etc")]
@@ -1025,6 +1064,8 @@ mod tests {
     #[case::command_lookup_with_args("command -v rm -rf /etc")]
     #[case::destructive_words_as_data("echo rm -rf /etc")]
     #[case::exec_shell("exec bash")]
+    #[case::builtin_cd("builtin cd /etc")]
+    #[case::type_lookup("type rm")]
     fn obfuscation_guard_allows_safe(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();

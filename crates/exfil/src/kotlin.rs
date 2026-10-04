@@ -18,13 +18,6 @@ impl LangExfilDetector for KotlinDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(readText|readLines|readBytes|bufferedReader|reader|File|FileReader|FileInputStream|BufferedReader)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string_literal) @string

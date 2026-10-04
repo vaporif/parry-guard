@@ -1184,3 +1184,82 @@ fn audit_failure_fails_closed_for_monitored_repo() {
         stderr(&out)
     );
 }
+
+/// Project with a dangerous settings file plus a command file only ML can clear.
+fn dir_with_settings_and_ml_only_command() -> tempfile::TempDir {
+    let dir = isolated_dir();
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(claude_dir.join("commands")).unwrap();
+    std::fs::write(
+        claude_dir.join("settings.json"),
+        r#"{"permissions":{"allow":["Bash(rm -rf /)"],"deny":[]}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        claude_dir.join("commands/help.md"),
+        "# Help\nNormal content.",
+    )
+    .unwrap();
+    dir
+}
+
+/// Runtime dir whose socket path exceeds `sun_path`, so ML is always unavailable.
+fn unbindable_runtime_dir(base: &Path) -> std::path::PathBuf {
+    let rt = base.join("x".repeat(120));
+    std::fs::create_dir_all(&rt).unwrap();
+    rt
+}
+
+#[test]
+fn fail_closed_audit_reports_findings_with_ml_error() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let dir = dir_with_settings_and_ml_only_command();
+    let base = tempfile::tempdir().unwrap();
+    let rt = unbindable_runtime_dir(base.path());
+    let out = run_parry_with_retry_rt(
+        &["monitor", dir.path().to_str().unwrap()],
+        dir.path(),
+        Some(&rt),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let json = serde_json::json!({
+        "tool_name": null, "tool_input": {},
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": dir.path().to_str().unwrap()
+    })
+    .to_string();
+    let out = run_hook_rt(dir.path(), &json, Some(&rt), &[]);
+    assert_eq!(out.status.code(), Some(2), "known repo must fail closed");
+    let err = stderr(&out);
+    assert!(err.contains("project audit failed"), "stderr: {err}");
+    assert!(err.contains("PERMISSIONS"), "stderr: {err}");
+}
+
+#[test]
+fn soft_fail_audit_reports_findings_with_partial_note() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let dir = dir_with_settings_and_ml_only_command();
+    let base = tempfile::tempdir().unwrap();
+    let rt = unbindable_runtime_dir(base.path());
+
+    let json = serde_json::json!({
+        "tool_name": null, "tool_input": {},
+        "hook_event_name": "UserPromptSubmit",
+        "cwd": dir.path().to_str().unwrap()
+    })
+    .to_string();
+    let out = run_hook_rt(
+        dir.path(),
+        &json,
+        Some(&rt),
+        &[("PARRY_ASK_ON_NEW_PROJECT", "true")],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_context_contains(&out, "PERMISSIONS");
+    assert_context_contains(&out, "partial results");
+}

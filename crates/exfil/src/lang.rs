@@ -14,8 +14,10 @@ pub trait LangExfilDetector: Send + Sync {
     /// Network sink calls, captured as `@call`.
     fn network_sink_query(&self) -> &'static str;
 
-    /// File read calls, captured as `@call`.
-    fn file_source_query(&self) -> &'static str;
+    /// File read calls, captured as `@call`. Empty when string literals already cover it.
+    fn file_source_query(&self) -> &'static str {
+        ""
+    }
 
     /// String literals, captured as `@string`.
     fn string_literal_query(&self) -> &'static str;
@@ -61,7 +63,11 @@ pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
         }
     }
 
-    if let Ok(query) = Query::new(&detector.language(), detector.file_source_query()) {
+    let file_source_query = detector.file_source_query();
+    let file_source = (!file_source_query.is_empty())
+        .then(|| Query::new(&detector.language(), file_source_query).ok())
+        .flatten();
+    if let Some(query) = file_source {
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source);
         while let Some(m) = matches.next() {
@@ -152,10 +158,6 @@ mod tests {
         d.network_sink_query()
     }
 
-    fn file_source(d: &dyn LangExfilDetector) -> &'static str {
-        d.file_source_query()
-    }
-
     fn string_literal(d: &dyn LangExfilDetector) -> &'static str {
         d.string_literal_query()
     }
@@ -177,10 +179,38 @@ mod tests {
     #[case::scala(&ScalaDetector)]
     fn query_is_valid(
         #[case] detector: &dyn LangExfilDetector,
-        #[values(network_sink, file_source, string_literal)] query: QueryFn,
+        #[values(network_sink, string_literal)] query: QueryFn,
     ) {
         let result = Query::new(&detector.language(), query(detector));
         assert!(result.is_ok(), "Query error: {:?}", result.err());
+    }
+
+    #[rstest]
+    #[case::javascript(&JavaScriptDetector)]
+    #[case::julia(&JuliaDetector)]
+    #[case::lua(&LuaDetector)]
+    #[case::php(&PhpDetector)]
+    #[case::powershell(&PowerShellDetector)]
+    #[case::python(&PythonDetector)]
+    #[case::ruby(&RubyDetector)]
+    fn file_source_query_is_valid(#[case] detector: &dyn LangExfilDetector) {
+        let source = detector.file_source_query();
+        assert_ne!(source, "");
+        let result = Query::new(&detector.language(), source);
+        assert!(result.is_ok(), "Query error: {:?}", result.err());
+    }
+
+    #[rstest]
+    #[case::elixir(&ElixirDetector)]
+    #[case::groovy(&GroovyDetector)]
+    #[case::kotlin(&KotlinDetector)]
+    #[case::nix(&NixDetector)]
+    #[case::perl(&PerlDetector)]
+    #[case::r(&RDetector)]
+    #[case::scala(&ScalaDetector)]
+    fn string_literals_cover_file_sources(#[case] detector: &dyn LangExfilDetector) {
+        // these grammars rely on the string-literal query to spot sensitive paths
+        assert_eq!(detector.file_source_query(), "");
     }
 
     #[rstest]

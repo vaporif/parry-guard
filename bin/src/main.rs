@@ -301,26 +301,18 @@ fn run_audit(
             (db, repo_path)
         };
 
-    let mut ml_unavailable = false;
-    let warnings = match parry_guard_hook::project_audit::scan(&dir, config, scan_db, scan_rp) {
-        Ok(w) => w,
-        Err(e) => {
-            if audit_failure_is_soft(repo_state, ask_on_new_project) {
-                warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
-                ml_unavailable = true;
-                Vec::new()
-            } else {
-                warn!(%e, "audit ML scan failed (fail-closed)");
-                let message = format!(
-                    "parry: project audit failed - ML scanner unavailable. \
-                     Run `{} serve` and retry. Error: {e}",
-                    command_name()
-                );
-                eprintln!("{message}");
-                return ExitCode::from(BLOCK_EXIT);
-            }
+    let outcome = parry_guard_hook::project_audit::scan(&dir, config, scan_db, scan_rp);
+    let warnings = outcome.warnings;
+    let ml_unavailable = outcome.ml_error.is_some();
+    if let Some(e) = outcome.ml_error {
+        if audit_failure_is_soft(repo_state, ask_on_new_project) {
+            warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
+        } else {
+            warn!(%e, "audit ML scan failed (fail-closed)");
+            eprintln!("{}", format_audit_failure(&warnings, &e));
+            return ExitCode::from(BLOCK_EXIT);
         }
-    };
+    }
 
     if is_first_run && ask_on_new_project {
         let rp_display = repo_path.unwrap_or("this repo");
@@ -352,6 +344,26 @@ fn run_audit(
     }
 
     ExitCode::SUCCESS
+}
+
+/// Fail-closed message: the ML failure, then whatever the checks without ML found.
+fn format_audit_failure(
+    warnings: &[parry_guard_hook::project_audit::AuditWarning],
+    error: &parry_guard_core::ScanError,
+) -> String {
+    use std::fmt::Write;
+    let mut message = format!(
+        "parry: project audit failed - ML scanner unavailable. \
+         Run `{} serve` and retry. Error: {error}",
+        command_name()
+    );
+    if !warnings.is_empty() {
+        let _ = write!(message, "\nFindings from checks that don't need ML:");
+        for w in warnings {
+            let _ = write!(message, "\n- {}: {}", w.category, w.message);
+        }
+    }
+    message
 }
 
 /// Only not-yet-opted-in repos (prompt mode) may proceed without ML; all else fails closed.
@@ -456,19 +468,17 @@ fn run_repo_command(subcommand: cli::RepoCommand, config: &Config) -> ExitCode {
 
             // no db/repo_path bypasses the cache
             let dir = std::path::Path::new(&canonical);
-            match parry_guard_hook::project_audit::scan(dir, config, None, None) {
-                Ok(warnings) if warnings.is_empty() => {
-                    println!("Audit:   clean (no findings)");
+            let outcome = parry_guard_hook::project_audit::scan(dir, config, None, None);
+            match (&outcome.ml_error, outcome.warnings.len()) {
+                (None, 0) => println!("Audit:   clean (no findings)"),
+                (Some(e), 0) => println!("Audit:   unavailable ({e})"),
+                (None, n) => println!("Audit:   {n} finding(s)"),
+                (Some(e), n) => {
+                    println!("Audit:   {n} finding(s), partial: ML unavailable ({e})");
                 }
-                Ok(warnings) => {
-                    println!("Audit:   {} finding(s)", warnings.len());
-                    for w in &warnings {
-                        println!("  - {}: {}", w.category, w.message);
-                    }
-                }
-                Err(e) => {
-                    println!("Audit:   unavailable ({e})");
-                }
+            }
+            for w in &outcome.warnings {
+                println!("  - {}: {}", w.category, w.message);
             }
         }
         cli::RepoCommand::Repos => {
