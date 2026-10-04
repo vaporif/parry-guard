@@ -46,7 +46,7 @@ pub fn socket_exists(runtime_dir: Option<&Path>) -> bool {
 fn socket_name(
     runtime_dir: Option<&Path>,
 ) -> io::Result<interprocess::local_socket::Name<'static>> {
-    // filesystem paths for reliable cleanup - namespaced sockets (Linux abstract,
+    // Use filesystem paths so cleanup works. Namespaced sockets (Linux abstract,
     // Windows named pipes) leave stale refs that cause "Address already in use".
     socket_path(runtime_dir)?
         .to_fs_name::<GenericFilePath>()

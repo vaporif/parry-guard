@@ -92,7 +92,7 @@ fn expand_tilde(path: &str) -> String {
 }
 
 /// Resolve a potentially relative path against CWD using lexical normalization.
-/// Does NOT follow symlinks -avoids macOS `/private` prefix issues.
+/// Does not follow symlinks, to avoid macOS `/private` prefix issues.
 fn resolve_path(path: &str, cwd: &str) -> PathBuf {
     let expanded = expand_tilde(path);
     let p = Path::new(&expanded);
@@ -122,7 +122,7 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
-/// Ensure path string ends with `/` for prefix matching.
+/// Append `/` if missing, for prefix matching.
 fn ensure_trailing_slash(s: &str) -> String {
     if s.ends_with('/') {
         s.to_string()

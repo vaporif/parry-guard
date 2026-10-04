@@ -19,7 +19,7 @@ pub enum MatchKind {
     /// Match as a filename suffix (extension check).
     /// Example: `"_rsa"` matches `id_rsa` but not `rsa_util`.
     Suffix,
-    /// Match anywhere as substring (use sparingly - high false positive risk).
+    /// Match anywhere as substring (use sparingly: high false positive risk).
     Substring,
 }
 
@@ -417,8 +417,6 @@ pub fn has_exfil_domain(text: &str) -> bool {
 mod tests {
     use super::*;
 
-    // === Pattern matching tests ===
-
     #[test]
     fn path_segment_matches_exact() {
         let p = Pattern::path_segment(".env");
@@ -465,8 +463,6 @@ mod tests {
         assert!(p.matches("SECRET")); // case insensitive
     }
 
-    // === Sensitive path tests ===
-
     #[test]
     fn detects_env_file() {
         assert!(has_sensitive_path("/home/user/project/.env"));
@@ -498,8 +494,6 @@ mod tests {
         assert!(has_sensitive_path("~/.docker/config.json"));
     }
 
-    // === Exfil domain tests ===
-
     #[test]
     fn detects_exfil_domains() {
         assert!(has_exfil_domain("https://webhook.site/abc123"));
@@ -519,8 +513,6 @@ mod tests {
         assert!(has_exfil_domain("https://WEBHOOK.SITE/test"));
         assert!(has_exfil_domain("https://Ngrok.IO/path"));
     }
-
-    // === Config override tests ===
 
     #[test]
     fn config_add_pattern() {

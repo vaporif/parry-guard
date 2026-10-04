@@ -177,8 +177,6 @@ mod tests {
         buf
     }
 
-    // ─── Codec tests ─────────────────────────────────────────────────────────
-
     #[test]
     fn codec_decode_full_request() {
         let req = ScanRequest {
@@ -276,8 +274,6 @@ mod tests {
         buf.put_u32_le(0);
         assert!(DaemonCodec.decode(&mut buf).is_err());
     }
-
-    // ─── Sync client helpers tests ───────────────────────────────────────────
 
     #[test]
     fn sync_roundtrip_request_response() {

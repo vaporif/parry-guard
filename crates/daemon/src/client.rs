@@ -104,9 +104,9 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
         cmd.arg("--hf-token-path").arg(&token_file);
     }
 
-    // NOTE: runtime_dir is not passed to the child process. It's test-only  -
-    // production always uses None (hardcoded in main.rs). No CLI flag needed:
-    // an attacker who can inject --runtime-dir already has code execution.
+    // runtime_dir is not passed to the child. It's test-only; production always
+    // uses None (hardcoded in main.rs). No CLI flag needed: an attacker who can
+    // inject --runtime-dir already has code execution.
     cmd.arg("serve");
 
     cmd.stdin(std::process::Stdio::null())
@@ -156,7 +156,7 @@ const BACKOFF_MS: [u64; 6] = [100, 200, 500, 1000, 2000, 3000];
 fn wait_for_ready(runtime_dir: Option<&Path>) -> bool {
     for delay_ms in BACKOFF_MS {
         std::thread::sleep(Duration::from_millis(delay_ms));
-        // Bail early if socket doesn't exist -daemon clearly not spawning
+        // no socket file means the daemon isn't starting, so bail early
         if !crate::transport::socket_exists(runtime_dir) {
             trace!("socket file missing, daemon not starting");
             return false;

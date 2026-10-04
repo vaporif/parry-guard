@@ -79,9 +79,9 @@ async fn scan_with_retry(
     unreachable!()
 }
 
-/// All cases run in a single test to share daemon lifecycle.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn daemon_e2e() {
+    // One test for all cases so they share the daemon lifecycle.
     let t = Instant::now();
 
     // ── ping/pong ──
@@ -152,12 +152,11 @@ async fn daemon_e2e() {
                 .await
                 .unwrap();
         assert!(!running);
-        let _ = handle.await; // ensure daemon cleanup completes before TempDir drop
+        let _ = handle.await; // wait for daemon cleanup before TempDir drops
         eprintln!("[idle] ok ({:?})", t.elapsed());
     }
 }
 
-/// Requires HF token + model downloads. Run with: `cargo test -- --ignored`
 #[ignore = "requires HF token and model downloads"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ml_model_e2e() {

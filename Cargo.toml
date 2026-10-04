@@ -6,8 +6,8 @@ resolver = "2"
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/vaporif/parry"
-homepage = "https://github.com/vaporif/parry"
+repository = "https://github.com/vaporif/parry-guard"
+homepage = "https://github.com/vaporif/parry-guard"
 keywords = ["prompt-injection", "security", "scanner", "llm", "claude", "codex"]
 categories = ["command-line-utilities", "development-tools"]
 

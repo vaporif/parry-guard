@@ -1,0 +1,9 @@
+id: no-stdout-in-libs
+language: rust
+severity: error
+message: Library crates must not print. Stdout carries the hook JSON, so stray output breaks the protocol. Use `tracing` instead.
+files:
+  - crates/*/src/**/*.rs
+rule:
+  kind: macro_invocation
+  regex: ^(print|println|eprint|eprintln|dbg)!

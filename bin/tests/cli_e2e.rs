@@ -235,8 +235,6 @@ fn post_tool_json(tool: &str, input: serde_json::Value, response: serde_json::Va
     .to_string()
 }
 
-// ── PreToolUse: allow ─────────────────────────────────────────
-
 #[test]
 fn pre_read_normal_file() {
     let dir = isolated_dir();
@@ -288,8 +286,6 @@ fn pre_grep_normal_path() {
     );
     assert_allowed(&run_hook(dir.path(), &json));
 }
-
-// ── PreToolUse: block ─────────────────────────────────────────
 
 #[test]
 fn pre_bash_exfil_denied() {
@@ -431,8 +427,6 @@ fn pre_glob_sensitive_path() {
     assert_decision(&out, "ask");
 }
 
-// ── PreToolUse: destructive ───────────────────────────────────
-
 #[test]
 fn pre_rm_rf_root() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
@@ -488,8 +482,6 @@ fn pre_write_etc_hosts() {
     assert_decision(&out, "ask");
 }
 
-// ── PreToolUse: MCP ───────────────────────────────────────────
-
 #[test]
 fn pre_mcp_short_strings() {
     let dir = isolated_dir();
@@ -516,8 +508,6 @@ fn pre_mcp_injection() {
     assert!(out.status.success());
     assert_decision(&out, "ask");
 }
-
-// ── PostToolUse: clean ────────────────────────────────────────
 
 #[test]
 fn post_clean_text() {
@@ -574,8 +564,6 @@ fn post_null_response() {
     assert_allowed(&run_hook(dir.path(), &json));
 }
 
-// ── PostToolUse: warn ─────────────────────────────────────────
-
 #[test]
 fn post_injection_warns() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
@@ -628,8 +616,6 @@ fn post_object_response_scanned() {
     assert_context_contains(&out, "injection");
 }
 
-// ── Edge cases ────────────────────────────────────────────────
-
 #[test]
 fn empty_stdin() {
     let dir = isolated_dir();
@@ -661,11 +647,9 @@ fn unknown_hook_event() {
     assert_allowed(&run_hook(dir.path(), &json));
 }
 
-// ── Taint (smoke test) ────────────────────────────────────────
-// Taint uses runtime_dir, not JSON cwd - can only verify no crash.
-
 #[test]
 fn tainted_project_no_crash() {
+    // Taint uses runtime_dir, not the JSON cwd, so this only checks for no crash.
     let dir = isolated_dir();
     std::fs::write(dir.path().join(".parry-tainted"), "test").unwrap();
     let json = serde_json::json!({
@@ -678,8 +662,6 @@ fn tainted_project_no_crash() {
     let out = run_hook(dir.path(), &json);
     assert!(out.status.success() || out.status.code() == Some(2));
 }
-
-// ── Repo management ──────────────────────────────────────────
 
 #[test]
 fn repo_lifecycle() {
@@ -741,8 +723,6 @@ fn repo_lifecycle() {
 
     run_parry_with_retry_rt(&["reset", path], dir.path(), Some(rt.path()));
 }
-
-// ── Diff mode ─────────────────────────────────────────────────
 
 #[test]
 fn diff_clean() {
@@ -821,8 +801,6 @@ fn diff_secret() {
     assert!(stdout(&out).contains("Threats detected"));
     assert!(stdout(&out).contains("config.txt"));
 }
-
-// ── UserPromptSubmit ──────────────────────────────────────────
 
 #[test]
 fn prompt_submit_no_claude_dir() {
@@ -905,8 +883,6 @@ fn prompt_submit_hook_scripts() {
     assert!(out.status.success());
     assert_context_contains(&out, "HOOKS");
 }
-
-// ── Auto-monitor (PARRY_ASK_ON_NEW_PROJECT) ───────────────────
 
 #[test]
 fn auto_monitor_sets_monitored_on_first_run() {

@@ -187,8 +187,6 @@ mod tests {
         assert_eq!(strip_invisible(input), "helloworld");
     }
 
-    // Homoglyph tests
-
     #[test]
     fn clean_text_no_homoglyphs() {
         assert!(!has_homoglyphs("Hello world"));

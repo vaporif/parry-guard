@@ -88,8 +88,6 @@ mod tests {
         tempfile::tempdir().unwrap()
     }
 
-    // === Category 1: Filesystem Destruction ===
-
     #[test]
     fn rm_outside_cwd_blocked() {
         let dir = make_cwd();
@@ -263,8 +261,6 @@ mod tests {
         assert!(detect_destructive("truncate -s 0 /var/log/syslog", cwd).is_some());
     }
 
-    // === Category 2: Process / Service ===
-
     #[test]
     fn kill_blocked() {
         let d = make_cwd();
@@ -300,8 +296,6 @@ mod tests {
         assert!(detect_destructive("launchctl unload com.example.service", cwd).is_some());
     }
 
-    // === Category 3: Permissions on protected paths ===
-
     #[test]
     fn chmod_protected_path_blocked() {
         let d = make_cwd();
@@ -319,8 +313,6 @@ mod tests {
             "chmod within CWD should pass"
         );
     }
-
-    // === Category 4: Package Managers ===
 
     #[test]
     fn brew_uninstall_blocked() {
@@ -380,8 +372,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("npm install", cwd).is_none());
     }
-
-    // === Category 5: Git Destructive ===
 
     #[test]
     fn git_push_force_blocked() {
@@ -591,8 +581,6 @@ mod tests {
         assert!(detect_destructive("git status", cwd).is_none());
     }
 
-    // === Category 6: Database / Storage ===
-
     #[test]
     fn psql_drop_table_blocked() {
         let d = make_cwd();
@@ -631,8 +619,6 @@ mod tests {
         assert!(detect_destructive("kafka-topics --delete --topic test", cwd).is_some());
     }
 
-    // === Category 7: Disk / Mount ===
-
     #[test]
     fn fdisk_blocked() {
         let d = make_cwd();
@@ -646,8 +632,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("diskutil eraseDisk JHFS+ Untitled /dev/disk2", cwd).is_some());
     }
-
-    // === Category 8: Container / Orchestration ===
 
     #[test]
     fn kubectl_delete_blocked() {
@@ -694,8 +678,6 @@ mod tests {
         );
     }
 
-    // === Category 9: System Admin ===
-
     #[test]
     fn crontab_r_blocked() {
         let d = make_cwd();
@@ -726,8 +708,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("nft flush ruleset", cwd).is_some());
     }
-
-    // === Category 10: Nix ===
 
     #[test]
     fn nix_collect_garbage_blocked() {
@@ -777,8 +757,6 @@ mod tests {
         );
     }
 
-    // === Category 11: Privilege Escalation ===
-
     #[test]
     fn sudo_blocked() {
         let d = make_cwd();
@@ -792,8 +770,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(detect_destructive("doas rm /tmp/file", cwd).is_some());
     }
-
-    // === False positive tests ===
 
     #[test]
     fn echo_allowed() {
@@ -848,8 +824,6 @@ mod tests {
         );
     }
 
-    // === Protected path tests ===
-
     #[test]
     fn protected_path_etc() {
         let d = make_cwd();
@@ -870,8 +844,6 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         assert!(is_protected_path("~/.config/app/config.toml", cwd).is_some());
     }
-
-    // === eval / source bypass (4.6) ===
 
     #[test]
     fn eval_string_literal_destructive_blocked() {

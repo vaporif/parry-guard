@@ -65,9 +65,9 @@ fn process_hook(input: &HookInput, config: &Config) -> Option<HookOutput> {
     )
 }
 
-/// Single test to avoid daemon socket races.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn hook_e2e() {
+    // One test, so parallel tests don't race on the daemon socket.
     let dir = tempfile::tempdir().unwrap();
     let handle = start_daemon(dir.path()).await;
     let cfg = config(dir.path());

@@ -1,0 +1,9 @@
+id: no-process-exit-in-libs
+language: rust
+severity: error
+message: Library crates must not call `process::exit`. Return an error so the caller can fail closed.
+files:
+  - crates/*/src/**/*.rs
+rule:
+  pattern: $$$PATH::exit($CODE)
+  regex: process::exit

@@ -707,8 +707,6 @@ mod tests {
         );
     }
 
-    // === Destructive operations (Layer 5) ===
-
     #[test]
     fn bash_rm_rf_root_blocked() {
         let dir = tempfile::tempdir().unwrap();

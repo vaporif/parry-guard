@@ -30,9 +30,8 @@ pub fn chunks(text: &str) -> Vec<&str> {
     result
 }
 
-/// Returns the head and tail concatenated (space-separated) for texts longer than 1024 chars.
-/// Returns `None` when input is shorter than `HEAD_TAIL_THRESHOLD`.
-/// Catches injection appended at the very end.
+/// Returns the head and tail joined by a space, or `None` if the text is at most
+/// `HEAD_TAIL_THRESHOLD` (1024) bytes. Catches injection appended at the very end.
 #[must_use]
 pub fn head_tail(text: &str) -> Option<String> {
     if text.len() <= HEAD_TAIL_THRESHOLD {
@@ -98,8 +97,8 @@ mod tests {
         let text = "a".repeat(255) + "ñ" + &"b".repeat(100);
         let c = chunks(&text);
         for chunk in &c {
-            // Every chunk must be valid UTF-8 (implicit via &str, but
-            // floor_char_boundary is what prevents the panic)
+            // &str already guarantees valid UTF-8; floor_char_boundary is what
+            // prevents the slicing panic
             assert_ne!(*chunk, "");
         }
     }

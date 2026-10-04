@@ -1,0 +1,18 @@
+id: no-comment-above-test
+language: rust
+severity: error
+message: No comments above tests. Name the test so it says what it checks, and put extra context inside the body.
+utils:
+  test-attr:
+    kind: attribute_item
+    regex: ^#\[(test|tokio::test|rstest|test_case)\b
+rule:
+  all:
+    - any:
+        - kind: line_comment
+        - kind: block_comment
+    - any:
+        - precedes:
+            matches: test-attr
+        - follows:
+            matches: test-attr

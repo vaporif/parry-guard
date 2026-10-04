@@ -99,7 +99,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
         return Err(eyre::eyre!("another daemon is already running"));
     }
 
-    // stale socket -nobody responded to ping
+    // stale socket: nobody answered the ping
     crate::transport::cleanup_stale_state(rd);
     let listener = transport::bind_async(rd)?;
 
@@ -174,8 +174,8 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     Ok(())
 }
 
-/// On timeout the background thread is left running — `MlState::Failed`
-/// prevents piling up concurrent loads.
+/// On timeout the background thread keeps running. `MlState::Failed`
+/// stops concurrent loads from piling up.
 fn load_ml_scanner(config: &Config) -> Option<MlScanner> {
     let config = config.clone();
     let (tx, rx) = std::sync::mpsc::channel();
@@ -266,7 +266,7 @@ fn handle_request(
         }
 
         let result = run_full_scan(&req.text, req.threshold, ml_scanner);
-        // don't cache errors -model may load on next restart
+        // don't cache errors: the model may load after a restart
         if result != ScanResponse::Error {
             c.put(&hash, response_to_result(result));
         }

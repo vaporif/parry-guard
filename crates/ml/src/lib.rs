@@ -1,6 +1,5 @@
 //! ML-based injection detection using `DeBERTa` v3.
 
-// Ensure at least one ML backend is enabled
 #[cfg(not(any(feature = "onnx", feature = "onnx-fetch", feature = "candle")))]
 compile_error!(
     "At least one ML backend must be enabled: 'onnx', 'onnx-fetch' (default), or 'candle'"

@@ -373,8 +373,6 @@ mod tests {
         assert!(has_secret(&format!("GOCSPX-{}", "a".repeat(28))));
     }
 
-    // Config override tests
-
     #[test]
     fn config_add_pattern() {
         let config = SecretConfig {

@@ -87,7 +87,7 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
     let cmd_name = get_command_name(node, source)?;
 
     if is_network_sink(cmd_name) {
-        // wget --post-file / --body-file is inherently dangerous (data exfil regardless of file)
+        // wget --post-file / --body-file uploads a local file, so flag it whatever the file is
         if cmd_name == "wget" {
             if let Some(reason) = check_wget_post_file(node, source) {
                 return Some(reason);
@@ -127,7 +127,7 @@ fn check_command(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
-    // busybox sh -c "..." -- first arg is the shell, rest is handled like shell -c
+    // busybox sh -c "...": first arg is the shell, the rest is handled like shell -c
     if cmd_name == "busybox" {
         if let Some(reason) = check_busybox_shell(node, source) {
             return Some(reason);
@@ -324,9 +324,8 @@ fn find_sensitive_command_substitution(
     None
 }
 
-/// Detect `wget --post-file` and `--body-file` unconditionally.
-/// These flags upload local file contents to a remote URL -- inherently dangerous
-/// regardless of which file is targeted.
+/// Flag `wget --post-file` and `--body-file` always.
+/// They upload a local file to a remote URL, so the target file doesn't matter.
 fn check_wget_post_file(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -422,7 +421,7 @@ fn is_ip_url(text: &str) -> bool {
         .is_ok_and(|ip| !crate::util::is_private_ipv4(ip))
 }
 
-/// busybox sh -c "..." -- detect the shell applet and then delegate to shell re-parsing.
+/// busybox sh -c "...": if the applet is a shell, re-parse its code like `sh -c`.
 fn check_busybox_shell(node: Node, source: &[u8]) -> Option<String> {
     let applet = node.child_by_field_name("argument")?;
     if !is_shell_interpreter(strip_quotes(node_text(applet, source))) {

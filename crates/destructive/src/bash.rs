@@ -43,7 +43,7 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
         ));
     }
 
-    // privilege escalation - always first since it wraps other commands
+    // privilege escalation goes first since it wraps other commands
     if consts::PRIV_ESC.contains(&cmd_name) {
         return Some(format!(
             "Privilege escalation via '{cmd_name}' - all elevated commands require confirmation"
@@ -67,12 +67,12 @@ fn check_named_command(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> 
         return Some(reason);
     }
 
-    // rm / rmdir / unlink - needs path analysis
+    // rm / rmdir / unlink: needs path analysis
     if matches!(cmd_name, "rm" | "rmdir" | "unlink") {
         return check_rm(cmd_name, node, source, cwd);
     }
 
-    // mv/cp - taint file protection
+    // mv/cp: taint file protection
     if matches!(cmd_name, "mv" | "cp") {
         if let Some(reason) = check_taint_file_in_args(cmd_name, node, source) {
             return Some(reason);
@@ -291,7 +291,7 @@ fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<Stri
 
         let clean = unquote(path);
 
-        // rm -rf . / rm -rf ./ - nuking the project dir
+        // rm -rf . / rm -rf ./: wipes the project dir
         if paths::is_cwd_itself(&clean, cwd) {
             return Some(format!("'{cmd_name}' targets project directory itself"));
         }
@@ -457,7 +457,7 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
     }
 
     // git push origin :branch (colon-prefix deletes remote branch)
-    // skip "push" itself - remote name may be omitted
+    // skip "push" itself: the remote name may be omitted
     for arg in path_args.iter().skip(1) {
         if arg.starts_with(':') {
             return Some(format!("'git push {arg}' deletes remote branch"));

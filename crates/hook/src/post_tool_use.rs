@@ -27,11 +27,9 @@ pub fn process(input: &HookInput, config: &Config, repo_state: RepoState) -> Opt
 
     let fast_result = parry_guard_core::scan_text_fast(&response);
 
-    // Taint blocks ALL tools until manual removal, so double-check
-    // with ML — fast scan alone fires on benign strings like
-    // "you are now connected".
-    // `effective_result` reflects the ML verdict so both taint and
-    // warning decisions stay consistent.
+    // Taint blocks ALL tools until manually removed, so confirm with ML first:
+    // fast scan alone fires on benign strings like "you are now connected".
+    // `effective_result` holds the ML verdict so taint and warning agree.
     let effective_result = if fast_result.is_injection() && repo_state != RepoState::Unknown {
         match parry_guard_daemon::scan_full(&response, config) {
             Ok(ml_result) if ml_result.is_injection() => {
