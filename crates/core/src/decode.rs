@@ -7,7 +7,7 @@ const ENTROPY_THRESHOLD: f64 = 4.5;
 const ENTROPY_WINDOW: usize = 32;
 
 /// NFKC, homoglyph, and whitespace normalization.
-/// Not the confusable skeleton: it rewrites ASCII (`m` to `rn`, `0` to `O`), breaking secret matching.
+/// Skips the confusable skeleton, which rewrites ASCII (`m` to `rn`, `0` to `O`) and breaks secret matching.
 #[must_use]
 pub fn normalize(text: &str) -> String {
     let nfkc: String = text.nfkc().collect();

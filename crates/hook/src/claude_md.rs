@@ -10,7 +10,7 @@ use tracing::{debug, instrument, warn};
 pub enum CheckResult {
     /// No issues found (or already reviewed and cached).
     Clean,
-    /// Injection detected - ask user for confirmation.
+    /// Injection detected; ask the user to confirm.
     Ask(String),
 }
 
@@ -70,7 +70,7 @@ pub fn check(
             ));
         }
 
-        // higher threshold: CLAUDE.md is inherently instruction-like
+        // higher threshold: CLAUDE.md is mostly instructions by design
         match crate::scan_text_with_threshold(&content, config, config.claude_md_threshold) {
             Ok(result) if !result.is_clean() => {
                 debug!(path = %path.display(), "ML flagged CLAUDE.md");

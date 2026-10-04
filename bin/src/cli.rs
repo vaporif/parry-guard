@@ -52,7 +52,7 @@ pub(crate) struct Cli {
     #[arg(long, env = "PARRY_ASK_ON_NEW_PROJECT")]
     pub ask_on_new_project: bool,
 
-    /// Parent directories to ignore - all repos under these paths are skipped (comma-separated)
+    /// Parent directories to ignore; all repos under these paths are skipped (comma-separated)
     #[arg(long, env = "PARRY_IGNORE_DIRS", value_delimiter = ',')]
     pub ignore_dirs: Vec<String>,
 

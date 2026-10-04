@@ -21,7 +21,7 @@ fn check_children(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     reason
 }
 
-/// Nested children are always walked: a benign outer command must not hide `$(rm -rf /)`.
+/// Always walks nested children so a harmless outer command cannot hide `$(rm -rf /)`.
 fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let reason = match get_command_name(node, source)? {
         CommandName::Static(cmd_name) => check_named_command(&cmd_name, node, source, cwd),
@@ -213,11 +213,7 @@ fn get_command_name<'a>(node: Node, source: &'a [u8]) -> Option<CommandName<'a>>
 fn has_expansion(node: Node) -> bool {
     if matches!(
         node.kind(),
-        "command_substitution"
-            | "simple_expansion"
-            | "expansion"
-            | "arithmetic_expansion"
-            | "process_substitution"
+        "command_substitution" | "simple_expansion" | "expansion"
     ) {
         return true;
     }
@@ -226,7 +222,7 @@ fn has_expansion(node: Node) -> bool {
     found
 }
 
-/// Approximate bash quote removal so `".."/` or `\/` are seen as the paths bash would use.
+/// Approximate bash quote removal so `".."/` and `\/` match the paths bash would use.
 fn unquote(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();

@@ -102,7 +102,7 @@ pub async fn run(config: &Config, daemon_config: &DaemonConfig) -> eyre::Result<
     let listener = transport::bind_async(rd)?;
 
     let pid_path = transport::pid_file_path(rd)?;
-    // PID file is informational; socket bind is the real mutual exclusion
+    // PID file is informational; the socket bind enforces mutual exclusion
     std::fs::write(&pid_path, std::process::id().to_string())?;
 
     let _cleanup = CleanupGuard {

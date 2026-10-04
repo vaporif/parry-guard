@@ -12,7 +12,7 @@
 #                  ".env" matches "/project/.env" but not ".environment"
 #   suffix       - matches at end of path
 #                  "/id_rsa" matches "~/.ssh/id_rsa" but not "id_rsa_backup"
-#   substring    - matches anywhere (use sparingly - high false positive risk)
+#   substring    - matches anywhere (use sparingly: high false positive risk)
 #
 # Remove built-in patterns you don't want
 # remove = [".env", "pastebin.com"]

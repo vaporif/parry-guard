@@ -990,6 +990,8 @@ mod tests {
     #[case::xargs_herestring("xargs rm -rf <<< /etc")]
     #[case::xargs_with_flags("xargs -n 1 -P 4 rm -rf <<< /etc")]
     #[case::nested_wrappers("nohup nice env rm -rf /etc")]
+    #[case::end_of_options("env -- rm -rf /etc")]
+    #[case::expansion_inside_concatenation("r${X}m -rf /etc")]
     #[case::wrapped_kill("env kill 1")]
     #[case::wrapped_sudo("nohup sudo ls")]
     fn obfuscated_command_name_blocked(#[case] command: &str) {
@@ -1043,7 +1045,7 @@ mod tests {
 
     #[test]
     fn gap_xargs_targets_from_pipe() {
-        // Known gap, flip the assert once fixed. Bypass: xargs reads its targets from the upstream stage
+        // Known gap: xargs reads its targets from the upstream stage. Flip the assert once fixed.
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert_eq!(detect_destructive("echo /etc | xargs rm -rf", cwd), None);

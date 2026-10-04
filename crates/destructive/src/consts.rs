@@ -92,7 +92,7 @@ pub(crate) const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
 
 pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
 
-// === Category 12: Command wrappers ===
+// Command wrappers
 
 /// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
 pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[

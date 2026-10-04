@@ -56,7 +56,7 @@ fn init_tracing() {
 
 fn main() -> ExitCode {
     init_tracing();
-    // fail-closed: a panic must block, not let the tool call through
+    // fail-closed: a panic blocks the tool call
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_hook(info);
