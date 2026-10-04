@@ -69,8 +69,6 @@ fn check_wrapper(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option
             if value_options.contains(&text) {
                 args.next();
             }
-        } else if cmd_name == "env" && text.contains('=') {
-            args.next();
         } else if operands_left > 0 {
             operands_left -= 1;
             args.next();

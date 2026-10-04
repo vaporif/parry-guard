@@ -991,6 +991,7 @@ mod tests {
     #[case::xargs_with_flags("xargs -n 1 -P 4 rm -rf <<< /etc")]
     #[case::nested_wrappers("nohup nice env rm -rf /etc")]
     #[case::end_of_options("env -- rm -rf /etc")]
+    #[case::env_verbose_flag("env -v rm -rf /etc")]
     #[case::expansion_inside_concatenation("r${X}m -rf /etc")]
     #[case::wrapped_kill("env kill 1")]
     #[case::wrapped_sudo("nohup sudo ls")]
@@ -1021,6 +1022,8 @@ mod tests {
     #[case::env_rm_in_cwd("env rm -rf ./target")]
     #[case::command_lookup("command -v rm")]
     #[case::command_describe("command -V rm")]
+    #[case::command_lookup_with_args("command -v rm -rf /etc")]
+    #[case::destructive_words_as_data("echo rm -rf /etc")]
     #[case::exec_shell("exec bash")]
     fn obfuscation_guard_allows_safe(#[case] command: &str) {
         let d = make_cwd();
