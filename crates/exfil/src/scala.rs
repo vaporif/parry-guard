@@ -1,4 +1,4 @@
-//! Scala-specific exfiltration detection.
+//! Scala exfil detector.
 
 use tree_sitter::Language;
 

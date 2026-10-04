@@ -1,4 +1,4 @@
-//! Nix-specific exfiltration detection.
+//! Nix exfil detector.
 
 use tree_sitter::Language;
 
@@ -26,7 +26,7 @@ impl LangExfilDetector for NixDetector {
     }
 
     fn string_literal_query(&self) -> &'static str {
-        // Include path expressions since Nix uses ./path syntax for file paths
+        // Nix file paths are bare `./path` expressions, not strings
         r"
         (string_expression) @string
         (indented_string_expression) @string

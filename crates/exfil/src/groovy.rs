@@ -1,4 +1,4 @@
-//! Groovy-specific exfiltration detection.
+//! Groovy exfil detector.
 
 use tree_sitter::Language;
 

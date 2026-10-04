@@ -1,4 +1,4 @@
-//! PowerShell-specific exfiltration detection.
+//! PowerShell exfil detector.
 
 use tree_sitter::Language;
 

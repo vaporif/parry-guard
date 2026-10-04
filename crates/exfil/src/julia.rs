@@ -1,4 +1,4 @@
-//! Julia-specific exfiltration detection.
+//! Julia exfil detector.
 
 use tree_sitter::Language;
 

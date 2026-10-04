@@ -1,4 +1,4 @@
-//! Constant arrays used across exfil detection modules.
+//! Shared command and indicator lists.
 
 pub(crate) const NETWORK_SINKS: &[&str] = &[
     "curl", "wget", "http", "https", "xh", "curlie", "httpie", "aria2c", "axel", "wge", "curlx",
@@ -7,7 +7,7 @@ pub(crate) const NETWORK_SINKS: &[&str] = &[
     "azcopy", "git",
 ];
 
-// Cloud storage upload commands (always suspicious with sensitive data)
+// Flagged when combined with sensitive data
 pub(crate) const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
     "aws s3 cp",
     "aws s3 mv",
@@ -22,7 +22,7 @@ pub(crate) const CLOUD_UPLOAD_COMMANDS: &[&str] = &[
     "s3cmd put",
 ];
 
-// Clipboard tools (data can be exfiltrated via copy-paste)
+// Clipboard staging tools
 pub(crate) const CLIPBOARD_TOOLS: &[&str] = &[
     "pbcopy",   // macOS
     "xclip",    // Linux X11
@@ -95,7 +95,7 @@ pub(crate) const INLINE_CODE_FLAGS: &[&str] = &[
 ];
 
 pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
-    // Python (TCP/UDP/HTTP)
+    // Python
     "urllib",
     "urlopen",
     "requests.post",
@@ -107,7 +107,7 @@ pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
     "socket.socket",
     "sock_dgram",
     "sock_stream",
-    // Node/JS (TCP/UDP/HTTP)
+    // Node/JS
     "fetch(",
     "http.request",
     "https.request",
@@ -117,18 +117,18 @@ pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
     "dgram.createsocket",
     "dgram.bind",
     "axios",
-    // Ruby (TCP/UDP/HTTP)
+    // Ruby
     "net::http",
     "tcpsocket",
     "udpsocket",
     "socket.new",
     "open-uri",
-    // Perl (TCP/UDP)
+    // Perl
     "io::socket",
     "io::socket::inet",
     "lwp::",
     "http::request",
-    // PHP (TCP/UDP)
+    // PHP
     "curl_exec",
     "file_get_contents('http",
     "file_get_contents(\"http",
@@ -137,7 +137,7 @@ pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
     "stream_socket_client",
     "fopen('http",
     "fopen(\"http",
-    // Lua (TCP/UDP)
+    // Lua
     "socket.http",
     "socket.tcp",
     "socket.udp",
@@ -145,7 +145,7 @@ pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
     "deno.open",
     "deno.connect",
     "bun.connect",
-    // PowerShell (TCP/UDP)
+    // PowerShell
     "invoke-webrequest",
     "invoke-restmethod",
     "new-object net.webclient",
@@ -192,7 +192,7 @@ pub(crate) const CODE_NETWORK_INDICATORS: &[&str] = &[
     "do shell script",
     "nsurl",
     "nsurlrequest",
-    // Go (inline via interpreters)
+    // Go
     "net.dial",
     "net.listen",
 ];

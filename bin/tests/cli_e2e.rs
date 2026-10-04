@@ -1,10 +1,7 @@
-//! CLI e2e tests - runs the `parry-guard` binary with JSON on stdin.
+//! CLI e2e tests: run the `parry-guard` binary with JSON on stdin.
 //!
-//! `PreToolUse` tests must use `current_dir` set to a temp dir, otherwise
-//! `claude_md::check()` finds the repo's real CLAUDE.md and triggers ML scan.
-//!
-//! Tests that need Monitored state use `monitored_dir()` which creates an
-//! isolated runtime dir per test to avoid redb lock contention.
+//! Tests run in temp dirs so `claude_md::check()` never finds the repo's CLAUDE.md (ML scan),
+//! and each gets its own runtime dir to avoid redb lock contention.
 
 #![expect(
     clippy::unwrap_used,
@@ -160,8 +157,7 @@ fn isolated_dir() -> tempfile::TempDir {
     dir
 }
 
-/// Temp dir pre-registered as Monitored with its own isolated runtime db.
-/// Returns `(project_dir, runtime_dir)` - both must stay alive for the test.
+/// Monitored `(project_dir, runtime_dir)`; both must outlive the test.
 fn monitored_dir() -> (tempfile::TempDir, tempfile::TempDir) {
     let dir = isolated_dir();
     let runtime = tempfile::tempdir().unwrap();
@@ -284,7 +280,7 @@ fn pre_write_clean_content() {
         "hook_event_name": "PreToolUse",
         "cwd": dir.path().to_str().unwrap()
     }).to_string();
-    // Fast scan clean -> ML scan fails without daemon -> fail-closed (ask)
+    // fast scan clean, ML unavailable without daemon: fail-closed (ask)
     let out = run_hook(dir.path(), &json);
     assert!(out.status.success());
 }
@@ -707,7 +703,7 @@ fn tainted_project_no_crash() {
 
 #[test]
 fn repo_lifecycle() {
-    // Repo management needs db which is unavailable in Nix sandbox
+    // repo db is unavailable in the Nix sandbox
     if std::env::var("NIX_BUILD_TOP").is_ok() {
         return;
     }
@@ -742,7 +738,6 @@ fn repo_lifecycle() {
     let out = run_parry_with_retry_rt(&["status", path], dir.path(), Some(rt.path()));
     assert!(stdout(&out).contains("unknown"));
 
-    // Ignored repo skips scanning
     run_parry_with_retry_rt(&["ignore", path], dir.path(), Some(rt.path()));
 
     let json = serde_json::json!({
@@ -951,7 +946,6 @@ fn auto_monitor_sets_monitored_on_first_run() {
         "auto-monitor should not prompt: {s}"
     );
 
-    // Verify repo is now Monitored
     let out = run_parry_with_retry_rt(
         &["status", dir.path().to_str().unwrap()],
         dir.path(),
@@ -1155,8 +1149,7 @@ fn audit_failure_fails_closed_for_monitored_repo() {
         return;
     }
     let dir = isolated_dir();
-    // socket path exceeds sun_path (104/108 bytes): the daemon can never bind,
-    // so ML is unavailable regardless of local model/token setup
+    // socket path exceeds sun_path, so the daemon can't bind and ML is always unavailable
     let base = tempfile::tempdir().unwrap();
     let rt = base.path().join("x".repeat(120));
     std::fs::create_dir_all(&rt).unwrap();

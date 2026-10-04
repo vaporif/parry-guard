@@ -1,4 +1,4 @@
-//! Ruby-specific exfiltration detection.
+//! Ruby exfil detector.
 
 use tree_sitter::Language;
 

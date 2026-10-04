@@ -64,7 +64,6 @@ impl Cli {
     /// Resolve the HF token from `--hf-token`, `--hf-token-path`, or default paths.
     #[must_use]
     pub(crate) fn resolve_hf_token(&self) -> Option<String> {
-        // 1. Direct token value (--hf-token or HF_TOKEN env)
         if let Some(ref token) = self.hf_token {
             let trimmed = token.trim();
             if !trimmed.is_empty() {
@@ -72,14 +71,12 @@ impl Cli {
             }
         }
 
-        // 2. Token file (--hf-token-path or HF_TOKEN_PATH env)
         if let Some(ref path) = self.hf_token_path {
             if let Some(token) = read_token_file(path) {
                 return Some(token);
             }
         }
 
-        // 3. Default file path
         read_token_file("/run/secrets/hf-token-scan-injection".as_ref())
     }
 }

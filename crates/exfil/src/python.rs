@@ -1,4 +1,4 @@
-//! Python-specific exfiltration detection.
+//! Python exfil detector.
 
 use tree_sitter::Language;
 

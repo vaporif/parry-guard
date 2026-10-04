@@ -1,4 +1,4 @@
-//! Elixir-specific exfiltration detection.
+//! Elixir exfil detector.
 
 use tree_sitter::Language;
 

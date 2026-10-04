@@ -1,4 +1,4 @@
-//! JavaScript/Node.js-specific exfiltration detection.
+//! JavaScript/Node.js exfil detector.
 
 use tree_sitter::Language;
 

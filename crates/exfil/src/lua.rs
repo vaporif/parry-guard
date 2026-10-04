@@ -1,4 +1,4 @@
-//! Lua-specific exfiltration detection.
+//! Lua exfil detector.
 
 use tree_sitter::Language;
 

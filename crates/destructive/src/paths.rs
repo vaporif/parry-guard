@@ -126,7 +126,7 @@ fn is_under_cwd(resolved: &Path, cwd: &Path) -> bool {
     resolved.starts_with(cwd)
 }
 
-/// Check if a resolved path matches any protected prefix, honoring user config overrides.
+/// Honors user config add/remove overrides.
 fn matches_protected_prefix(resolved_str: &str, config: &CompiledDestructive) -> Option<String> {
     let resolved_with_slash = ensure_trailing_slash(resolved_str);
 

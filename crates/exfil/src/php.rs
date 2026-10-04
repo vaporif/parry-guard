@@ -1,4 +1,4 @@
-//! PHP-specific exfiltration detection.
+//! PHP exfil detector.
 
 use tree_sitter::Language;
 

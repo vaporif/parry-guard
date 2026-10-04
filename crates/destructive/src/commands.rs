@@ -1,13 +1,10 @@
-//! Configuration for destructive operation overrides.
-//!
-//! Loads from `<config dir>/parry-guard/patterns.toml` (same file as exfil patterns).
+//! User overrides from `<config dir>/parry-guard/patterns.toml` (shared with exfil patterns).
 
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 use tracing::warn;
 
-/// User-configurable overrides for destructive detection.
 #[derive(Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct DestructiveConfig {
     #[serde(default)]
@@ -16,7 +13,6 @@ pub struct DestructiveConfig {
     pub destructive_commands: ListOverrides,
 }
 
-/// Add/remove overrides for a list.
 #[derive(Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct ListOverrides {
     #[serde(default)]
@@ -26,7 +22,6 @@ pub struct ListOverrides {
 }
 
 impl DestructiveConfig {
-    /// Load configuration from the default path.
     #[must_use]
     pub fn load() -> Self {
         Self::load_from_path(Self::default_path())
@@ -56,26 +51,20 @@ impl DestructiveConfig {
     }
 }
 
-/// Runtime-compiled destructive detection config with user overrides applied.
+/// Destructive config with user overrides applied.
 pub struct CompiledDestructive {
-    /// Additional protected paths from user config.
     pub extra_paths: Vec<String>,
-    /// Protected paths removed by user config.
     pub removed_paths: Vec<String>,
-    /// Additional commands to flag as destructive.
     pub extra_commands: Vec<String>,
-    /// Commands removed from destructive detection.
     pub removed_commands: Vec<String>,
 }
 
 impl CompiledDestructive {
-    /// Load from default config path.
     #[must_use]
     pub fn load() -> Self {
         Self::from_config(DestructiveConfig::load())
     }
 
-    /// Create from explicit config (useful for testing).
     #[must_use]
     pub fn from_config(config: DestructiveConfig) -> Self {
         Self {
@@ -86,26 +75,22 @@ impl CompiledDestructive {
         }
     }
 
-    /// Check if a command has been removed from detection by user config.
     #[must_use]
     pub fn is_removed_command(&self, cmd: &str) -> bool {
         self.removed_commands.iter().any(|r| r == cmd)
     }
 
-    /// Check if a command was added to destructive detection by user config.
     #[must_use]
     pub fn is_extra_command(&self, cmd: &str) -> bool {
         self.extra_commands.iter().any(|c| c == cmd)
     }
 
-    /// Check if a protected path prefix has been removed by user config.
     #[must_use]
     pub fn is_removed_path(&self, path: &str) -> bool {
         self.removed_paths.iter().any(|r| r == path)
     }
 }
 
-/// Global compiled config (loaded once).
 pub static CONFIG: LazyLock<CompiledDestructive> = LazyLock::new(CompiledDestructive::load);
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Perl-specific exfiltration detection.
+//! Perl exfil detector.
 
 use tree_sitter::Language;
 

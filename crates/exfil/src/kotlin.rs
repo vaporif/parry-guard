@@ -1,4 +1,4 @@
-//! Kotlin-specific exfiltration detection.
+//! Kotlin exfil detector.
 
 use tree_sitter::Language;
 

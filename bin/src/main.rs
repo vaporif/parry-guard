@@ -10,8 +10,7 @@ use std::time::Duration;
 use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
-/// The only exit code that makes Claude Code and Codex block a tool call; other
-/// non-zero codes are reported as non-blocking errors and the call goes ahead.
+/// Only exit code Claude Code and Codex treat as blocking; others let the call through.
 const BLOCK_EXIT: u8 = 2;
 
 fn init_tracing() {
@@ -307,7 +306,6 @@ fn run_audit(
         Ok(w) => w,
         Err(e) => {
             if audit_failure_is_soft(repo_state, ask_on_new_project) {
-                // soft-fail: unknown repos in prompt mode
                 warn!(%e, "audit ML scan failed for Unknown repo (soft-fail)");
                 ml_unavailable = true;
                 Vec::new()
@@ -356,8 +354,7 @@ fn run_audit(
     ExitCode::SUCCESS
 }
 
-/// Only repos the user hasn't opted into yet (prompt mode) may proceed without ML;
-/// everything else fails closed.
+/// Only not-yet-opted-in repos (prompt mode) may proceed without ML; all else fails closed.
 fn audit_failure_is_soft(
     repo_state: parry_guard_core::repo_db::RepoState,
     ask_on_new_project: bool,
@@ -365,8 +362,7 @@ fn audit_failure_is_soft(
     repo_state == parry_guard_core::repo_db::RepoState::Unknown && ask_on_new_project
 }
 
-/// Detect the command prefix based on how the binary was installed.
-/// Returns e.g. `"uvx parry-guard"`, `"rvx parry-guard"`, or `"parry-guard"`.
+/// Command prefix matching how the binary was installed (`uvx`, `rvx`, or bare).
 fn command_name() -> &'static str {
     let exe = std::env::current_exe()
         .ok()
@@ -458,7 +454,7 @@ fn run_repo_command(subcommand: cli::RepoCommand, config: &Config) -> ExitCode {
                 println!("Remote:  {url}");
             }
 
-            // fresh audit (None for db/repo_path bypasses cache)
+            // no db/repo_path bypasses the cache
             let dir = std::path::Path::new(&canonical);
             match parry_guard_hook::project_audit::scan(dir, config, None, None) {
                 Ok(warnings) if warnings.is_empty() => {

@@ -1,4 +1,4 @@
-//! R-specific exfiltration detection.
+//! R exfil detector.
 
 use tree_sitter::Language;
 
