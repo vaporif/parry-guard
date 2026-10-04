@@ -1061,6 +1061,8 @@ mod tests {
     #[case::find_delete_several_roots("find ./target /etc -delete")]
     #[case::find_delete_project_root("find . -delete")]
     #[case::find_delete_default_root("find -delete")]
+    #[case::find_delete_always_true_test("find . -true -delete")]
+    #[case::find_delete_or_branch("find . -name x -o -delete")]
     #[case::find_exec_plus("find /etc -exec rm -rf {} +")]
     #[case::find_exec_semicolon(r"find /etc -type f -exec rm {} \;")]
     #[case::find_exec_quoted_semicolon("find /etc -exec rm {} ';'")]
