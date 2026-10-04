@@ -87,6 +87,13 @@ impl Config {
     ///
     /// Returns an error if `Custom` mode config is missing or has no models.
     pub fn resolve_models(&self) -> crate::Result<Vec<ModelDef>> {
+        self.resolve_models_in(dirs::config_dir().as_deref())
+    }
+
+    fn resolve_models_in(
+        &self,
+        config_dir: Option<&std::path::Path>,
+    ) -> crate::Result<Vec<ModelDef>> {
         match self.scan_mode {
             ScanMode::Fast => Ok(vec![ModelDef {
                 repo: DEFAULT_MODEL.to_string(),
@@ -108,17 +115,14 @@ impl Config {
                     })
                     .collect())
             }
-            ScanMode::Custom => load_custom_models(),
+            ScanMode::Custom => load_custom_models(config_dir),
         }
     }
 }
 
-fn custom_models_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|p| p.join("parry-guard").join("models.toml"))
-}
-
-fn load_custom_models() -> crate::Result<Vec<ModelDef>> {
-    let path = custom_models_path()
+fn load_custom_models(config_dir: Option<&std::path::Path>) -> crate::Result<Vec<ModelDef>> {
+    let path = config_dir
+        .map(|p| p.join("parry-guard").join("models.toml"))
         .ok_or_else(|| eyre::eyre!("cannot resolve config directory for models.toml"))?;
 
     let content = std::fs::read_to_string(&path)
@@ -161,21 +165,20 @@ mod tests {
 
     #[test]
     fn resolve_models_custom_reads_models_toml() {
-        let home = tempfile::tempdir().unwrap();
-        // SAFETY: nextest runs each test in its own process
-        unsafe {
-            std::env::set_var("HOME", home.path());
-            std::env::set_var("XDG_CONFIG_HOME", home.path().join(".config"));
-        }
-        let path = custom_models_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "[[models]]\nrepo = \"org/model\"\nthreshold = 0.5\n").unwrap();
+        let config_dir = tempfile::tempdir().unwrap();
+        let dir = config_dir.path().join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("models.toml"),
+            "[[models]]\nrepo = \"org/model\"\nthreshold = 0.5\n",
+        )
+        .unwrap();
 
         let config = Config {
             scan_mode: ScanMode::Custom,
             ..Config::default()
         };
-        let models = config.resolve_models().unwrap();
+        let models = config.resolve_models_in(Some(config_dir.path())).unwrap();
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].repo, "org/model");
         assert_eq!(
@@ -225,14 +228,12 @@ mod tests {
     #[test]
     fn resolve_models_custom_missing() {
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("HOME", dir.path()) };
         let config = Config {
             scan_mode: ScanMode::Custom,
             ..Config::default()
         };
-        let result = config.resolve_models();
-        unsafe { std::env::remove_var("HOME") };
-        assert!(result.is_err());
+        assert!(config.resolve_models_in(Some(dir.path())).is_err());
+        assert!(config.resolve_models_in(None).is_err());
     }
 
     #[test]

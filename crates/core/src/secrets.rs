@@ -113,8 +113,11 @@ struct PatternConfig {
 
 impl PatternConfig {
     fn load() -> Self {
-        let Some(path) = dirs::config_dir().map(|p| p.join("parry-guard").join("patterns.toml"))
-        else {
+        Self::load_from(dirs::config_dir().as_deref())
+    }
+
+    fn load_from(config_dir: Option<&std::path::Path>) -> Self {
+        let Some(path) = config_dir.map(|p| p.join("parry-guard").join("patterns.toml")) else {
             return Self::default();
         };
         if !path.exists() {
@@ -395,13 +398,8 @@ mod tests {
 
     #[test]
     fn pattern_config_loads_from_config_dir() {
-        let home = tempfile::tempdir().unwrap();
-        // SAFETY: nextest runs each test in its own process
-        unsafe {
-            std::env::set_var("HOME", home.path());
-            std::env::set_var("XDG_CONFIG_HOME", home.path().join(".config"));
-        }
-        let dir = dirs::config_dir().unwrap().join("parry-guard");
+        let config_dir = tempfile::tempdir().unwrap();
+        let dir = config_dir.path().join("parry-guard");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("patterns.toml"),
@@ -409,7 +407,7 @@ mod tests {
         )
         .unwrap();
 
-        let config = PatternConfig::load();
+        let config = PatternConfig::load_from(Some(config_dir.path()));
         assert_eq!(config.secrets.add, ["CUSTOM_[0-9]{4}"]);
         assert_eq!(config.secrets.remove, ["AKIA[0-9A-Z]{16}"]);
     }
