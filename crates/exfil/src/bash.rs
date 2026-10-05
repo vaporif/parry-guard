@@ -68,6 +68,10 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
+    if let Some(reason) = check_printed_into_shell(node, source) {
+        return Some(reason);
+    }
+
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
         if let Some(reason) = check_node(child, source) {
@@ -76,6 +80,37 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
     }
 
     None
+}
+
+/// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
+/// checked as a command of its own.
+fn check_printed_into_shell(node: Node, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    let stages: Vec<Node> = node.named_children(&mut cursor).collect();
+    stages.windows(2).find_map(|pair| {
+        let [printer, shell] = pair else {
+            return None;
+        };
+        let printer_name = get_command_name(*printer, source)?;
+        let shell_name = get_command_name(*shell, source)?;
+        let echo = printer_name == "echo";
+        if !(echo || printer_name == "printf") || !is_shell_interpreter(shell_name) {
+            return None;
+        }
+        let mut cursor = printer.walk();
+        let args: Vec<&str> = printer
+            .children_by_field_name("argument", &mut cursor)
+            .map(|arg| strip_quotes(node_text(arg, source)))
+            .filter(|arg| !(echo && arg.starts_with('-')))
+            .collect();
+        // printf prints its format, then each argument in a `%s`; a line each is close enough
+        let output = args.join(if echo { " " } else { "\n" });
+        let decoded = crate::obfuscation::decode_print_escapes(&output, echo);
+        let reason = crate::detect_exfiltration(&decoded).ok()??;
+        Some(format!(
+            "'{printer_name}' output piped to shell '{shell_name}' runs: {reason}"
+        ))
+    })
 }
 
 fn check_command(node: Node, source: &[u8]) -> Option<String> {

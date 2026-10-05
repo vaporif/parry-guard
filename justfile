@@ -27,7 +27,7 @@ build-onnx:
 
 # Run clippy
 clippy:
-    cargo clippy --workspace -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Run tests
 test:

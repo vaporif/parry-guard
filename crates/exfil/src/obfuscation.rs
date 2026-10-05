@@ -10,6 +10,11 @@ use crate::{BASH_SUBSTRING_REGEX, OD_REGEX, XXD_REGEX};
 pub(crate) fn check_obfuscation_patterns(command: &str) -> Option<String> {
     let lower = command.to_lowercase();
 
+    // TODO: an opaque decode feeding a shell (`echo <b64> | base64 -d | sh`,
+    // `bash <(... | base64 -d)`, `sh -c "$(... | base64 -d)"`) passes when no URL or
+    // path is visible (see gap_opaque_base64_piped_to_shell). Asking whenever
+    // base64 -d, xxd -r, openssl enc -d, rev or tr rot13 feeds a shell closes it,
+    // at the cost of occasional asks on install scripts.
     if lower.contains("base64")
         && (lower.contains("-d") || lower.contains("--decode"))
         && has_suspicious_context(command, &lower)
@@ -94,7 +99,9 @@ pub(crate) fn check_obfuscation_patterns(command: &str) -> Option<String> {
     }
 
     for upload_cmd in CLOUD_UPLOAD_COMMANDS {
-        if lower.contains(upload_cmd) && has_sensitive_context_in_command(command, &lower) {
+        if lower.contains(upload_cmd)
+            && has_sensitive_context_in_command(command, &lower, upload_cmd)
+        {
             return Some(format!(
                 "Cloud storage upload '{upload_cmd}' with sensitive data"
             ));
@@ -102,7 +109,9 @@ pub(crate) fn check_obfuscation_patterns(command: &str) -> Option<String> {
     }
 
     for clip_tool in CLIPBOARD_TOOLS {
-        if command.contains(clip_tool) && has_sensitive_context_in_command(command, &lower) {
+        if command.contains(clip_tool)
+            && has_sensitive_context_in_command(command, &lower, clip_tool)
+        {
             return Some(format!(
                 "Clipboard tool '{clip_tool}' with sensitive data (potential exfil staging)"
             ));
@@ -112,12 +121,21 @@ pub(crate) fn check_obfuscation_patterns(command: &str) -> Option<String> {
     None
 }
 
-fn has_sensitive_context_in_command(command: &str, lower: &str) -> bool {
+/// Sensitive path anywhere, or a sensitive source command as a whole word.
+/// `tool` itself is skipped so `aws s3 cp` doesn't count as the `aws` source.
+fn has_sensitive_context_in_command(command: &str, lower: &str, tool: &str) -> bool {
     if patterns::has_sensitive_path(command) {
         return true;
     }
 
-    SENSITIVE_SOURCES.iter().any(|src| lower.contains(src))
+    // TODO: generic readers (cat, head, tail, less, more) make `cat README.md | pbcopy`
+    // ask. Dropping them for clipboard tools would keep only secret producers (env,
+    // printenv, security, gpg, pass) plus sensitive paths, but lets through files the
+    // path patterns don't know.
+    let rest = lower.replacen(tool, " ", 1);
+    rest.split(|c: char| c.is_whitespace() || "|;&()<>`$'\"=".contains(c))
+        .map(|word| word.rsplit('/').next().unwrap_or(word))
+        .any(|word| SENSITIVE_SOURCES.contains(&word))
 }
 
 fn has_suspicious_context(command: &str, lower: &str) -> bool {
@@ -139,6 +157,19 @@ fn has_suspicious_context(command: &str, lower: &str) -> bool {
     }
 
     patterns::has_exfil_domain(command)
+}
+
+/// Text as `echo -e` or `printf` prints it: `\xHH`, `\NNN` (`\0NNN` for echo)
+/// and `\n` decoded.
+pub(crate) fn decode_print_escapes(text: &str, echo: bool) -> String {
+    let text = text.replace("\\n", "\n");
+    let text = if echo {
+        text.replace("\\0", "\\")
+    } else {
+        text
+    };
+    let hex = try_decode_hex_escapes(&text).unwrap_or(text);
+    try_decode_octal_escapes(&hex).unwrap_or(hex)
 }
 
 /// Decodes `\xHH` escapes; `None` if nothing was decoded.

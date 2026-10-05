@@ -36,7 +36,66 @@ fn check_pipeline(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         let input = stage_output(upstream, source, cwd)?;
         check_wrapper("xargs", stage, source, cwd, &input)
     });
-    reason.or_else(|| check_children(node, source, cwd))
+    reason
+        .or_else(|| {
+            stages
+                .iter()
+                .zip(stages.iter().skip(1))
+                .find_map(|(&printer, &shell)| {
+                    check_printed_into_shell(printer, shell, source, cwd)
+                })
+        })
+        .or_else(|| check_children(node, source, cwd))
+}
+
+/// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
+/// checked as a command line of its own.
+fn check_printed_into_shell(
+    printer: Node,
+    shell: Node,
+    source: &[u8],
+    cwd: &str,
+) -> Option<String> {
+    let Some(CommandName::Static(printer_name)) = get_command_name(printer, source) else {
+        return None;
+    };
+    let Some(CommandName::Static(shell_name)) = get_command_name(shell, source) else {
+        return None;
+    };
+    let echo = printer_name == "echo";
+    let reads_stdin = !arguments(shell, source).contains(&"-c");
+    if !(echo || printer_name == "printf")
+        || !consts::SHELLS.contains(&shell_name.as_str())
+        || !reads_stdin
+    {
+        return None;
+    }
+    let args: Vec<String> = arguments(printer, source)
+        .into_iter()
+        .filter(|arg| !(echo && arg.starts_with('-')))
+        .map(strip_outer_quotes)
+        .collect();
+    // printf prints its format, then each argument in a `%s`; a line each is close enough
+    let output = args.join(if echo { " " } else { "\n" });
+    // echo -e writes octal as `\0NNN`
+    let output = if echo {
+        output.replace("\\0", "\\")
+    } else {
+        output
+    };
+    let decoded = decode_escapes(&mut output.chars().peekable(), None);
+    crate::detect_destructive(&decoded, cwd).map(|reason| {
+        format!("'{printer_name}' output piped to shell '{shell_name}' runs: {reason}")
+    })
+}
+
+/// A quoted word's contents with escapes left for `decode_escapes`; bare words
+/// get bash quote removal.
+fn strip_outer_quotes(word: &str) -> String {
+    ['\'', '"']
+        .iter()
+        .find_map(|&q| word.strip_prefix(q).and_then(|w| w.strip_suffix(q)))
+        .map_or_else(|| unquote(word), str::to_owned)
 }
 
 /// Words a pipeline stage prints, when they can be known without running it.
@@ -166,9 +225,40 @@ fn check_find(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 fn check_command(node: Node, source: &[u8], cwd: &str) -> Option<String> {
     let reason = match get_command_name(node, source)? {
         CommandName::Static(cmd_name) => check_named_command(&cmd_name, node, source, cwd),
-        CommandName::Dynamic(text) => check_dynamic_command(text, node, source, cwd),
+        CommandName::Dynamic(text) => check_echoed_name(node, source, cwd)
+            .or_else(|| check_dynamic_command(text, node, source, cwd)),
     };
     reason.or_else(|| check_children(node, source, cwd))
+}
+
+/// `$(echo git) push` runs `git push`, so a name printed by `echo` or `printf`
+/// is checked as the command line it turns into.
+fn check_echoed_name(node: Node, source: &[u8], cwd: &str) -> Option<String> {
+    let name = node.child_by_field_name("name")?;
+    let mut cursor = name.walk();
+    let parts: Vec<Node> = name.named_children(&mut cursor).collect();
+    let [substitution] = parts.as_slice() else {
+        return None;
+    };
+    if substitution.kind() != "command_substitution" {
+        return None;
+    }
+    let mut cursor = substitution.walk();
+    let inner: Vec<Node> = substitution.named_children(&mut cursor).collect();
+    let [inner] = inner.as_slice() else {
+        return None;
+    };
+    if !matches!(get_command_name(*inner, source), Some(CommandName::Static(n)) if n == "echo" || n == "printf")
+    {
+        return None;
+    }
+    let words = stage_output(*inner, source, cwd)?;
+    let rest = source
+        .get(name.end_byte()..node.end_byte())
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())?;
+    let command = format!("{}{rest}", words.join(" "));
+    crate::detect_destructive(&command, cwd)
+        .map(|reason| format!("{reason} (command name resolved at runtime)"))
 }
 
 /// A name only known at runtime could be `rm`, so its arguments get the `rm` path checks.
@@ -452,9 +542,9 @@ fn get_path_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
-/// Positional arguments after the tool's global options, so `git -C dir push`
-/// starts with `push`. `--opt=value` is a single flag word and needs no skipping.
-fn subcommand_args<'a>(cmd_name: &str, args: &[&'a str]) -> Vec<&'a str> {
+/// Index of the subcommand, past the tool's global options and their values.
+/// `--opt=value` is a single flag word and needs no skipping.
+fn subcommand_index(cmd_name: &str, args: &[&str]) -> usize {
     let value_options = consts::GLOBAL_VALUE_OPTIONS
         .iter()
         .find(|(name, _)| *name == cmd_name)
@@ -463,7 +553,16 @@ fn subcommand_args<'a>(cmd_name: &str, args: &[&'a str]) -> Vec<&'a str> {
     while let Some(arg) = args.get(start).filter(|arg| arg.starts_with('-')) {
         start += if value_options.contains(arg) { 2 } else { 1 };
     }
-    get_path_args(args.get(start..).unwrap_or_default())
+    start
+}
+
+/// Positional arguments after the tool's global options, so `git -C dir push`
+/// starts with `push`.
+fn subcommand_args<'a>(cmd_name: &str, args: &[&'a str]) -> Vec<&'a str> {
+    get_path_args(
+        args.get(subcommand_index(cmd_name, args)..)
+            .unwrap_or_default(),
+    )
 }
 
 fn check_eval(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
@@ -535,8 +634,117 @@ fn check_taint_file_in_args(cmd_name: &str, node: Node, source: &[u8]) -> Option
 }
 
 fn check_rm(cmd_name: &str, node: Node, source: &[u8], cwd: &str) -> Option<String> {
-    let args = get_args(node, source);
+    // TODO: unknown variables stay unexpanded and read as relative paths, so
+    // `rm -rf $DIR/` (empty DIR wipes `/`) and `rm -rf $OLDPWD` pass. Asking on any
+    // unresolved variable with `-r`/`-f` closes it but also asks on build scripts.
+    let mut cursor = node.walk();
+    let args: Vec<String> = node
+        .children_by_field_name("argument", &mut cursor)
+        .map(|arg| expand_known_vars(node_text(arg, source), cwd))
+        .collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     check_rm_paths(cmd_name, &get_path_args(&args), cwd)
+}
+
+/// Expand what bash would expand to a value known without running it: `$HOME`,
+/// `$PWD` (braced or not) and ANSI-C `$'...'`. Quotes stay in place for `unquote`.
+fn expand_known_vars(word: &str, cwd: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    let mut chars = word.chars().peekable();
+    let (mut in_single, mut in_double) = (false, false);
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if !in_single => {
+                out.push(c);
+                out.extend(chars.next());
+            }
+            '\'' if !in_double => {
+                in_single = !in_single;
+                out.push(c);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                out.push(c);
+            }
+            '$' if !in_single && !in_double && chars.peek() == Some(&'\'') => {
+                chars.next();
+                push_escaped(&mut out, &decode_escapes(&mut chars, Some('\'')));
+            }
+            '$' if !in_single => match known_var_value(&mut chars, cwd) {
+                Some(value) => push_escaped(&mut out, &value),
+                None => out.push(c),
+            },
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Value of `HOME` or `PWD` right after a `$`, consuming the name. Other
+/// names, and forms like `${HOME:-x}`, are left unconsumed.
+fn known_var_value(chars: &mut std::iter::Peekable<std::str::Chars>, cwd: &str) -> Option<String> {
+    let rest: String = chars.clone().collect();
+    let (name, len) = if let Some(braced) = rest.strip_prefix('{') {
+        let name = braced.split_once('}')?.0;
+        (name, name.len() + 2)
+    } else {
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let name = rest.get(..end)?;
+        (name, end)
+    };
+    let value = match name {
+        "HOME" => dirs::home_dir()?.to_str()?.to_owned(),
+        "PWD" => cwd.to_owned(),
+        _ => return None,
+    };
+    for _ in 0..len {
+        chars.next();
+    }
+    Some(value)
+}
+
+/// Backslash escapes (`\xHH`, `\NNN`, `\n`, `\t`) decoded up to `end`, which is
+/// consumed: the closing quote of `$'...'`, or `None` for the whole text.
+fn decode_escapes(chars: &mut std::iter::Peekable<std::str::Chars>, end: Option<char>) -> String {
+    let mut out = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            c if Some(c) == end => break,
+            '\\' => match chars.next() {
+                Some('x') => {
+                    let hex: String = std::iter::from_fn(|| chars.next_if(char::is_ascii_hexdigit))
+                        .take(2)
+                        .collect();
+                    out.extend(u8::from_str_radix(&hex, 16).ok().map(char::from));
+                }
+                Some(d @ '0'..='7') => {
+                    let mut octal = String::from(d);
+                    octal.extend(
+                        std::iter::from_fn(|| chars.next_if(|c| ('0'..='7').contains(c))).take(2),
+                    );
+                    out.extend(u8::from_str_radix(&octal, 8).ok().map(char::from));
+                }
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some(other) => out.push(other),
+                None => {}
+            },
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Escape `value` so `unquote` gives it back unchanged.
+fn push_escaped(out: &mut String, value: &str) {
+    for c in value.chars() {
+        if matches!(c, '\\' | '\'' | '"') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
 }
 
 fn check_rm_paths<S: AsRef<str>>(cmd_name: &str, paths: &[S], cwd: &str) -> Option<String> {
@@ -633,7 +841,12 @@ fn check_git(node: Node, source: &[u8]) -> Option<String> {
     }
 
     match subcmd {
-        "push" => check_git_push(&args, &path_args),
+        "push" => {
+            let push_args = args
+                .get(subcommand_index("git", &args) + 1..)
+                .unwrap_or_default();
+            check_git_push(&args, &path_args).or_else(|| check_push_repository(push_args))
+        }
         "remote" => check_git_remote(&path_args),
         "reset" => {
             if has_flag(&args, "--hard") {
@@ -721,6 +934,36 @@ fn check_git_push(args: &[&str], path_args: &[&str]) -> Option<String> {
     }
 
     None
+}
+
+/// The repository is the first positional after `push` (or `--repo`). Like git,
+/// treat `host:path` with no `/` before the colon as a remote host: remote
+/// names can't contain `:`, and refspecs such as `v1.2:x` only come after it.
+fn check_push_repository(push_args: &[&str]) -> Option<String> {
+    let mut rest = push_args.iter().copied();
+    let repository = loop {
+        let arg = rest.next()?;
+        if let Some(repo) = arg.strip_prefix("--repo=") {
+            break repo;
+        }
+        if arg == "--repo" || arg == "--" {
+            break rest.next()?;
+        }
+        if !arg.starts_with('-') {
+            break arg;
+        }
+        if consts::GIT_PUSH_VALUE_OPTIONS.contains(&arg) {
+            rest.next();
+        }
+    };
+    let repository = unquote(repository);
+    let (host, _) = repository.split_once(':')?;
+    if host.is_empty() || host.contains('/') {
+        return None;
+    }
+    Some(format!(
+        "'git push' to URL '{repository}' may exfiltrate repository"
+    ))
 }
 
 fn check_git_remote(path_args: &[&str]) -> Option<String> {

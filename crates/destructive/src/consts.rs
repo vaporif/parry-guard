@@ -24,6 +24,10 @@ pub(crate) const PKG_MANAGER_DESTRUCTIVE: &[(&str, &[&str])] = &[
 /// Destructive only with `-g`.
 pub(crate) const NPM_GLOBAL_UNINSTALL: &[&str] = &["uninstall", "rm", "remove"];
 
+/// `git push` options that take a separate value, so it isn't read as the repository.
+pub(crate) const GIT_PUSH_VALUE_OPTIONS: &[&str] =
+    &["-o", "--push-option", "--receive-pack", "--exec"];
+
 pub(crate) const GIT_HISTORY_REWRITE: &[&str] = &["filter-branch", "filter-repo"];
 
 pub(crate) const DB_CLI_COMMANDS: &[&str] = &["psql", "mysql", "sqlite3"];
@@ -122,6 +126,11 @@ pub(crate) const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("nix-env", &["-e", "--uninstall", "--delete-generations"]),
     ("nix-channel", &["--remove"]),
     ("nixos-rebuild", &["switch"]),
+];
+
+/// Shells that run commands read from stdin.
+pub(crate) const SHELLS: &[&str] = &[
+    "sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "csh", "tcsh", "yash",
 ];
 
 pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
