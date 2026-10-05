@@ -49,7 +49,11 @@ fn init_tracing() {
                 .init();
         }
         Err(_) => {
-            fmt().with_env_filter(filter).init();
+            // stdout is reserved for hook JSON
+            fmt()
+                .with_env_filter(filter)
+                .with_writer(std::io::stderr)
+                .init();
         }
     }
 }
@@ -108,7 +112,23 @@ fn main() -> ExitCode {
     }
 }
 
+/// Claude Code expects JSON on stdout for a successful hook, so allow paths print `{}`.
 fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -> ExitCode {
+    match hook_outcome(config, ignore_dirs, ask_on_new_project) {
+        Ok(json) => {
+            println!("{}", json.as_deref().unwrap_or("{}"));
+            ExitCode::SUCCESS
+        }
+        Err(code) => code,
+    }
+}
+
+/// `Ok` carries the JSON to print (if any); `Err` is a blocking exit code.
+fn hook_outcome(
+    config: &Config,
+    ignore_dirs: &[String],
+    ask_on_new_project: bool,
+) -> Result<Option<String>, ExitCode> {
     use parry_guard_core::repo_db::{self, RepoDb, RepoState};
 
     debug!("starting hook mode");
@@ -123,13 +143,13 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     if std::io::stdin().read_to_string(&mut input).is_err() {
         warn!("failed to read stdin (fail-closed)");
         eprintln!("parry-guard could not read hook input, blocking for safety");
-        return ExitCode::from(BLOCK_EXIT);
+        return Err(ExitCode::from(BLOCK_EXIT));
     }
 
     let input = input.trim();
     if input.is_empty() {
         debug!("empty hook input, skipping");
-        return ExitCode::SUCCESS;
+        return Ok(None);
     }
 
     let hook_envelope: HookEnvelope = match serde_json::from_str(input) {
@@ -137,7 +157,7 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
         Err(e) => {
             warn!(%e, "invalid hook JSON (fail-closed)");
             eprintln!("parry-guard got invalid hook JSON, blocking for safety: {e}");
-            return ExitCode::from(BLOCK_EXIT);
+            return Err(ExitCode::from(BLOCK_EXIT));
         }
     };
     let hook_runner = hook_envelope.runner();
@@ -151,7 +171,7 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     if let Some(ref rp) = repo_path {
         if is_under_ignore_dirs(rp, ignore_dirs) {
             debug!(repo = %rp, "repo under ignore dir, skipping");
-            return ExitCode::SUCCESS;
+            return Ok(None);
         }
     }
 
@@ -169,30 +189,23 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
     match hook_input.hook_event_name.as_deref() {
         Some("UserPromptSubmit") => {
             debug!("detected UserPromptSubmit hook");
-            let code = run_audit(
+            run_audit(
                 &hook_input,
                 config,
                 repo_state,
                 db.as_ref(),
                 repo_path.as_deref(),
                 ask_on_new_project,
-            );
-            if code != ExitCode::SUCCESS {
-                return code;
-            }
+            )
         }
         Some("PostToolUse") => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
             debug!(tool, "detected PostToolUse hook");
-            if let Some(output) =
-                parry_guard_hook::post_tool_use::process(&hook_input, config, repo_state)
-            {
+            let output = parry_guard_hook::post_tool_use::process(&hook_input, config, repo_state);
+            if output.is_some() {
                 info!(tool, "threat detected in tool output");
-                match serde_json::to_string(&output) {
-                    Ok(json) => println!("{json}"),
-                    Err(e) => warn!(%e, "failed to serialize hook output"),
-                }
             }
+            Ok(output.and_then(|o| to_json(&o)))
         }
         _ => {
             let tool = hook_input.tool_name.as_deref().unwrap_or("unknown");
@@ -207,18 +220,20 @@ fn run_hook(config: &Config, ignore_dirs: &[String], ask_on_new_project: bool) -
                 if output.is_deny() || (hook_runner.blocks_ask_decisions() && output.is_ask()) {
                     info!(tool, "tool denied by PreToolUse");
                     eprintln!("{}", output.reason());
-                    return ExitCode::from(BLOCK_EXIT);
+                    return Err(ExitCode::from(BLOCK_EXIT));
                 }
                 info!(tool, "tool requires approval (PreToolUse)");
-                match serde_json::to_string(&output) {
-                    Ok(json) => println!("{json}"),
-                    Err(e) => warn!(%e, "failed to serialize PreToolUse output"),
-                }
+                return Ok(to_json(&output));
             }
+            Ok(None)
         }
     }
+}
 
-    ExitCode::SUCCESS
+fn to_json(output: &impl serde::Serialize) -> Option<String> {
+    serde_json::to_string(output)
+        .inspect_err(|e| warn!(%e, "failed to serialize hook output"))
+        .ok()
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -264,12 +279,12 @@ fn run_audit(
     db: Option<&parry_guard_core::repo_db::RepoDb>,
     repo_path: Option<&str>,
     ask_on_new_project: bool,
-) -> ExitCode {
+) -> Result<Option<String>, ExitCode> {
     use parry_guard_core::repo_db::RepoState;
 
     if repo_state == RepoState::Ignored {
         debug!("repo ignored, skipping audit");
-        return ExitCode::SUCCESS;
+        return Ok(None);
     }
 
     let dir = hook_input
@@ -280,7 +295,7 @@ fn run_audit(
 
     let Some(dir) = dir else {
         warn!("no cwd available for audit");
-        return ExitCode::SUCCESS;
+        return Ok(None);
     };
 
     let is_first_run = repo_state == RepoState::Unknown;
@@ -317,7 +332,7 @@ fn run_audit(
                     command_name()
                 );
                 eprintln!("{message}");
-                return ExitCode::from(BLOCK_EXIT);
+                return Err(ExitCode::from(BLOCK_EXIT));
             }
         }
     };
@@ -332,26 +347,18 @@ fn run_audit(
             ml_unavailable,
         );
         let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-        if let Ok(json) = serde_json::to_string(&output) {
-            println!("{json}");
-        }
-        return ExitCode::SUCCESS;
+        return Ok(to_json(&output));
     }
 
     if warnings.is_empty() {
         debug!("audit clean");
-        return ExitCode::SUCCESS;
+        return Ok(None);
     }
 
     let message = parry_guard_hook::project_audit::format_warnings(&warnings);
     info!(count = warnings.len(), "audit warnings");
     let output = parry_guard_hook::HookOutput::user_prompt_warning(&message);
-    match serde_json::to_string(&output) {
-        Ok(json) => println!("{json}"),
-        Err(e) => warn!(%e, "failed to serialize audit output"),
-    }
-
-    ExitCode::SUCCESS
+    Ok(to_json(&output))
 }
 
 /// Only not-yet-opted-in repos (prompt mode) may proceed without ML; all else fails closed.

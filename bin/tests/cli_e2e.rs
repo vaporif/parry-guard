@@ -123,7 +123,7 @@ fn parse_output(out: &std::process::Output) -> serde_json::Value {
 
 fn assert_allowed(out: &std::process::Output) {
     assert!(out.status.success());
-    assert_eq!(stdout(out).trim(), "");
+    assert_eq!(stdout(out).trim(), "{}");
 }
 
 fn assert_decision(out: &std::process::Output, expected: &str) {
@@ -339,6 +339,13 @@ fn pre_write_injection() {
     let out = run_hook_rt(dir.path(), &json, Some(rt.path()), &[]);
     assert!(out.status.success());
     assert_decision(&out, "ask");
+}
+
+#[test]
+fn codex_pre_clean_emits_noop_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = codex_pre_tool_json("Bash", serde_json::json!({ "command": "echo hi" }));
+    assert_allowed(&run_hook(dir.path(), &json));
 }
 
 #[test]
@@ -851,7 +858,7 @@ fn prompt_submit_no_claude_dir() {
         "cwd": dir.path().to_str().unwrap()
     })
     .to_string();
-    assert!(run_hook(dir.path(), &json).status.success());
+    assert_allowed(&run_hook(dir.path(), &json));
 }
 
 #[test]
@@ -1044,10 +1051,7 @@ fn auto_monitor_ignored_repo_stays_ignored() {
     .to_string();
     let out = run_hook_rt(dir.path(), &json, Some(rt.path()), &[]);
     assert!(out.status.success());
-    assert!(
-        stdout(&out).trim().is_empty(),
-        "ignored repo should skip audit"
-    );
+    assert_eq!(stdout(&out).trim(), "{}", "ignored repo should skip audit");
 }
 
 #[test]
@@ -1077,8 +1081,9 @@ fn ignore_dirs_skips_child_repos() {
         &[("PARRY_IGNORE_DIRS", parent.path().to_str().unwrap())],
     );
     assert!(out.status.success());
-    assert!(
-        stdout(&out).trim().is_empty(),
+    assert_eq!(
+        stdout(&out).trim(),
+        "{}",
         "repo under ignore dir should be skipped"
     );
 }
