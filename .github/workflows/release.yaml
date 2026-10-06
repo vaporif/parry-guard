@@ -27,8 +27,10 @@ jobs:
             os: ubuntu-latest
           - target: x86_64-apple-darwin
             os: macos-latest
+            cargo_cmd: zigbuild
           - target: aarch64-apple-darwin
             os: macos-latest
+            cargo_cmd: zigbuild
           - backend: onnx-fetch
             suffix: ""
           - backend: candle
@@ -48,9 +50,15 @@ jobs:
 
       - name: Build binary
         run: |
-          nix develop --command cargo build --release \
+          nix develop --command cargo ${{ matrix.cargo_cmd || 'build' }} --release \
             --target ${{ matrix.target }} \
             --no-default-features --features ${{ matrix.backend }}
+        env:
+          RUSTFLAGS: ${{ matrix.backend == 'onnx-fetch' && runner.os == 'macOS' && '-C link-arg=-framework -C link-arg=CoreML' || '' }}
+
+      - name: Check binary links only system dylibs
+        if: runner.os == 'macOS'
+        run: ./scripts/check-macos-dylibs.sh "target/${{ matrix.target }}/release/parry-guard"
 
       - name: Package and upload
         run: |
@@ -92,9 +100,11 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             platform_tag: ""
+            maturin_args: --zig
           - target: aarch64-apple-darwin
             os: macos-latest
             platform_tag: ""
+            maturin_args: --zig
     steps:
       - uses: actions/checkout@v6
 
@@ -103,9 +113,17 @@ jobs:
 
       - name: Build wheel
         run: |
-          nix develop --command maturin build --release \
+          nix develop --command maturin build --release ${{ matrix.maturin_args }} \
             --target ${{ matrix.target }} \
             --out dist
+
+      - name: Check wheel binary links only system dylibs
+        if: runner.os == 'macOS'
+        run: |
+          for whl in dist/*.whl; do
+            unzip -o -q "$whl" '*/scripts/parry-guard' -d wheel-check
+          done
+          ./scripts/check-macos-dylibs.sh wheel-check/*/scripts/parry-guard
 
       - name: Fix platform tag
         if: ${{ matrix.platform_tag }}

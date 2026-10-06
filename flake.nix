@@ -251,6 +251,8 @@
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15
+            pkgs.cargo-zigbuild
+            pkgs.zig
           ];
 
         env =
