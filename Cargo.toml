@@ -34,7 +34,7 @@ html-escape = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1.0"
-dirs = "6"
+dirs = "7"
 clap = { version = "4", features = ["derive", "env"] }
 
 # Tree-sitter (exfil)
@@ -66,19 +66,19 @@ hf-hub = { version = "0.5", default-features = false, features = [
 
 # ONNX backend (optional)
 # TODO: unpin once ort 2.0.0-rc.13+ is released with VitisAI gating fix (pykeio/ort#546)
-ort = { version = "=2.0.0-rc.11", default-features = false, features = [
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
   "std",
   "ndarray",
 ] }
 ndarray = "0.17"
 
 # Candle backend (optional)
-candle-core = "0.10"
-candle-nn = "0.10"
-candle-transformers = "0.10"
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
 
 libc = "0.2"
-fork = "0.7"
+fork = "0.10"
 
 # Daemon/async
 bytes = "1"
@@ -89,7 +89,7 @@ interprocess = { version = "2", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "signal"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
-redb = "3"
+redb = "4"
 blake3 = "1"
 
 tracing = "0.1"
