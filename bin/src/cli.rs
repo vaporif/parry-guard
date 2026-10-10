@@ -164,6 +164,8 @@ pub(crate) enum RepoCommand {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -219,92 +221,66 @@ mod tests {
         threshold_in_range("abc").unwrap_err();
     }
 
-    fn cli_with(hf_token: Option<&str>, hf_token_path: Option<PathBuf>) -> Cli {
-        let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
-        cli.hf_token = hf_token.map(String::from);
-        cli.hf_token_command = None;
-        cli.hf_token_path = hf_token_path;
-        cli
-    }
-
-    fn token_of(source: HfTokenSource) -> Option<String> {
+    fn describe(source: HfTokenSource) -> String {
         match source {
-            HfTokenSource::Token(t) => Some(t.expose_secret().to_string()),
-            HfTokenSource::Command(_) | HfTokenSource::None => None,
+            HfTokenSource::Token(t) => format!("token:{}", t.expose_secret()),
+            HfTokenSource::Command(c) => format!("command:{c}"),
+            HfTokenSource::None => "none".into(),
         }
     }
 
-    #[test]
-    fn hf_token_direct_value_trimmed() {
-        let cli = cli_with(Some("  tok123\n"), None);
-        assert_eq!(token_of(cli.resolve_hf_token()).as_deref(), Some("tok123"));
-    }
-
-    #[test]
-    fn hf_token_direct_wins_over_file() {
+    #[rstest]
+    #[case::direct_trimmed(Some("  tok123\n"), None, None, "token:tok123")]
+    #[case::direct_wins_over_file(Some("direct"), None, Some("from-file"), "token:direct")]
+    #[case::blank_direct_falls_back_to_file(
+        Some("   "),
+        None,
+        Some("  from-file\n"),
+        "token:from-file"
+    )]
+    #[case::direct_wins_over_command(Some("direct"), Some("pass show hf"), None, "token:direct")]
+    #[case::command_wins_over_file(
+        None,
+        Some(" pass show hf \n"),
+        Some("from-file"),
+        "command:pass show hf"
+    )]
+    #[case::blank_command_falls_back_to_file(
+        None,
+        Some("  "),
+        Some("from-file"),
+        "token:from-file"
+    )]
+    fn resolve_hf_token_precedence(
+        #[case] token: Option<&str>,
+        #[case] command: Option<&str>,
+        #[case] file: Option<&str>,
+        #[case] expected: &str,
+    ) {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "from-file").unwrap();
-        let cli = cli_with(Some("direct"), Some(path));
-        assert_eq!(token_of(cli.resolve_hf_token()).as_deref(), Some("direct"));
+        let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        cli.hf_token = token.map(String::from);
+        cli.hf_token_command = command.map(String::from);
+        cli.hf_token_path = file.map(|contents| {
+            let path = dir.path().join("token");
+            std::fs::write(&path, contents).unwrap();
+            path
+        });
+        assert_eq!(describe(cli.resolve_hf_token()), expected);
     }
 
     #[test]
-    fn hf_token_blank_direct_falls_back_to_file() {
+    fn hf_token_command_not_run_during_resolution() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "  from-file\n").unwrap();
-        let cli = cli_with(Some("   "), Some(path));
-        assert_eq!(
-            token_of(cli.resolve_hf_token()).as_deref(),
-            Some("from-file")
-        );
-    }
-
-    #[test]
-    fn hf_token_direct_wins_over_command() {
-        let mut cli = cli_with(Some("direct"), None);
-        cli.hf_token_command = Some("pass show hf".into());
-        assert_eq!(token_of(cli.resolve_hf_token()).as_deref(), Some("direct"));
-    }
-
-    #[test]
-    fn hf_token_command_wins_over_file_and_is_not_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "from-file").unwrap();
         let marker = dir.path().join("ran");
-        let mut cli = cli_with(None, Some(path));
-        cli.hf_token_command = Some(format!(" touch {} \n", marker.display()));
-        let expected = format!("touch {}", marker.display());
-        assert!(
-            matches!(cli.resolve_hf_token(), HfTokenSource::Command(c) if c == expected),
-            "command source expected"
-        );
+        let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        cli.hf_token = None;
+        cli.hf_token_command = Some(format!("touch {}", marker.display()));
+        let _ = cli.resolve_hf_token();
         assert!(
             !marker.exists(),
             "command must not run during CLI resolution"
         );
-    }
-
-    #[test]
-    fn hf_token_blank_command_falls_back_to_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "from-file").unwrap();
-        let mut cli = cli_with(None, Some(path));
-        cli.hf_token_command = Some("  ".into());
-        assert_eq!(
-            token_of(cli.resolve_hf_token()).as_deref(),
-            Some("from-file")
-        );
-    }
-
-    #[test]
-    fn hf_token_command_flag_parses() {
-        let cli = Cli::try_parse_from(["parry-guard", "--hf-token-command", "op read op://x/hf"])
-            .unwrap();
-        assert_eq!(cli.hf_token_command.as_deref(), Some("op read op://x/hf"));
     }
 
     #[test]

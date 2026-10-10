@@ -153,8 +153,10 @@ impl Default for Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rstest::rstest;
     use secrecy::ExposeSecret;
+
+    use super::*;
 
     #[test]
     fn scan_mode_as_str() {
@@ -276,27 +278,25 @@ mod tests {
         assert!(dbg.contains("REDACTED"), "{dbg}");
     }
 
-    #[test]
-    #[cfg(unix)]
-    fn resolve_hf_token_prefers_direct_value() {
+    #[rstest]
+    #[case::direct_wins(Some("direct"), Some("exit 1"), Some("direct"))]
+    #[cfg_attr(
+        unix,
+        case::runs_command(None, Some("echo from-cmd"), Some("from-cmd"))
+    )]
+    #[case::unset(None, None, None)]
+    fn resolve_hf_token(
+        #[case] token: Option<&str>,
+        #[case] command: Option<&str>,
+        #[case] expected: Option<&str>,
+    ) {
         let config = Config {
-            hf_token: Some("direct".into()),
-            hf_token_command: Some("exit 1".into()),
+            hf_token: token.map(Into::into),
+            hf_token_command: command.map(String::from),
             ..Config::default()
         };
-        let token = config.resolve_hf_token().unwrap().unwrap();
-        assert_eq!(token.expose_secret(), "direct", "direct value should win");
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn resolve_hf_token_runs_command() {
-        let config = Config {
-            hf_token_command: Some("echo from-cmd".into()),
-            ..Config::default()
-        };
-        let token = config.resolve_hf_token().unwrap().unwrap();
-        assert_eq!(token.expose_secret(), "from-cmd", "command output expected");
+        let resolved = config.resolve_hf_token().unwrap();
+        assert_eq!(resolved.as_ref().map(ExposeSecret::expose_secret), expected);
     }
 
     #[test]
@@ -307,13 +307,5 @@ mod tests {
             ..Config::default()
         };
         let _ = config.resolve_hf_token().unwrap_err();
-    }
-
-    #[test]
-    fn resolve_hf_token_none_when_unset() {
-        assert!(
-            Config::default().resolve_hf_token().unwrap().is_none(),
-            "no token configured"
-        );
     }
 }

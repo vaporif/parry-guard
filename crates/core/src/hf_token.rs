@@ -87,6 +87,8 @@ fn shell(command: &str) -> Command {
 
 #[cfg(all(test, unix))]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -95,22 +97,13 @@ mod tests {
         assert_eq!(token.expose_secret(), "hf_abc", "token should be trimmed");
     }
 
-    #[test]
-    fn nonzero_exit_is_error() {
-        let err = run_token_command("echo hf_abc; exit 3").unwrap_err();
-        assert!(err.to_string().contains("failed"), "got: {err}");
-    }
-
-    #[test]
-    fn empty_output_is_error() {
-        let err = run_token_command("printf '  \\n'").unwrap_err();
-        assert!(err.to_string().contains("empty"), "got: {err}");
-    }
-
-    #[test]
-    fn error_does_not_leak_output() {
-        let err = run_token_command("echo hf_secret; exit 1").unwrap_err();
-        assert!(!err.to_string().contains("hf_secret"), "got: {err}");
+    #[rstest]
+    #[case::nonzero_exit("echo hf_secret; exit 3", "failed")]
+    #[case::empty_output("printf '  \\n'", "empty")]
+    fn command_errors(#[case] command: &str, #[case] expected: &str) {
+        let err = run_token_command(command).unwrap_err().to_string();
+        assert!(err.contains(expected), "got: {err}");
+        assert!(!err.contains("hf_secret"), "output leaked: {err}");
     }
 
     #[test]
