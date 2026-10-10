@@ -49,9 +49,11 @@ impl MlScanner {
         let model_defs = config.resolve_models()?;
         debug!(count = model_defs.len(), "loading ML scanner");
 
+        // once per load, so a failed load re-fetches from the command on retry
+        let token = config.resolve_hf_token()?;
         let mut instances = Vec::with_capacity(model_defs.len());
         for def in &model_defs {
-            let repo = model::hf_repo_for(config, &def.repo)?;
+            let repo = model::hf_repo_for(token.as_ref(), &def.repo)?;
 
             let tokenizer_path = repo
                 .get("tokenizer.json")

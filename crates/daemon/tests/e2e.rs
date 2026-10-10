@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 fn fast_config(dir: &Path) -> Config {
     Config {
-        hf_token: std::env::var("HF_TOKEN").ok(),
+        hf_token: std::env::var("HF_TOKEN").ok().map(Into::into),
         runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }
@@ -26,7 +26,7 @@ fn fast_config(dir: &Path) -> Config {
 fn full_config(dir: &Path) -> Config {
     Config {
         scan_mode: ScanMode::Full,
-        hf_token: std::env::var("HF_TOKEN").ok(),
+        hf_token: std::env::var("HF_TOKEN").ok().map(Into::into),
         runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }

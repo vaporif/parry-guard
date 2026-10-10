@@ -3,7 +3,7 @@ members = ["crates/*", "bin"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.1.6"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/vaporif/parry-guard"
@@ -12,12 +12,12 @@ keywords = ["prompt-injection", "security", "scanner", "llm", "claude", "codex"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
-parry-guard-core = { path = "crates/core", version = "0.2.0", default-features = false }
-parry-guard-ml = { path = "crates/ml", version = "0.2.0", default-features = false }
-parry-guard-exfil = { path = "crates/exfil", version = "0.2.0" }
-parry-guard-daemon = { path = "crates/daemon", version = "0.2.0", default-features = false }
-parry-guard-destructive = { path = "crates/destructive", version = "0.2.0" }
-parry-guard-hook = { path = "crates/hook", version = "0.2.0", default-features = false }
+parry-guard-core = { path = "crates/core", version = "0.1.6", default-features = false }
+parry-guard-ml = { path = "crates/ml", version = "0.1.6", default-features = false }
+parry-guard-exfil = { path = "crates/exfil", version = "0.1.6" }
+parry-guard-daemon = { path = "crates/daemon", version = "0.1.6", default-features = false }
+parry-guard-destructive = { path = "crates/destructive", version = "0.1.6" }
+parry-guard-hook = { path = "crates/hook", version = "0.1.6", default-features = false }
 
 # Core dependencies
 eyre = "0.6"
@@ -35,6 +35,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1.0"
 dirs = "6"
+secrecy = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
 
 # Tree-sitter (exfil)

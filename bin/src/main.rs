@@ -78,12 +78,17 @@ fn main() -> ExitCode {
         );
     }
 
-    let hf_token = cli.resolve_hf_token();
+    let (hf_token, hf_token_command) = match cli.resolve_hf_token() {
+        cli::HfTokenSource::Token(token) => (Some(token), None),
+        cli::HfTokenSource::Command(command) => (None, Some(command)),
+        cli::HfTokenSource::None => (None, None),
+    };
     let ignore_dirs = cli.ignore_dirs;
     let ask_on_new_project = cli.ask_on_new_project;
 
     let config = Config {
         hf_token,
+        hf_token_command,
         threshold: cli.threshold,
         claude_md_threshold: cli.claude_md_threshold,
         scan_mode: cli.scan_mode,

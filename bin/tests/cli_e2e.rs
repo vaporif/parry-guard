@@ -341,6 +341,60 @@ fn pre_write_injection() {
     assert_decision(&out, "ask");
 }
 
+fn clean_write_json() -> String {
+    pre_tool_json(
+        "Write",
+        serde_json::json!({ "file_path": "/tmp/notes.md", "content": "The weather is sunny today." }),
+    )
+}
+
+#[test]
+fn hf_token_command_runs_in_daemon_without_token_file() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let (dir, rt) = monitored_dir();
+    let marker = rt.path().join("token-command-ran");
+    let command = format!("touch '{}'; echo hf_dummy", marker.display());
+    let json = clean_write_json();
+    let (dir_path, rt_path) = (dir.path().to_path_buf(), rt.path().to_path_buf());
+    // the hook blocks until the model loads; only the command run matters here
+    std::thread::spawn(move || {
+        run_hook_rt(
+            &dir_path,
+            &json,
+            Some(&rt_path),
+            &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", &command)],
+        )
+    });
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !marker.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(marker.exists(), "daemon never ran HF_TOKEN_COMMAND");
+    assert!(
+        !rt.path().join(".hf-token").exists(),
+        "token must not be persisted to disk"
+    );
+}
+
+#[test]
+fn hf_token_command_failure_fails_closed() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let (dir, rt) = monitored_dir();
+    let out = run_hook_rt(
+        dir.path(),
+        &clean_write_json(),
+        Some(rt.path()),
+        &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", "exit 1")],
+    );
+    assert!(out.status.success());
+    assert_decision(&out, "ask");
+}
+
 #[test]
 fn codex_pre_clean_emits_noop_json() {
     let dir = tempfile::tempdir().unwrap();
