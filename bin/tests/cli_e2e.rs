@@ -349,50 +349,28 @@ fn clean_write_json() -> String {
 }
 
 #[test]
-fn hf_token_command_runs_in_daemon_without_token_file() {
+fn hf_token_command_runs_in_daemon_and_fails_closed() {
     if std::env::var("NIX_BUILD_TOP").is_ok() {
         return;
     }
     let (dir, rt) = monitored_dir();
+    let token_file = rt.path().join(".hf-token");
+    std::fs::write(&token_file, "stale-token").unwrap();
     let marker = rt.path().join("token-command-ran");
-    let command = format!("touch '{}'; echo hf_dummy", marker.display());
-    let json = clean_write_json();
-    let (dir_path, rt_path) = (dir.path().to_path_buf(), rt.path().to_path_buf());
-    // the hook blocks until the model loads; only the command run matters here
-    std::thread::spawn(move || {
-        run_hook_rt(
-            &dir_path,
-            &json,
-            Some(&rt_path),
-            &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", &command)],
-        )
-    });
+    // failing after the marker stops the model load before any network access
+    let command = format!("touch '{}'; exit 1", marker.display());
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while !marker.exists() && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    assert!(marker.exists(), "daemon never ran HF_TOKEN_COMMAND");
-    assert!(
-        !rt.path().join(".hf-token").exists(),
-        "token must not be persisted to disk"
-    );
-}
-
-#[test]
-fn hf_token_command_failure_fails_closed() {
-    if std::env::var("NIX_BUILD_TOP").is_ok() {
-        return;
-    }
-    let (dir, rt) = monitored_dir();
     let out = run_hook_rt(
         dir.path(),
         &clean_write_json(),
         Some(rt.path()),
-        &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", "exit 1")],
+        &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", &command)],
     );
+
     assert!(out.status.success());
     assert_decision(&out, "ask");
+    assert!(marker.exists(), "daemon never ran HF_TOKEN_COMMAND");
+    assert!(!token_file.exists(), "stale token file should be removed");
 }
 
 #[test]
