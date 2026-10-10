@@ -49,11 +49,11 @@ impl MlScanner {
         let model_defs = config.resolve_models()?;
         debug!(count = model_defs.len(), "loading ML scanner");
 
-        // once per load, so a failed load re-fetches from the command on retry
-        let token = config.resolve_hf_token()?;
+        // per load, so a failed load re-runs the token command on retry
+        let token = model::LazyToken::new(config);
         let mut instances = Vec::with_capacity(model_defs.len());
         for def in &model_defs {
-            let repo = model::hf_repo_for(token.as_ref(), &def.repo)?;
+            let repo = model::ModelFiles::from_env(&def.repo, &token);
 
             let tokenizer_path = repo
                 .get("tokenizer.json")
@@ -122,7 +122,7 @@ impl<B: MlBackend> Scanner<B> {
 }
 
 #[cfg(feature = "candle")]
-fn load_backend(repo: &hf_hub::api::sync::ApiRepo) -> Result<Backend> {
+fn load_backend(repo: &model::ModelFiles<'_>) -> Result<Backend> {
     let safetensors_path = repo
         .get("model.safetensors")
         .map_err(|e| eyre::eyre!("safetensors download failed: {e}"))?;
@@ -136,7 +136,7 @@ fn load_backend(repo: &hf_hub::api::sync::ApiRepo) -> Result<Backend> {
 }
 
 #[cfg(all(any(feature = "onnx", feature = "onnx-fetch"), not(feature = "candle")))]
-fn load_backend(repo: &hf_hub::api::sync::ApiRepo) -> Result<Backend> {
+fn load_backend(repo: &model::ModelFiles<'_>) -> Result<Backend> {
     let model_path = repo
         .get("onnx/model.onnx")
         .map_err(|e| eyre::eyre!("model download failed: {e}"))?;

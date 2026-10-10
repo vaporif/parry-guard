@@ -8,6 +8,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use parry_guard_core::config::HfToken;
 #[cfg(feature = "candle")]
 use parry_guard_core::config::ScanMode;
 use parry_guard_core::{Config, ScanResult};
@@ -16,18 +17,29 @@ use tokio::task::JoinHandle;
 
 fn fast_config(dir: &Path) -> Config {
     Config {
-        hf_token: std::env::var("HF_TOKEN").ok().map(Into::into),
+        hf_token: std::env::var("HF_TOKEN")
+            .ok()
+            .map(|t| HfToken::Value(t.into())),
         runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }
 }
 
-/// Sources the token via `hf_token_command` so the gated Llama download proves that path works.
+/// Sources the token via a command so the gated Llama download proves that path works.
 #[cfg(feature = "candle")]
 fn full_config(dir: &Path) -> Config {
+    assert!(
+        std::env::var("HF_TOKEN").is_ok_and(|t| !t.trim().is_empty()),
+        "full-mode e2e needs HF_TOKEN with access to the gated Llama Prompt Guard model"
+    );
+    let command = if cfg!(windows) {
+        "echo %HF_TOKEN%"
+    } else {
+        r#"printf '%s' "$HF_TOKEN""#
+    };
     Config {
         scan_mode: ScanMode::Full,
-        hf_token_command: Some(r#"printf '%s' "$HF_TOKEN""#.to_string()),
+        hf_token: Some(HfToken::Command(command.to_string())),
         runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }

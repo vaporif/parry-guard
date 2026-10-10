@@ -357,14 +357,20 @@ fn hf_token_command_runs_in_daemon_and_fails_closed() {
     let token_file = rt.path().join(".hf-token");
     std::fs::write(&token_file, "stale-token").unwrap();
     let marker = rt.path().join("token-command-ran");
-    // failing after the marker stops the model load before any network access
     let command = format!("touch '{}'; exit 1", marker.display());
+    // empty cache forces a download, which then fails fast against a closed port
+    let hf_home = rt.path().join("hf-home");
 
     let out = run_hook_rt(
         dir.path(),
         &clean_write_json(),
         Some(rt.path()),
-        &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", &command)],
+        &[
+            ("HF_TOKEN", ""),
+            ("HF_TOKEN_COMMAND", &command),
+            ("HF_HOME", hf_home.to_str().unwrap()),
+            ("HF_ENDPOINT", "http://127.0.0.1:9"),
+        ],
     );
 
     assert!(out.status.success());
