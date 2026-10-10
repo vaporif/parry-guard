@@ -50,12 +50,24 @@ struct ModelsConfig {
 
 const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
 
-// SecretString's Debug keeps `hf_token` out of tracing spans
+/// Where the `HuggingFace` token comes from.
+// SecretString's Debug keeps the token out of tracing spans
+#[derive(Clone, Debug)]
+pub enum HfToken {
+    Value(SecretString),
+    /// Shell command printing the token; run only when a download needs it.
+    Command(String),
+}
+
+impl From<&str> for HfToken {
+    fn from(token: &str) -> Self {
+        Self::Value(token.into())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub hf_token: Option<SecretString>,
-    /// Shell command printing the token; run lazily when `hf_token` is unset.
-    pub hf_token_command: Option<String>,
+    pub hf_token: Option<HfToken>,
     pub threshold: f32,
     /// Higher than `threshold`: CLAUDE.md is instructions by design, so `DeBERTa` scores it high.
     pub claude_md_threshold: f32,
@@ -66,18 +78,18 @@ pub struct Config {
 }
 
 impl Config {
-    /// The token from `hf_token`, else from running `hf_token_command`.
+    /// The configured token, running the command if that's the source.
     ///
     /// # Errors
-    /// Fails if `hf_token_command` fails.
+    /// Fails if the token command fails.
     pub fn resolve_hf_token(&self) -> crate::Result<Option<SecretString>> {
-        if let Some(ref token) = self.hf_token {
-            return Ok(Some(token.clone()));
+        match self.hf_token {
+            Some(HfToken::Value(ref token)) => Ok(Some(token.clone())),
+            Some(HfToken::Command(ref command)) => {
+                crate::hf_token::run_token_command(command).map(Some)
+            }
+            None => Ok(None),
         }
-        self.hf_token_command
-            .as_deref()
-            .map(crate::hf_token::run_token_command)
-            .transpose()
     }
 
     /// Models to load for `scan_mode`.
@@ -142,7 +154,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             hf_token: None,
-            hf_token_command: None,
             threshold: 0.7,
             claude_md_threshold: DEFAULT_CLAUDE_MD_THRESHOLD,
             scan_mode: ScanMode::default(),
@@ -279,20 +290,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case::direct_wins(Some("direct"), Some("exit 1"), Some("direct"))]
+    #[case::direct(Some(HfToken::from("direct")), Some("direct"))]
     #[cfg_attr(
         unix,
-        case::runs_command(None, Some("echo from-cmd"), Some("from-cmd"))
+        case::runs_command(Some(HfToken::Command("echo from-cmd".into())), Some("from-cmd"))
     )]
-    #[case::unset(None, None, None)]
-    fn resolve_hf_token(
-        #[case] token: Option<&str>,
-        #[case] command: Option<&str>,
-        #[case] expected: Option<&str>,
-    ) {
+    #[case::unset(None, None)]
+    fn resolve_hf_token(#[case] token: Option<HfToken>, #[case] expected: Option<&str>) {
         let config = Config {
-            hf_token: token.map(Into::into),
-            hf_token_command: command.map(String::from),
+            hf_token: token,
             ..Config::default()
         };
         let resolved = config.resolve_hf_token().unwrap();
@@ -303,7 +309,7 @@ mod tests {
     #[cfg(unix)]
     fn resolve_hf_token_propagates_command_failure() {
         let config = Config {
-            hf_token_command: Some("exit 1".into()),
+            hf_token: Some(HfToken::Command("exit 1".into())),
             ..Config::default()
         };
         let _ = config.resolve_hf_token().unwrap_err();

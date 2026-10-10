@@ -162,7 +162,7 @@ export HF_TOKEN_PATH="/path/to/token"                      # file path
 # or place token at /run/secrets/hf-token-scan-injection
 ```
 
-`HF_TOKEN_COMMAND` lets the token stay in a keychain or secret manager. The hook passes the command to the daemon instead of running it. The daemon runs it with `sh -c` (`cmd /C` on Windows) each time it loads the models, and uses the trimmed stdout as the token. The token is kept only in memory. Some examples:
+`HF_TOKEN_COMMAND` lets the token stay in a keychain or secret manager. The hook passes the command to the daemon instead of running it. The daemon runs it with `sh -c` (`cmd /C` on Windows) only when a model file isn't in the local HuggingFace cache yet, at most once per model load, and uses the trimmed stdout as the token. A cached model never runs it. The token is kept only in memory. Some examples:
 
 ```bash
 export HF_TOKEN_COMMAND="security find-generic-password -s huggingface -w"  # macOS Keychain
@@ -171,7 +171,9 @@ export HF_TOKEN_COMMAND="op read op://Private/HuggingFace/token"            # 1P
 export HF_TOKEN_COMMAND="bw get password huggingface"                       # Bitwarden
 ```
 
-The command runs with no stdin and must finish within 30 seconds. Its stderr is discarded, and it must exit 0 with non-empty stdout. If it fails, the model doesn't load and scans fail closed. The daemon tries again on a later scan (up to 3 attempts per daemon). Because the daemon is detached, a command that waits for an interactive prompt (for example, a locked 1Password CLI) will time out. Unlock the store first or use a non-interactive credential.
+The command runs with no stdin and must finish within 30 seconds. When it exits or times out, anything it left running in its process group is killed (Unix only). It must exit 0 with non-empty stdout. If it fails, the error and the last line of its stderr are logged, and the daemon downloads without it (hf-hub still uses a token saved by `huggingface-cli login`, if any). That works for public models such as the `fast` mode one. Gated models then fail to download, scans fail closed, and the daemon tries again on a later scan (up to 3 attempts per daemon). Because the daemon is detached, a command that waits for an interactive prompt (for example, a locked 1Password CLI) will time out. Unlock the store first or use a non-interactive credential.
+
+Models are cached under `$HF_HOME/hub` (default `~/.cache/huggingface/hub`). If `HF_ENDPOINT` is set, models are downloaded from that mirror and the token is sent to it.
 
 With `HF_TOKEN` or a token file, the hook copies the token to `~/.parry-guard/.hf-token` (mode 0600) so the daemon can read it. With `HF_TOKEN_COMMAND`, nothing is written, and the hook deletes any leftover copy when it next starts the daemon.
 

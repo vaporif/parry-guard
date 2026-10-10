@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use parry_guard_core::config::ScanMode;
+use parry_guard_core::config::{HfToken, ScanMode};
 use parry_guard_core::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 
@@ -31,7 +31,7 @@ pub(crate) struct Cli {
     pub hf_token: Option<String>,
 
     /// Shell command that prints the `HuggingFace` token (e.g. `pass show hf/token`).
-    /// Run by the daemon when it loads models; the token is never written to disk.
+    /// Run by the daemon only when a model must be downloaded; the token is never written to disk.
     #[arg(long, env = "HF_TOKEN_COMMAND")]
     pub hf_token_command: Option<String>,
 
@@ -70,15 +70,14 @@ impl Cli {
     /// Resolve the HF token source: `--hf-token`, then `--hf-token-command`,
     /// then `--hf-token-path`, then the default path. The command isn't run here.
     #[must_use]
-    pub(crate) fn resolve_hf_token(&self) -> HfTokenSource {
+    pub(crate) fn resolve_hf_token(&self) -> Option<HfToken> {
         if let Some(token) = non_blank(self.hf_token.as_deref()) {
-            return HfTokenSource::Token(token.into());
+            return Some(HfToken::Value(token.into()));
         }
         if let Some(command) = non_blank(self.hf_token_command.as_deref()) {
-            return HfTokenSource::Command(command);
+            return Some(HfToken::Command(command));
         }
-        self.read_token_files()
-            .map_or(HfTokenSource::None, HfTokenSource::Token)
+        self.read_token_files().map(HfToken::Value)
     }
 
     fn read_token_files(&self) -> Option<SecretString> {
@@ -90,13 +89,6 @@ impl Cli {
 
         read_token_file("/run/secrets/hf-token-scan-injection".as_ref())
     }
-}
-
-#[derive(Debug)]
-pub(crate) enum HfTokenSource {
-    Token(SecretString),
-    Command(String),
-    None,
 }
 
 fn non_blank(s: Option<&str>) -> Option<String> {
@@ -221,11 +213,11 @@ mod tests {
         threshold_in_range("abc").unwrap_err();
     }
 
-    fn describe(source: HfTokenSource) -> String {
+    fn describe(source: Option<HfToken>) -> String {
         match source {
-            HfTokenSource::Token(t) => format!("token:{}", t.expose_secret()),
-            HfTokenSource::Command(c) => format!("command:{c}"),
-            HfTokenSource::None => "none".into(),
+            Some(HfToken::Value(t)) => format!("token:{}", t.expose_secret()),
+            Some(HfToken::Command(c)) => format!("command:{c}"),
+            None => "none".into(),
         }
     }
 

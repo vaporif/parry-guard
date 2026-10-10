@@ -162,7 +162,7 @@ in {
       type = types.nullOr types.str;
       default = null;
       example = "pass show huggingface/token";
-      description = "Shell command that prints the HuggingFace token. The daemon runs it when loading models and never writes the token to disk. Takes precedence over hfTokenFile.";
+      description = "Shell command that prints the HuggingFace token. The daemon runs it only when a model must be downloaded and never writes the token to disk. Takes precedence over hfTokenFile.";
     };
 
     idleTimeout = mkOption {

@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use parry_guard_core::config::HfToken;
 use parry_guard_core::{Config, ExposeSecret, ScanError, ScanResult};
 use tracing::{debug, info, trace, warn};
 
@@ -77,20 +78,24 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
 
     cmd.arg("--scan-mode").arg(config.scan_mode.as_str());
 
-    if let Some(ref token) = config.hf_token {
-        let token_file = token_file(config)?;
-        write_private(&token_file, token.expose_secret())
-            .map_err(|e| ScanError::DaemonStart(format!("failed to write token file: {e}")))?;
-        cmd.arg("--hf-token-path").arg(&token_file);
-    } else if let Some(ref command) = config.hf_token_command {
-        // the daemon runs the command itself; drop any token a previous spawn persisted
-        let token_file = token_file(config)?;
-        if let Err(e) = std::fs::remove_file(&token_file) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                warn!(%e, "failed to remove stale token file");
-            }
+    match config.hf_token {
+        Some(HfToken::Value(ref token)) => {
+            let token_file = token_file(config)?;
+            write_private(&token_file, token.expose_secret())
+                .map_err(|e| ScanError::DaemonStart(format!("failed to write token file: {e}")))?;
+            cmd.arg("--hf-token-path").arg(&token_file);
         }
-        cmd.arg("--hf-token-command").arg(command);
+        Some(HfToken::Command(ref command)) => {
+            // the daemon runs the command itself; drop any token a previous spawn persisted
+            let token_file = token_file(config)?;
+            if let Err(e) = std::fs::remove_file(&token_file) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!(%e, "failed to remove stale token file");
+                }
+            }
+            cmd.arg("--hf-token-command").arg(command);
+        }
+        None => {}
     }
 
     // runtime_dir is test-only and not forwarded; no --runtime-dir flag on purpose.
@@ -335,7 +340,7 @@ mod tests {
         std::fs::write(&token_path, "old-token").unwrap();
 
         let config = Config {
-            hf_token_command: Some("echo tok".to_string()),
+            hf_token: Some(HfToken::Command("echo tok".to_string())),
             runtime_dir: Some(dir.path().to_path_buf()),
             ..Config::default()
         };

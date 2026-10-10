@@ -1915,6 +1915,7 @@ dependencies = [
  "redb",
  "regex",
  "rstest",
+ "rustix",
  "secrecy",
  "serde",
  "tempfile",
@@ -2028,7 +2029,9 @@ dependencies = [
  "ort",
  "parry-guard-core",
  "proptest",
+ "rstest",
  "serde_json",
+ "tempfile",
  "tokenizers 0.23.2",
  "tracing",
 ]
