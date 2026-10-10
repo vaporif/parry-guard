@@ -1227,3 +1227,27 @@ fn audit_failure_fails_closed_for_monitored_repo() {
         stderr(&out)
     );
 }
+
+#[test]
+fn help_hides_token_env_values() {
+    let out = parry_cmd(None)
+        .arg("--help")
+        .env("HF_TOKEN", "hf_secret_token_value")
+        .env("HF_TOKEN_COMMAND", "echo hf_secret_in_command")
+        .env("HF_TOKEN_PATH", "/secret/token/path")
+        .output()
+        .unwrap();
+    let help = stdout(&out);
+
+    assert!(
+        help.contains("[env: HF_TOKEN"),
+        "help should still name the env vars: {help}"
+    );
+    for secret in [
+        "hf_secret_token_value",
+        "hf_secret_in_command",
+        "/secret/token/path",
+    ] {
+        assert!(!help.contains(secret), "help leaked {secret}");
+    }
+}
