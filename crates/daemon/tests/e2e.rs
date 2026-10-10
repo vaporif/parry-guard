@@ -22,11 +22,12 @@ fn fast_config(dir: &Path) -> Config {
     }
 }
 
+/// Sources the token via `hf_token_command` so the gated Llama download proves that path works.
 #[cfg(feature = "candle")]
 fn full_config(dir: &Path) -> Config {
     Config {
         scan_mode: ScanMode::Full,
-        hf_token: std::env::var("HF_TOKEN").ok().map(Into::into),
+        hf_token_command: Some(r#"printf '%s' "$HF_TOKEN""#.to_string()),
         runtime_dir: Some(dir.to_path_buf()),
         ..Config::default()
     }
