@@ -173,7 +173,7 @@ export HF_TOKEN_COMMAND="bw get password huggingface"                       # Bi
 
 The command runs with no stdin and must finish within 30 seconds. Its stderr is discarded, and it must exit 0 with non-empty stdout. If it fails, the model doesn't load and scans fail closed. The daemon tries again on a later scan (up to 3 attempts per daemon). Because the daemon is detached, a command that waits for an interactive prompt (for example, a locked 1Password CLI) will time out. Unlock the store first or use a non-interactive credential.
 
-With `HF_TOKEN` or a token file, the hook copies the token to `~/.parry-guard/.hf-token` (mode 0600) so the daemon can read it. With `HF_TOKEN_COMMAND`, nothing is written, and any leftover copy is removed when the daemon starts.
+With `HF_TOKEN` or a token file, the hook copies the token to `~/.parry-guard/.hf-token` (mode 0600) so the daemon can read it. With `HF_TOKEN_COMMAND`, nothing is written, and the hook deletes any leftover copy when it next starts the daemon.
 
 The daemon starts on the first scan, downloads the model on the first run, and stops after 30 idle minutes. Without Nix, set the env vars in your shell profile or pass flags (see [Config](#config)).
 
