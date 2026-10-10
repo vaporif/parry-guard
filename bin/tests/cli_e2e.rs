@@ -341,6 +341,38 @@ fn pre_write_injection() {
     assert_decision(&out, "ask");
 }
 
+fn clean_write_json() -> String {
+    pre_tool_json(
+        "Write",
+        serde_json::json!({ "file_path": "/tmp/notes.md", "content": "The weather is sunny today." }),
+    )
+}
+
+#[test]
+fn hf_token_command_runs_in_daemon_and_fails_closed() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let (dir, rt) = monitored_dir();
+    let token_file = rt.path().join(".hf-token");
+    std::fs::write(&token_file, "stale-token").unwrap();
+    let marker = rt.path().join("token-command-ran");
+    // failing after the marker stops the model load before any network access
+    let command = format!("touch '{}'; exit 1", marker.display());
+
+    let out = run_hook_rt(
+        dir.path(),
+        &clean_write_json(),
+        Some(rt.path()),
+        &[("HF_TOKEN", ""), ("HF_TOKEN_COMMAND", &command)],
+    );
+
+    assert!(out.status.success());
+    assert_decision(&out, "ask");
+    assert!(marker.exists(), "daemon never ran HF_TOKEN_COMMAND");
+    assert!(!token_file.exists(), "stale token file should be removed");
+}
+
 #[test]
 fn codex_pre_clean_emits_noop_json() {
     let dir = tempfile::tempdir().unwrap();

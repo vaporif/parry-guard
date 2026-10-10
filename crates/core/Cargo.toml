@@ -25,6 +25,7 @@ serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 dirs.workspace = true
 redb.workspace = true
+secrecy.workspace = true
 
 [features]
 candle = []

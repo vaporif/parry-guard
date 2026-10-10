@@ -1882,7 +1882,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "clap",
  "fork",
@@ -1891,6 +1891,7 @@ dependencies = [
  "parry-guard-daemon",
  "parry-guard-hook",
  "parry-guard-ml",
+ "rstest",
  "serde",
  "serde_json",
  "tempfile",
@@ -1901,7 +1902,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-core"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "aho-corasick",
  "data-encoding",
@@ -1914,6 +1915,7 @@ dependencies = [
  "redb",
  "regex",
  "rstest",
+ "secrecy",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -1926,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-daemon"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "blake3",
  "bytes",
@@ -1946,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-destructive"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "dirs",
  "indoc",
@@ -1963,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-exfil"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "dirs",
  "indoc",
@@ -1994,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-hook"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "blake3",
  "futures-util",
@@ -2014,7 +2016,7 @@ dependencies = [
 
 [[package]]
 name = "parry-guard-ml"
-version = "0.2.0"
+version = "0.1.6"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -2637,6 +2639,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]

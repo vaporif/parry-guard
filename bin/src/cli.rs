@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use parry_guard_core::config::ScanMode;
+use parry_guard_core::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 
 fn threshold_in_range(s: &str) -> Result<f32, String> {
@@ -28,6 +29,11 @@ pub(crate) struct Cli {
     /// `HuggingFace` token (direct value)
     #[arg(long, env = "HF_TOKEN")]
     pub hf_token: Option<String>,
+
+    /// Shell command that prints the `HuggingFace` token (e.g. `pass show hf/token`).
+    /// Run by the daemon when it loads models; the token is never written to disk.
+    #[arg(long, env = "HF_TOKEN_COMMAND")]
+    pub hf_token_command: Option<String>,
 
     /// Path to `HuggingFace` token file
     #[arg(long, env = "HF_TOKEN_PATH")]
@@ -61,16 +67,21 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
-    /// Resolve the HF token from `--hf-token`, `--hf-token-path`, or default paths.
+    /// Resolve the HF token source: `--hf-token`, then `--hf-token-command`,
+    /// then `--hf-token-path`, then the default path. The command isn't run here.
     #[must_use]
-    pub(crate) fn resolve_hf_token(&self) -> Option<String> {
-        if let Some(ref token) = self.hf_token {
-            let trimmed = token.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
+    pub(crate) fn resolve_hf_token(&self) -> HfTokenSource {
+        if let Some(token) = non_blank(self.hf_token.as_deref()) {
+            return HfTokenSource::Token(token.into());
         }
+        if let Some(command) = non_blank(self.hf_token_command.as_deref()) {
+            return HfTokenSource::Command(command);
+        }
+        self.read_token_files()
+            .map_or(HfTokenSource::None, HfTokenSource::Token)
+    }
 
+    fn read_token_files(&self) -> Option<SecretString> {
         if let Some(ref path) = self.hf_token_path {
             if let Some(token) = read_token_file(path) {
                 return Some(token);
@@ -81,11 +92,21 @@ impl Cli {
     }
 }
 
-fn read_token_file(path: &std::path::Path) -> Option<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+#[derive(Debug)]
+pub(crate) enum HfTokenSource {
+    Token(SecretString),
+    Command(String),
+    None,
+}
+
+fn non_blank(s: Option<&str>) -> Option<String> {
+    s.map(str::trim).filter(|s| !s.is_empty()).map(String::from)
+}
+
+fn read_token_file(path: &std::path::Path) -> Option<SecretString> {
+    let raw = SecretString::from(std::fs::read_to_string(path).ok()?);
+    let token = raw.expose_secret().trim();
+    (!token.is_empty()).then(|| token.into())
 }
 
 #[derive(Subcommand)]
@@ -143,6 +164,8 @@ pub(crate) enum RepoCommand {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -198,35 +221,66 @@ mod tests {
         threshold_in_range("abc").unwrap_err();
     }
 
-    fn cli_with(hf_token: Option<&str>, hf_token_path: Option<PathBuf>) -> Cli {
+    fn describe(source: HfTokenSource) -> String {
+        match source {
+            HfTokenSource::Token(t) => format!("token:{}", t.expose_secret()),
+            HfTokenSource::Command(c) => format!("command:{c}"),
+            HfTokenSource::None => "none".into(),
+        }
+    }
+
+    #[rstest]
+    #[case::direct_trimmed(Some("  tok123\n"), None, None, "token:tok123")]
+    #[case::direct_wins_over_file(Some("direct"), None, Some("from-file"), "token:direct")]
+    #[case::blank_direct_falls_back_to_file(
+        Some("   "),
+        None,
+        Some("  from-file\n"),
+        "token:from-file"
+    )]
+    #[case::direct_wins_over_command(Some("direct"), Some("pass show hf"), None, "token:direct")]
+    #[case::command_wins_over_file(
+        None,
+        Some(" pass show hf \n"),
+        Some("from-file"),
+        "command:pass show hf"
+    )]
+    #[case::blank_command_falls_back_to_file(
+        None,
+        Some("  "),
+        Some("from-file"),
+        "token:from-file"
+    )]
+    fn resolve_hf_token_precedence(
+        #[case] token: Option<&str>,
+        #[case] command: Option<&str>,
+        #[case] file: Option<&str>,
+        #[case] expected: &str,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
         let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
-        cli.hf_token = hf_token.map(String::from);
-        cli.hf_token_path = hf_token_path;
-        cli
+        cli.hf_token = token.map(String::from);
+        cli.hf_token_command = command.map(String::from);
+        cli.hf_token_path = file.map(|contents| {
+            let path = dir.path().join("token");
+            std::fs::write(&path, contents).unwrap();
+            path
+        });
+        assert_eq!(describe(cli.resolve_hf_token()), expected);
     }
 
     #[test]
-    fn hf_token_direct_value_trimmed() {
-        let cli = cli_with(Some("  tok123\n"), None);
-        assert_eq!(cli.resolve_hf_token().as_deref(), Some("tok123"));
-    }
-
-    #[test]
-    fn hf_token_direct_wins_over_file() {
+    fn hf_token_command_not_run_during_resolution() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "from-file").unwrap();
-        let cli = cli_with(Some("direct"), Some(path));
-        assert_eq!(cli.resolve_hf_token().as_deref(), Some("direct"));
-    }
-
-    #[test]
-    fn hf_token_blank_direct_falls_back_to_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("token");
-        std::fs::write(&path, "  from-file\n").unwrap();
-        let cli = cli_with(Some("   "), Some(path));
-        assert_eq!(cli.resolve_hf_token().as_deref(), Some("from-file"));
+        let marker = dir.path().join("ran");
+        let mut cli = Cli::try_parse_from(["parry-guard"]).unwrap();
+        cli.hf_token = None;
+        cli.hf_token_command = Some(format!("touch {}", marker.display()));
+        let _ = cli.resolve_hf_token();
+        assert!(
+            !marker.exists(),
+            "command must not run during CLI resolution"
+        );
     }
 
     #[test]
@@ -234,12 +288,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tok = dir.path().join("tok");
         std::fs::write(&tok, " abc \n").unwrap();
-        assert_eq!(read_token_file(&tok).as_deref(), Some("abc"));
+        let token = read_token_file(&tok).unwrap();
+        assert_eq!(token.expose_secret(), "abc", "token should be trimmed");
 
         let blank = dir.path().join("blank");
         std::fs::write(&blank, " \n").unwrap();
-        assert_eq!(read_token_file(&blank), None);
+        assert!(read_token_file(&blank).is_none(), "blank file is no token");
 
-        assert_eq!(read_token_file(&dir.path().join("missing")), None);
+        assert!(
+            read_token_file(&dir.path().join("missing")).is_none(),
+            "missing file is no token"
+        );
     }
 }

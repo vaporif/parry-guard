@@ -89,17 +89,17 @@ mutants-diff:
     set -euo pipefail
     cargo mutants --in-diff <(git diff main...)
 
-# Run ML e2e tests (requires HF_TOKEN)
-e2e:
-    cargo nextest run -p parry-daemon --test e2e --run-ignored all --success-output immediate
+# Run ML e2e tests (requires HF_TOKEN); `full` mode only runs with candle
+e2e feature="candle":
+    cargo nextest run -p parry-guard-daemon --no-default-features --features {{feature}} --test e2e --run-ignored all --success-output immediate
 
 # Benchmark ML inference with candle backend (requires HF_TOKEN)
 bench-candle:
-    cargo bench -p parry-ml --bench inference
+    cargo bench -p parry-guard-ml --bench inference --no-default-features --features candle
 
 # Benchmark ML inference with ONNX backend (requires HF_TOKEN)
 bench-onnx:
-    cargo bench -p parry-ml --bench inference --no-default-features --features onnx-fetch
+    cargo bench -p parry-guard-ml --bench inference --no-default-features --features onnx-fetch
 
 # Run scan on stdin
 scan:

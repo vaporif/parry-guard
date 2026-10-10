@@ -1,19 +1,19 @@
 //! `HuggingFace` model download/caching.
 
 use eyre::WrapErr;
-use parry_guard_core::config::Config;
-use parry_guard_core::Result;
+use parry_guard_core::{ExposeSecret, Result, SecretString};
 use tracing::debug;
 
 /// # Errors
 /// Fails if the `HuggingFace` API client can't be built.
-pub fn hf_repo_for(config: &Config, repo: &str) -> Result<hf_hub::api::sync::ApiRepo> {
+pub fn hf_repo_for(token: Option<&SecretString>, repo: &str) -> Result<hf_hub::api::sync::ApiRepo> {
     use hf_hub::api::sync::ApiBuilder;
 
     let mut builder = ApiBuilder::new();
-    if let Some(ref token) = config.hf_token {
+    if let Some(token) = token {
         debug!("using HuggingFace token from config");
-        builder = builder.with_token(Some(token.clone()));
+        // hf-hub only takes a plain String
+        builder = builder.with_token(Some(token.expose_secret().to_string()));
     } else {
         debug!("no HuggingFace token configured");
     }

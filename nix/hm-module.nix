@@ -104,6 +104,7 @@
     lib.optional (cfg.threshold != null) ''--set PARRY_THRESHOLD "${toString cfg.threshold}"''
     ++ lib.optional (cfg.logLevel != null) ''--set PARRY_LOG "${cfg.logLevel}"''
     ++ lib.optional (cfg.hfTokenFile != null) ''--set HF_TOKEN_PATH "${cfg.hfTokenFile}"''
+    ++ lib.optional (cfg.hfTokenCommand != null) "--set HF_TOKEN_COMMAND ${lib.escapeShellArg cfg.hfTokenCommand}"
     ++ lib.optional (cfg.idleTimeout != null) ''--set PARRY_IDLE_TIMEOUT "${toString cfg.idleTimeout}"''
     ++ lib.optional (cfg.claudeMdThreshold != null) ''--set PARRY_CLAUDE_MD_THRESHOLD "${toString cfg.claudeMdThreshold}"''
     ++ lib.optional (cfg.ignoreDirs != []) ''--set PARRY_IGNORE_DIRS "${lib.concatStringsSep "," cfg.ignoreDirs}"''
@@ -155,6 +156,13 @@ in {
       type = types.nullOr types.path;
       default = null;
       description = "Path to a file containing the HuggingFace token.";
+    };
+
+    hfTokenCommand = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "pass show huggingface/token";
+      description = "Shell command that prints the HuggingFace token. The daemon runs it when loading models and never writes the token to disk. Takes precedence over hfTokenFile.";
     };
 
     idleTimeout = mkOption {
