@@ -132,6 +132,7 @@ cargo install --path bin --no-default-features --features candle
     package = inputs.parry.packages.${pkgs.system}.default;  # onnx (default)
     # package = inputs.parry.packages.${pkgs.system}.candle;  # candle (pure Rust, portable, ~5-6x slower)
     hfTokenFile = config.sops.secrets.hf-token.path;
+    # hfTokenCommand = "pass show huggingface/token";  # or fetch from a keychain / secret manager
     ignoreDirs = [ "/home/user/repos/trusted" ];
     # askOnNewProject = true;  # ask before monitoring new projects (default: monitor right away)
     # claudeMdThreshold = 0.9;  # ML threshold for CLAUDE.md scanning (default 0.9)
@@ -155,10 +156,24 @@ cargo install --path bin --no-default-features --features candle
 
 Set your token one of these ways (first match wins):
 ```bash
-export HF_TOKEN="hf_..."                          # direct value
-export HF_TOKEN_PATH="/path/to/token"              # file path
+export HF_TOKEN="hf_..."                                   # direct value
+export HF_TOKEN_COMMAND="pass show huggingface/token"      # command that prints the token
+export HF_TOKEN_PATH="/path/to/token"                      # file path
 # or place token at /run/secrets/hf-token-scan-injection
 ```
+
+`HF_TOKEN_COMMAND` lets the token stay in a keychain or secret manager. The hook passes the command to the daemon instead of running it. The daemon runs it with `sh -c` (`cmd /C` on Windows) each time it loads the models, and uses the trimmed stdout as the token. The token is kept only in memory. Some examples:
+
+```bash
+export HF_TOKEN_COMMAND="security find-generic-password -s huggingface -w"  # macOS Keychain
+export HF_TOKEN_COMMAND="secret-tool lookup service huggingface"            # GNOME Keyring / KWallet
+export HF_TOKEN_COMMAND="op read op://Private/HuggingFace/token"            # 1Password
+export HF_TOKEN_COMMAND="bw get password huggingface"                       # Bitwarden
+```
+
+The command runs with no stdin and must finish within 30 seconds. Its stderr is discarded, and it must exit 0 with non-empty stdout. If it fails, the model doesn't load and scans fail closed. The daemon tries again on a later scan (up to 3 attempts per daemon). Because the daemon is detached, a command that waits for an interactive prompt (for example, a locked 1Password CLI) will time out. Unlock the store first or use a non-interactive credential.
+
+With `HF_TOKEN` or a token file, the hook copies the token to `~/.parry-guard/.hf-token` (mode 0600) so the daemon can read it. With `HF_TOKEN_COMMAND`, nothing is written, and any leftover copy is removed when the daemon starts.
 
 The daemon starts on the first scan, downloads the model on the first run, and stops after 30 idle minutes. Without Nix, set the env vars in your shell profile or pass flags (see [Config](#config)).
 
@@ -237,6 +252,7 @@ Use `fast` for interactive work. Use `full` for high security or batch scans (`p
 | `--claude-md-threshold` | `PARRY_CLAUDE_MD_THRESHOLD` | 0.9 | ML threshold for CLAUDE.md scanning (0.0-1.0) |
 | `--scan-mode` | `PARRY_SCAN_MODE` | fast | ML scan mode: `fast`, `full`, `custom` |
 | `--hf-token` | `HF_TOKEN` | | HuggingFace token (direct value) |
+| `--hf-token-command` | `HF_TOKEN_COMMAND` | | Shell command that prints the HuggingFace token. The daemon runs it, and the token is never written to disk |
 | `--hf-token-path` | `HF_TOKEN_PATH` | `/run/secrets/hf-token-scan-injection` | HuggingFace token file |
 | `--ask-on-new-project` | `PARRY_ASK_ON_NEW_PROJECT` | false | Ask before monitoring new projects instead of monitoring them right away |
 | `--ignore-dirs` | `PARRY_IGNORE_DIRS` | | Comma-separated parent directories. Every repo under them is skipped. |
