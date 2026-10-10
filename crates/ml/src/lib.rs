@@ -50,10 +50,10 @@ impl MlScanner {
         debug!(count = model_defs.len(), "loading ML scanner");
 
         // per load, so a failed load re-runs the token command on retry
-        let token = model::LazyToken::new(config);
+        let hub = model::Hub::from_env(config);
         let mut instances = Vec::with_capacity(model_defs.len());
         for def in &model_defs {
-            let repo = model::ModelFiles::from_env(&def.repo, &token);
+            let repo = hub.repo(&def.repo);
 
             let tokenizer_path = repo
                 .get("tokenizer.json")

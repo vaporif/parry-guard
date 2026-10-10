@@ -4,33 +4,61 @@ use std::cell::OnceCell;
 use std::path::PathBuf;
 
 use eyre::WrapErr;
-use hf_hub::api::sync::{ApiBuilder, ApiRepo};
-use hf_hub::Cache;
+use hf_hub::{HFClient, HFClientSync, HFError, HFRepositorySync, RepoTypeModel};
 use parry_guard_core::config::Config;
 use parry_guard_core::{ExposeSecret, Result, SecretString};
 use tracing::{debug, warn};
 
-/// The configured token, resolved on first download and at most once per model load.
+/// Used when `HF_ENDPOINT` is unset or blank; hf-hub would otherwise reread the raw variable.
+const DEFAULT_ENDPOINT: &str = "https://huggingface.co";
+
+/// Hub access for one model load: clients are built once, the token at most once.
 ///
 /// A failing token command isn't fatal: downloads go ahead without it (hf-hub may
-/// still use its own `$HF_HOME/token`), and a gated model that then fails to
-/// download reports the command's error.
-pub struct LazyToken<'a> {
+/// still use `HF_TOKEN` or its own `$HF_HOME/token`), and a gated model that then
+/// fails to download reports the command's error.
+pub struct Hub<'a> {
     config: &'a Config,
-    resolved: OnceCell<std::result::Result<Option<SecretString>, String>>,
+    cache_dir: PathBuf,
+    endpoint: String,
+    token: OnceCell<std::result::Result<Option<SecretString>, String>>,
+    // building a client loads TLS roots and spawns a runtime thread, so reuse them
+    offline: OnceCell<HFClientSync>,
+    online: OnceCell<HFClientSync>,
 }
 
-impl<'a> LazyToken<'a> {
+impl<'a> Hub<'a> {
+    /// Honors `HF_HUB_CACHE`, `HF_HOME` and `HF_ENDPOINT`. The token is sent to that endpoint.
     #[must_use]
-    pub const fn new(config: &'a Config) -> Self {
+    pub fn from_env(config: &'a Config) -> Self {
+        Self::new(
+            config,
+            hf_hub::resolve_cache_dir(),
+            normalize_endpoint(std::env::var("HF_ENDPOINT").ok()),
+        )
+    }
+
+    fn new(config: &'a Config, cache_dir: PathBuf, endpoint: Option<String>) -> Self {
         Self {
             config,
-            resolved: OnceCell::new(),
+            cache_dir,
+            endpoint: endpoint.unwrap_or_else(|| DEFAULT_ENDPOINT.to_string()),
+            token: OnceCell::new(),
+            offline: OnceCell::new(),
+            online: OnceCell::new(),
         }
     }
 
-    fn get(&self) -> std::result::Result<Option<&SecretString>, &str> {
-        self.resolved
+    #[must_use]
+    pub fn repo(&self, repo: &str) -> ModelFiles<'_> {
+        ModelFiles {
+            hub: self,
+            repo: repo.to_string(),
+        }
+    }
+
+    fn token(&self) -> std::result::Result<Option<&SecretString>, &str> {
+        self.token
             .get_or_init(|| {
                 self.config.resolve_hf_token().map_err(|e| {
                     warn!(%e, "token command failed, downloading without it");
@@ -41,75 +69,85 @@ impl<'a> LazyToken<'a> {
             .map(Option::as_ref)
             .map_err(String::as_str)
     }
+
+    fn offline_client(&self) -> Result<&HFClientSync> {
+        get_or_build(&self.offline, || self.build_client(None))
+    }
+
+    fn online_client(&self) -> Result<&HFClientSync> {
+        get_or_build(&self.online, || {
+            self.build_client(self.token().ok().flatten())
+        })
+    }
+
+    fn build_client(&self, token: Option<&SecretString>) -> Result<HFClientSync> {
+        let mut builder = HFClient::builder()
+            .cache_dir(&self.cache_dir)
+            .endpoint(&self.endpoint);
+        if let Some(token) = token {
+            debug!("using HuggingFace token from config");
+            // hf-hub only takes a plain String
+            builder = builder.token(token.expose_secret());
+        } else {
+            debug!("no HuggingFace token configured");
+        }
+        builder
+            .build_sync()
+            .wrap_err("failed to build HuggingFace API client")
+    }
+}
+
+fn get_or_build<T>(cell: &OnceCell<T>, build: impl FnOnce() -> Result<T>) -> Result<&T> {
+    if let Some(value) = cell.get() {
+        return Ok(value);
+    }
+    let value = build()?;
+    Ok(cell.get_or_init(|| value))
 }
 
 /// Files of one `HuggingFace` repo.
 pub struct ModelFiles<'a> {
+    hub: &'a Hub<'a>,
     repo: String,
-    cache: Cache,
-    endpoint: Option<String>,
-    token: &'a LazyToken<'a>,
 }
 
-impl<'a> ModelFiles<'a> {
-    /// Honors `HF_HOME` and `HF_ENDPOINT`. The token is sent to that endpoint.
-    #[must_use]
-    pub fn from_env(repo: &str, token: &'a LazyToken<'a>) -> Self {
-        Self::new(
-            repo,
-            Cache::from_env(),
-            normalize_endpoint(std::env::var("HF_ENDPOINT").ok()),
-            token,
-        )
-    }
-
-    fn new(repo: &str, cache: Cache, endpoint: Option<String>, token: &'a LazyToken<'a>) -> Self {
-        Self {
-            repo: repo.to_string(),
-            cache,
-            endpoint,
-            token,
-        }
-    }
-
+impl ModelFiles<'_> {
     /// Local path of `filename`, downloading it if needed.
     /// Only a download resolves the token, so a cached model never runs the token command.
     ///
     /// # Errors
     /// Fails if the file isn't cached and can't be downloaded.
     pub fn get(&self, filename: &str) -> Result<PathBuf> {
-        if let Some(path) = self.cache.model(self.repo.clone()).get(filename) {
-            debug!(repo = %self.repo, filename, "cache hit");
-            return Ok(path);
-        }
-        let token = self.token.get();
-        let api = self.api(token.ok().flatten())?;
-        api.download(filename).map_err(|e| {
-            if let Err(token_err) = token {
-                eyre::eyre!("{e} ({token_err})")
-            } else {
-                eyre::eyre!("{e}")
+        let cached = self
+            .handle(self.hub.offline_client()?)
+            .download_file()
+            .filename(filename)
+            .local_files_only(true)
+            .send();
+        match cached {
+            Ok(path) => {
+                debug!(repo = %self.repo, filename, "cache hit");
+                return Ok(path);
             }
-        })
+            Err(HFError::LocalEntryNotFound { .. }) => {}
+            Err(e) => debug!(repo = %self.repo, filename, %e, "cache lookup failed"),
+        }
+        self.handle(self.hub.online_client()?)
+            .download_file()
+            .filename(filename)
+            .send()
+            .map_err(|e| {
+                if let Err(token_err) = self.hub.token() {
+                    eyre::eyre!("{e} ({token_err})")
+                } else {
+                    eyre::eyre!("{e}")
+                }
+            })
     }
 
-    fn api(&self, token: Option<&SecretString>) -> Result<ApiRepo> {
-        let mut builder = ApiBuilder::from_cache(self.cache.clone());
-        if let Some(ref endpoint) = self.endpoint {
-            builder = builder.with_endpoint(endpoint.clone());
-        }
-        if let Some(token) = token {
-            debug!("using HuggingFace token from config");
-            // hf-hub only takes a plain String
-            builder = builder.with_token(Some(token.expose_secret().to_string()));
-        } else {
-            debug!("no HuggingFace token configured");
-        }
-        let api = builder
-            .build()
-            .wrap_err("failed to build HuggingFace API client")?;
-        debug!(repo = %self.repo, "HuggingFace repo handle created");
-        Ok(api.model(self.repo.clone()))
+    fn handle(&self, client: &HFClientSync) -> HFRepositorySync<RepoTypeModel> {
+        let (owner, name) = hf_hub::split_id(&self.repo);
+        client.model(owner, name)
     }
 }
 
@@ -156,8 +194,8 @@ mod tests {
         let marker = dir.path().join("ran");
         cache_file(dir.path(), "tokenizer.json");
         let config = command_config(format!("touch '{}'; echo tok", marker.display()));
-        let token = LazyToken::new(&config);
-        let files = ModelFiles::new(REPO, Cache::new(dir.path().into()), None, &token);
+        let hub = Hub::new(&config, dir.path().into(), None);
+        let files = hub.repo(REPO);
 
         let path = files.get("tokenizer.json").unwrap();
 
@@ -169,13 +207,8 @@ mod tests {
     fn failed_token_command_still_attempts_download() {
         let dir = tempfile::tempdir().unwrap();
         let config = command_config("echo 'vault locked' >&2; exit 1".into());
-        let token = LazyToken::new(&config);
-        let files = ModelFiles::new(
-            REPO,
-            Cache::new(dir.path().into()),
-            Some(UNREACHABLE.into()),
-            &token,
-        );
+        let hub = Hub::new(&config, dir.path().into(), Some(UNREACHABLE.into()));
+        let files = hub.repo(REPO);
 
         let err = files.get("tokenizer.json").unwrap_err().to_string();
 
@@ -194,10 +227,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let counter = dir.path().join("count");
         let config = command_config(format!("echo x >> '{}'; echo tok", counter.display()));
-        let token = LazyToken::new(&config);
-        let cache = Cache::new(dir.path().join("hub"));
-        let first = ModelFiles::new(REPO, cache.clone(), Some(UNREACHABLE.into()), &token);
-        let second = ModelFiles::new("org/other", cache, Some(UNREACHABLE.into()), &token);
+        let hub = Hub::new(&config, dir.path().join("hub"), Some(UNREACHABLE.into()));
+        let first = hub.repo(REPO);
+        let second = hub.repo("org/other");
 
         let _ = first.get("tokenizer.json").unwrap_err();
         let _ = first.get("config.json").unwrap_err();
@@ -252,9 +284,9 @@ mod tests {
     fn token_reaches_download_request() {
         let dir = tempfile::tempdir().unwrap();
         let config = command_config("echo tok123".into());
-        let token = LazyToken::new(&config);
         let (endpoint, server) = capture_one_request();
-        let files = ModelFiles::new(REPO, Cache::new(dir.path().into()), Some(endpoint), &token);
+        let hub = Hub::new(&config, dir.path().into(), Some(endpoint));
+        let files = hub.repo(REPO);
 
         let _ = files.get("tokenizer.json").unwrap_err();
 

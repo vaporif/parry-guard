@@ -27,16 +27,16 @@ fn parse_scan_mode(s: &str) -> Result<ScanMode, String> {
 #[command(name = "parry-guard", about = "Prompt injection scanner", version)]
 pub(crate) struct Cli {
     /// `HuggingFace` token (direct value)
-    #[arg(long, env = "HF_TOKEN")]
+    #[arg(long, env = "HF_TOKEN", hide_env_values = true)]
     pub hf_token: Option<String>,
 
     /// Shell command that prints the `HuggingFace` token (e.g. `pass show hf/token`).
     /// Run by the daemon only when a model must be downloaded; the token is never written to disk.
-    #[arg(long, env = "HF_TOKEN_COMMAND")]
+    #[arg(long, env = "HF_TOKEN_COMMAND", hide_env_values = true)]
     pub hf_token_command: Option<String>,
 
     /// Path to `HuggingFace` token file
-    #[arg(long, env = "HF_TOKEN_PATH")]
+    #[arg(long, env = "HF_TOKEN_PATH", hide_env_values = true)]
     pub hf_token_path: Option<PathBuf>,
 
     /// ML detection threshold (0.0-1.0)
