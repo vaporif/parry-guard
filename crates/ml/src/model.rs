@@ -231,13 +231,18 @@ mod tests {
             let (stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut head = String::new();
-            while reader.read_line(&mut head).unwrap() > 2 && !head.ends_with("\r\n\r\n") {}
+            // Stops at the blank line ending the head ("\r\n", 2 bytes) or at EOF.
+            while reader.read_line(&mut head).unwrap() > 2 {}
             let mut stream = stream;
-            stream
-                .write_all(
-                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                )
-                .unwrap();
+            let response = [
+                "HTTP/1.1 404 Not Found",
+                "Content-Length: 0",
+                "Connection: close",
+                "",
+                "",
+            ]
+            .join("\r\n");
+            stream.write_all(response.as_bytes()).unwrap();
             head
         });
         (endpoint, handle)
