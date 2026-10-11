@@ -92,7 +92,7 @@ jobs:
           key: onnx-fetch
 
       - name: Clippy
-        run: cargo clippy --workspace --no-default-features --features onnx-fetch -- -D warnings
+        run: cargo clippy --workspace --all-targets --no-default-features --features onnx-fetch -- -D warnings
 
       - name: Test
         run: cargo nextest run --workspace --no-default-features --features onnx-fetch

@@ -1,5 +1,6 @@
 //! Bash AST checks: pipelines, redirects, substitutions, function and alias backdoors.
 
+use parry_guard_core::shell;
 use tree_sitter::Node;
 
 use crate::interpreter::{check_interpreter_inline_code, check_shell_inline_code};
@@ -68,6 +69,10 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
         }
     }
 
+    if let Some(reason) = check_printed_into_shell(node, source) {
+        return Some(reason);
+    }
+
     let mut cursor2 = node.walk();
     for child in node.children(&mut cursor2) {
         if let Some(reason) = check_node(child, source) {
@@ -76,6 +81,39 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
     }
 
     None
+}
+
+/// `echo '...' | sh` runs what echo prints, so that text, escapes and any
+/// `base64 -d` decoded, is checked as a script of its own.
+fn check_printed_into_shell(node: Node, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    let words: Vec<Vec<&str>> = node
+        .named_children(&mut cursor)
+        .map(|stage| {
+            let Some(name) = stage.child_by_field_name("name") else {
+                return Vec::new();
+            };
+            let mut words = vec![node_text(name, source)];
+            words.extend(arguments(stage, source));
+            words
+        })
+        .collect();
+    shell::piped_scripts(&words).into_iter().find_map(|piped| {
+        let reason = crate::detect_in_script(&piped.script)?;
+        Some(format!(
+            "'{}' output piped to shell '{}' runs: {reason}",
+            piped.printer, piped.shell
+        ))
+    })
+}
+
+fn arguments<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut cursor = node.walk();
+    let args = node
+        .children_by_field_name("argument", &mut cursor)
+        .map(|arg| node_text(arg, source))
+        .collect();
+    args
 }
 
 fn check_command(node: Node, source: &[u8]) -> Option<String> {

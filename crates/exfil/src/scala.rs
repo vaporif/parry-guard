@@ -18,13 +18,6 @@ impl LangExfilDetector for ScalaDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(fromFile|readAllLines|readString|getLines|File|FileReader|FileInputStream|BufferedReader)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string) @string

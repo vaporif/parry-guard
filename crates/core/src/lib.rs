@@ -6,6 +6,7 @@ pub mod error;
 pub mod hf_token;
 pub mod repo_db;
 pub mod secrets;
+pub mod shell;
 pub mod substring;
 pub mod unicode;
 
@@ -53,11 +54,9 @@ pub fn scan_text_fast(text: &str) -> ScanResult {
         return ScanResult::Secret;
     }
 
-    for variant in decode::decode_variants(&stripped) {
-        if secrets::has_secret(&variant) {
-            trace!("secret detected in decoded variant");
-            return ScanResult::Secret;
-        }
+    if decode::decode_until(&stripped, secrets::has_secret) {
+        trace!("secret detected in decoded variant");
+        return ScanResult::Secret;
     }
 
     trace!("fast scan clean");
@@ -86,11 +85,9 @@ pub fn scan_injection_only(text: &str) -> ScanResult {
         return ScanResult::Injection;
     }
 
-    for variant in decode::decode_variants(&normalized) {
-        if substring::has_security_substring(&variant) {
-            trace!("security substring in decoded variant");
-            return ScanResult::Injection;
-        }
+    if decode::decode_until(&normalized, substring::has_security_substring) {
+        trace!("security substring in decoded variant");
+        return ScanResult::Injection;
     }
 
     trace!("injection scan clean");

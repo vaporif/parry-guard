@@ -18,13 +18,6 @@ impl LangExfilDetector for ElixirDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "^(read|read!|stream!|open)$")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string) @string

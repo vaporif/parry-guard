@@ -84,10 +84,7 @@ pub(crate) const INTERPRETERS: &[&str] = &[
     "gsed",
 ];
 
-pub(crate) const SHELL_INTERPRETERS: &[&str] = &[
-    "bash", "sh", "zsh", "dash", "ksh", "mksh", "oksh", "pdksh", "fish", "ash", "csh", "tcsh",
-    "yash", "rc", "es",
-];
+pub(crate) use parry_guard_core::shell::SHELLS as SHELL_INTERPRETERS;
 
 pub(crate) const INLINE_CODE_FLAGS: &[&str] = &[
     "-c", "-e", "-r", "--eval", "eval", "-script", "--expr", "--run",

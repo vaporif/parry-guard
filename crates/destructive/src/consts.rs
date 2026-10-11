@@ -24,6 +24,10 @@ pub(crate) const PKG_MANAGER_DESTRUCTIVE: &[(&str, &[&str])] = &[
 /// Destructive only with `-g`.
 pub(crate) const NPM_GLOBAL_UNINSTALL: &[&str] = &["uninstall", "rm", "remove"];
 
+/// `git push` options that take a separate value, so it isn't read as the repository.
+pub(crate) const GIT_PUSH_VALUE_OPTIONS: &[&str] =
+    &["-o", "--push-option", "--receive-pack", "--exec"];
+
 pub(crate) const GIT_HISTORY_REWRITE: &[&str] = &["filter-branch", "filter-repo"];
 
 pub(crate) const DB_CLI_COMMANDS: &[&str] = &["psql", "mysql", "sqlite3"];
@@ -66,6 +70,40 @@ pub(crate) const CONTAINER_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("helm", &["uninstall"]),
 ];
 
+/// Global options taking a value that may come before the subcommand: `git -C dir push`.
+pub(crate) const GLOBAL_VALUE_OPTIONS: &[(&str, &[&str])] = &[
+    (
+        "git",
+        &[
+            "-C",
+            "-c",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "--exec-path",
+        ],
+    ),
+    (
+        "kubectl",
+        &[
+            "-n",
+            "--namespace",
+            "--context",
+            "--cluster",
+            "--kubeconfig",
+            "-s",
+            "--server",
+            "--user",
+        ],
+    ),
+    (
+        "helm",
+        &["-n", "--namespace", "--kube-context", "--kubeconfig"],
+    ),
+    ("docker", &["-H", "--host", "-c", "--context", "--config"]),
+    ("celery", &["-A", "--app", "-b", "--broker"]),
+];
+
 pub(crate) const FIREWALL_COMMANDS: &[&str] = &["iptables", "ip6tables"];
 pub(crate) const FIREWALL_FLUSH_FLAGS: &[&str] = &["-F", "--flush"];
 
@@ -94,58 +132,7 @@ pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
 
 // Command wrappers
 
-/// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
-pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
-    ("command", &[], 0),
-    ("exec", &["-a"], 0),
-    ("env", &["-u", "--unset", "-C", "--chdir"], 0),
-    ("nice", &["-n", "--adjustment"], 0),
-    ("nohup", &[], 0),
-    ("time", &[], 0),
-    ("timeout", &["-s", "--signal", "-k", "--kill-after"], 1),
-    (
-        "stdbuf",
-        &["-i", "-o", "-e", "--input", "--output", "--error"],
-        0,
-    ),
-    ("setsid", &[], 0),
-    (
-        "ionice",
-        &[
-            "-c",
-            "--class",
-            "-n",
-            "--classdata",
-            "-p",
-            "--pid",
-            "-P",
-            "--pgid",
-            "-u",
-            "--uid",
-        ],
-        0,
-    ),
-    (
-        "xargs",
-        &[
-            "-a",
-            "--arg-file",
-            "-d",
-            "--delimiter",
-            "-E",
-            "-I",
-            "-L",
-            "--max-lines",
-            "-n",
-            "--max-args",
-            "-P",
-            "--max-procs",
-            "-s",
-            "--max-chars",
-        ],
-        0,
-    ),
-];
+pub(crate) use parry_guard_core::shell::COMMAND_WRAPPERS;
 
 /// `find` actions that run a command per match, ended by `;` or `+`.
 pub(crate) const FIND_EXEC_ACTIONS: &[&str] = &["-exec", "-execdir", "-ok", "-okdir"];

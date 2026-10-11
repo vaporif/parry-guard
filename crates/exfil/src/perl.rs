@@ -18,13 +18,6 @@ impl LangExfilDetector for PerlDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(open|read|slurp)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         r"
         (string_single_quoted) @string

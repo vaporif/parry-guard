@@ -18,13 +18,6 @@ impl LangExfilDetector for NixDetector {
         "#
     }
 
-    fn file_source_query(&self) -> &'static str {
-        r#"
-        (identifier) @fn
-        (#match? @fn "(readFile|readDir|pathExists|import)")
-        "#
-    }
-
     fn string_literal_query(&self) -> &'static str {
         // Nix file paths are bare `./path` expressions, not strings
         r"
