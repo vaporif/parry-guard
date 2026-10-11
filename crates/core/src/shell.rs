@@ -440,11 +440,24 @@ mod tests {
         text.matches("if").count() == text.matches("fi").count() && !text.contains('(')
     }
 
+    const COMPOUND: &str = indoc::indoc! {"
+        if x
+        then y
+        fi"};
+    const NEVER_COMPLETES: &str = indoc::indoc! {"
+        a
+        (
+        b"};
+    const BLANK_LINES: &str = indoc::indoc! {"
+
+
+        a"};
+
     #[rstest]
     #[case::lines("a\nb", &["a", "\nb"])]
-    #[case::compound("if x\nthen y\nfi", &["if x\nthen y\nfi"])]
-    #[case::never_completes("a\n(\nb", &["a"])]
-    #[case::blank_lines("\n\na", &["\n\na"])]
+    #[case::compound(COMPOUND, &[COMPOUND])]
+    #[case::never_completes(NEVER_COMPLETES, &["a"])]
+    #[case::blank_lines(BLANK_LINES, &[BLANK_LINES])]
     fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
         assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
     }
