@@ -3,6 +3,7 @@
 pub mod config;
 pub mod decode;
 pub mod error;
+pub mod hf_token;
 pub mod repo_db;
 pub mod secrets;
 pub mod substring;
@@ -14,6 +15,7 @@ use tracing::{debug, instrument, trace};
 
 pub use config::Config;
 pub use error::{Result, ScanError};
+pub use secrecy::{ExposeSecret, SecretString};
 
 /// Result of scanning text for prompt injection or secrets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

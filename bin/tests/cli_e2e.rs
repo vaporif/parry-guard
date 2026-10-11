@@ -123,7 +123,7 @@ fn parse_output(out: &std::process::Output) -> serde_json::Value {
 
 fn assert_allowed(out: &std::process::Output) {
     assert!(out.status.success());
-    assert_eq!(stdout(out).trim(), "");
+    assert_eq!(stdout(out).trim(), "{}");
 }
 
 fn assert_decision(out: &std::process::Output, expected: &str) {
@@ -182,6 +182,8 @@ fn git_repo() -> tempfile::TempDir {
         &["init"][..],
         &["config", "user.email", "test@test.com"],
         &["config", "user.name", "Test"],
+        // a global signing setup would otherwise make commits depend on the user's agent
+        &["config", "commit.gpgsign", "false"],
     ] {
         Command::new("git")
             .args(*args)
@@ -339,6 +341,51 @@ fn pre_write_injection() {
     let out = run_hook_rt(dir.path(), &json, Some(rt.path()), &[]);
     assert!(out.status.success());
     assert_decision(&out, "ask");
+}
+
+fn clean_write_json() -> String {
+    pre_tool_json(
+        "Write",
+        serde_json::json!({ "file_path": "/tmp/notes.md", "content": "The weather is sunny today." }),
+    )
+}
+
+#[test]
+fn hf_token_command_runs_in_daemon_and_fails_closed() {
+    if std::env::var("NIX_BUILD_TOP").is_ok() {
+        return;
+    }
+    let (dir, rt) = monitored_dir();
+    let token_file = rt.path().join(".hf-token");
+    std::fs::write(&token_file, "stale-token").unwrap();
+    let marker = rt.path().join("token-command-ran");
+    let command = format!("touch '{}'; exit 1", marker.display());
+    // empty cache forces a download, which then fails fast against a closed port
+    let hf_home = rt.path().join("hf-home");
+
+    let out = run_hook_rt(
+        dir.path(),
+        &clean_write_json(),
+        Some(rt.path()),
+        &[
+            ("HF_TOKEN", ""),
+            ("HF_TOKEN_COMMAND", &command),
+            ("HF_HOME", hf_home.to_str().unwrap()),
+            ("HF_ENDPOINT", "http://127.0.0.1:9"),
+        ],
+    );
+
+    assert!(out.status.success());
+    assert_decision(&out, "ask");
+    assert!(marker.exists(), "daemon never ran HF_TOKEN_COMMAND");
+    assert!(!token_file.exists(), "stale token file should be removed");
+}
+
+#[test]
+fn codex_pre_clean_emits_noop_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = codex_pre_tool_json("Bash", serde_json::json!({ "command": "echo hi" }));
+    assert_allowed(&run_hook(dir.path(), &json));
 }
 
 #[test]
@@ -851,7 +898,7 @@ fn prompt_submit_no_claude_dir() {
         "cwd": dir.path().to_str().unwrap()
     })
     .to_string();
-    assert!(run_hook(dir.path(), &json).status.success());
+    assert_allowed(&run_hook(dir.path(), &json));
 }
 
 #[test]
@@ -1044,10 +1091,7 @@ fn auto_monitor_ignored_repo_stays_ignored() {
     .to_string();
     let out = run_hook_rt(dir.path(), &json, Some(rt.path()), &[]);
     assert!(out.status.success());
-    assert!(
-        stdout(&out).trim().is_empty(),
-        "ignored repo should skip audit"
-    );
+    assert_eq!(stdout(&out).trim(), "{}", "ignored repo should skip audit");
 }
 
 #[test]
@@ -1077,8 +1121,9 @@ fn ignore_dirs_skips_child_repos() {
         &[("PARRY_IGNORE_DIRS", parent.path().to_str().unwrap())],
     );
     assert!(out.status.success());
-    assert!(
-        stdout(&out).trim().is_empty(),
+    assert_eq!(
+        stdout(&out).trim(),
+        "{}",
         "repo under ignore dir should be skipped"
     );
 }
@@ -1262,4 +1307,28 @@ fn soft_fail_audit_reports_findings_with_partial_note() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert_context_contains(&out, "PERMISSIONS");
     assert_context_contains(&out, "partial results");
+}
+
+#[test]
+fn help_hides_token_env_values() {
+    let out = parry_cmd(None)
+        .arg("--help")
+        .env("HF_TOKEN", "hf_secret_token_value")
+        .env("HF_TOKEN_COMMAND", "echo hf_secret_in_command")
+        .env("HF_TOKEN_PATH", "/secret/token/path")
+        .output()
+        .unwrap();
+    let help = stdout(&out);
+
+    assert!(
+        help.contains("[env: HF_TOKEN"),
+        "help should still name the env vars: {help}"
+    );
+    for secret in [
+        "hf_secret_token_value",
+        "hf_secret_in_command",
+        "/secret/token/path",
+    ] {
+        assert!(!help.contains(secret), "help leaked {secret}");
+    }
 }

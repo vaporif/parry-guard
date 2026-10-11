@@ -3,7 +3,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use parry_guard_core::{Config, ScanError, ScanResult};
+use parry_guard_core::config::HfToken;
+use parry_guard_core::{Config, ExposeSecret, ScanError, ScanResult};
 use tracing::{debug, info, trace, warn};
 
 use crate::protocol::{self, ScanRequest, ScanResponse, ScanType};
@@ -77,13 +78,24 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
 
     cmd.arg("--scan-mode").arg(config.scan_mode.as_str());
 
-    if let Some(ref token) = config.hf_token {
-        let token_file = crate::transport::parry_dir(config.runtime_dir.as_deref())
-            .map_err(|e| ScanError::DaemonStart(format!("failed to resolve parry dir: {e}")))?
-            .join(".hf-token");
-        write_private(&token_file, token)
-            .map_err(|e| ScanError::DaemonStart(format!("failed to write token file: {e}")))?;
-        cmd.arg("--hf-token-path").arg(&token_file);
+    match config.hf_token {
+        Some(HfToken::Value(ref token)) => {
+            let token_file = token_file(config)?;
+            write_private(&token_file, token.expose_secret())
+                .map_err(|e| ScanError::DaemonStart(format!("failed to write token file: {e}")))?;
+            cmd.arg("--hf-token-path").arg(&token_file);
+        }
+        Some(HfToken::Command(ref command)) => {
+            // the daemon runs the command itself; drop any token a previous spawn persisted
+            let token_file = token_file(config)?;
+            if let Err(e) = std::fs::remove_file(&token_file) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!(%e, "failed to remove stale token file");
+                }
+            }
+            cmd.arg("--hf-token-command").arg(command);
+        }
+        None => {}
     }
 
     // runtime_dir is test-only and not forwarded; no --runtime-dir flag on purpose.
@@ -96,6 +108,12 @@ pub fn spawn_daemon(config: &Config) -> Result<(), ScanError> {
     cmd.spawn()
         .map_err(|e| ScanError::DaemonStart(format!("failed to spawn daemon: {e}")))?;
     Ok(())
+}
+
+fn token_file(config: &Config) -> Result<std::path::PathBuf, ScanError> {
+    Ok(crate::transport::parry_dir(config.runtime_dir.as_deref())
+        .map_err(|e| ScanError::DaemonStart(format!("failed to resolve parry dir: {e}")))?
+        .join(".hf-token"))
 }
 
 /// Writes `contents` to a file that is owner-only before any byte lands.
@@ -301,7 +319,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            hf_token: Some("test-token".to_string()),
+            hf_token: Some("test-token".into()),
             runtime_dir: Some(dir.path().to_path_buf()),
             ..Config::default()
         };
@@ -313,6 +331,24 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&token_path).unwrap(), "test-token");
         let perms = std::fs::metadata(&token_path).unwrap().permissions();
         assert_eq!(perms.mode() & 0o777, 0o600, "token file should be 0600");
+    }
+
+    #[test]
+    fn token_command_removes_stale_token_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(".hf-token");
+        std::fs::write(&token_path, "old-token").unwrap();
+
+        let config = Config {
+            hf_token: Some(HfToken::Command("echo tok".to_string())),
+            runtime_dir: Some(dir.path().to_path_buf()),
+            ..Config::default()
+        };
+
+        // spawns the test binary, which rejects the daemon args and exits
+        spawn_daemon(&config).unwrap();
+
+        assert!(!token_path.exists(), "stale token file should be removed");
     }
 
     #[test]

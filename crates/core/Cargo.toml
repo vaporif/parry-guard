@@ -25,6 +25,10 @@ serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 dirs.workspace = true
 redb.workspace = true
+secrecy.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
 
 [features]
 candle = []

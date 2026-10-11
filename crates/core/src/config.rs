@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use secrecy::SecretString;
 use serde::Deserialize;
 
 const DEFAULT_MODEL: &str = "ProtectAI/deberta-v3-small-prompt-injection-v2";
@@ -49,9 +50,24 @@ struct ModelsConfig {
 
 const DEFAULT_CLAUDE_MD_THRESHOLD: f32 = 0.9;
 
-#[derive(Clone)]
+/// Where the `HuggingFace` token comes from.
+// SecretString's Debug keeps the token out of tracing spans
+#[derive(Clone, Debug)]
+pub enum HfToken {
+    Value(SecretString),
+    /// Shell command printing the token; run only when a download needs it.
+    Command(String),
+}
+
+impl From<&str> for HfToken {
+    fn from(token: &str) -> Self {
+        Self::Value(token.into())
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Config {
-    pub hf_token: Option<String>,
+    pub hf_token: Option<HfToken>,
     pub threshold: f32,
     /// Higher than `threshold`: CLAUDE.md is instructions by design, so `DeBERTa` scores it high.
     pub claude_md_threshold: f32,
@@ -61,20 +77,21 @@ pub struct Config {
     pub runtime_dir: Option<PathBuf>,
 }
 
-// manual impl keeps `hf_token` out of tracing spans
-impl std::fmt::Debug for Config {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Config")
-            .field("hf_token", &self.hf_token.as_ref().map(|_| "<redacted>"))
-            .field("threshold", &self.threshold)
-            .field("claude_md_threshold", &self.claude_md_threshold)
-            .field("scan_mode", &self.scan_mode)
-            .field("runtime_dir", &self.runtime_dir)
-            .finish()
-    }
-}
-
 impl Config {
+    /// The configured token, running the command if that's the source.
+    ///
+    /// # Errors
+    /// Fails if the token command fails.
+    pub fn resolve_hf_token(&self) -> crate::Result<Option<SecretString>> {
+        match self.hf_token {
+            Some(HfToken::Value(ref token)) => Ok(Some(token.clone())),
+            Some(HfToken::Command(ref command)) => {
+                crate::hf_token::run_token_command(command).map(Some)
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Models to load for `scan_mode`.
     ///
     /// # Errors
@@ -147,6 +164,9 @@ impl Default for Config {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+    use secrecy::ExposeSecret;
+
     use super::*;
 
     #[test]
@@ -266,6 +286,32 @@ mod tests {
         };
         let dbg = format!("{config:?}");
         assert!(!dbg.contains("hf_secret123"), "{dbg}");
-        assert!(dbg.contains("<redacted>"), "{dbg}");
+        assert!(dbg.contains("REDACTED"), "{dbg}");
+    }
+
+    #[rstest]
+    #[case::direct(Some(HfToken::from("direct")), Some("direct"))]
+    #[cfg_attr(
+        unix,
+        case::runs_command(Some(HfToken::Command("echo from-cmd".into())), Some("from-cmd"))
+    )]
+    #[case::unset(None, None)]
+    fn resolve_hf_token(#[case] token: Option<HfToken>, #[case] expected: Option<&str>) {
+        let config = Config {
+            hf_token: token,
+            ..Config::default()
+        };
+        let resolved = config.resolve_hf_token().unwrap();
+        assert_eq!(resolved.as_ref().map(ExposeSecret::expose_secret), expected);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn resolve_hf_token_propagates_command_failure() {
+        let config = Config {
+            hf_token: Some(HfToken::Command("exit 1".into())),
+            ..Config::default()
+        };
+        let _ = config.resolve_hf_token().unwrap_err();
     }
 }
