@@ -17,9 +17,9 @@ use parry_guard_ml::MlScanner;
 const MAX_ML_RETRIES: u8 = 3;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const ML_LOAD_TIMEOUT: Duration = Duration::from_mins(2);
-/// A load still running this many waits after it started is given up on, so a
-/// hung one (a stuck download lock) can't keep the scanner unavailable for good.
-const ABANDON_AFTER_WAITS: u8 = 5;
+/// A load still running this long after it started is given up on, so a hung
+/// one (a stuck download lock) can't keep the scanner unavailable for good.
+const ML_ABANDON_AFTER: Duration = Duration::from_mins(10);
 
 /// `S` is the scanner; tests use a stand-in so no model is needed.
 ///
@@ -50,11 +50,12 @@ impl<S> MlState<S> {
     ///
     /// A load still running after `timeout` keeps going. Later requests wait on it
     /// again until `MAX_ML_RETRIES` waits are spent, then only check whether it has
-    /// finished, and start over once it has run for `ABANDON_AFTER_WAITS` timeouts.
+    /// finished, and start over once it has run for `abandon_after`.
     fn get_or_load(
         &mut self,
         start_load: impl FnOnce() -> Receiver<Option<S>>,
         timeout: Duration,
+        abandon_after: Duration,
     ) -> Option<&mut S> {
         if let Some(scanner) = self.take_abandoned_result() {
             info!(ml = "loaded", "ML model ready from an abandoned load");
@@ -116,9 +117,7 @@ impl<S> MlState<S> {
                         abandoned: std::mem::take(abandoned),
                     };
                 }
-                Err(RecvTimeoutError::Timeout)
-                    if started.elapsed() >= timeout * u32::from(ABANDON_AFTER_WAITS) =>
-                {
+                Err(RecvTimeoutError::Timeout) if started.elapsed() >= abandon_after => {
                     warn!(
                         attempt = *attempt + 1,
                         max = MAX_ML_RETRIES,
@@ -335,7 +334,8 @@ async fn handle_connection(
     let resp = match req.scan_type {
         ScanType::Ping => ScanResponse::Pong,
         ScanType::Full => {
-            let scanner = ml_state.get_or_load(|| spawn_ml_load(config), ML_LOAD_TIMEOUT);
+            let scanner =
+                ml_state.get_or_load(|| spawn_ml_load(config), ML_LOAD_TIMEOUT, ML_ABANDON_AFTER);
             handle_request(&req, scanner, cache, model_fingerprint)
         }
     };
@@ -442,6 +442,9 @@ mod tests {
     }
 
     const SHORT_WAIT: Duration = Duration::from_millis(10);
+    /// Keeps a slow scheduler from turning a load into a hung one mid-test.
+    const NEVER_ABANDON: Duration = Duration::from_hours(1);
+    const ABANDON_NOW: Duration = Duration::ZERO;
 
     fn finished_load(scanner: Option<u8>) -> Receiver<Option<u8>> {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -463,6 +466,7 @@ mod tests {
                     finished_load(None)
                 },
                 SHORT_WAIT,
+                NEVER_ABANDON,
             );
             assert!(scanner.is_none());
         }
@@ -503,7 +507,7 @@ mod tests {
         let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::NotLoaded;
         for _ in 0..2 {
-            let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
+            let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON);
             assert_eq!(scanner, None, "the load has not finished yet");
         }
         assert_eq!(
@@ -512,7 +516,7 @@ mod tests {
         );
 
         tx.send(Some(7)).unwrap();
-        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
+        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON);
         assert_eq!(scanner.copied(), Some(7), "a late success still installs");
         assert_eq!(loader.starts, 1);
     }
@@ -528,11 +532,11 @@ mod tests {
             abandoned: Vec::new(),
         };
         // past the wait budget only a non-blocking check runs, so this returns at once
-        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1), NEVER_ABANDON);
         assert_eq!(scanner, None);
 
         tx.send(Some(7)).unwrap();
-        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1), NEVER_ABANDON);
         assert_eq!(scanner.copied(), Some(7));
         assert_eq!(loader.starts, 0, "the running load is reused");
     }
@@ -546,7 +550,7 @@ mod tests {
             abandoned: Vec::new(),
         };
         let started = std::time::Instant::now();
-        let scanner = state.get_or_load(|| loader.start(), Duration::from_secs(2));
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_secs(2), NEVER_ABANDON);
         assert_eq!(scanner, None);
         assert_eq!(loader.starts, 1, "a retry still starts");
         assert!(
@@ -562,13 +566,16 @@ mod tests {
             result: loader.pending.take().unwrap(),
             attempt: 0,
             waits: MAX_ML_RETRIES,
-            started: Instant::now() - SHORT_WAIT * u32::from(ABANDON_AFTER_WAITS),
+            started: Instant::now(),
             abandoned: Vec::new(),
         };
-        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, ABANDON_NOW),
+            None
+        );
         assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
 
-        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);
+        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT, NEVER_ABANDON);
         assert_eq!(
             scanner.copied(),
             Some(3),
@@ -583,16 +590,19 @@ mod tests {
             result: loader.pending.take().unwrap(),
             attempt: 0,
             waits: MAX_ML_RETRIES,
-            started: Instant::now() - SHORT_WAIT * u32::from(ABANDON_AFTER_WAITS),
+            started: Instant::now(),
             abandoned: Vec::new(),
         };
-        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, ABANDON_NOW),
+            None
+        );
 
         // the retry hangs too, and the first load finishes after all
         let (_retry_tx, retry) = std::sync::mpsc::channel();
-        assert_eq!(state.get_or_load(|| retry, SHORT_WAIT), None);
+        assert_eq!(state.get_or_load(|| retry, SHORT_WAIT, NEVER_ABANDON), None);
         tx.send(Some(7)).unwrap();
-        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
+        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON);
         assert_eq!(
             scanner.copied(),
             Some(7),
@@ -604,14 +614,20 @@ mod tests {
     fn failed_load_after_wait_allows_retry() {
         let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::NotLoaded;
-        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON),
+            None
+        );
 
         tx.send(None).unwrap();
-        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON),
+            None
+        );
         assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
         assert_eq!(loader.starts, 1);
 
-        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);
+        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT, NEVER_ABANDON);
         assert_eq!(scanner.copied(), Some(3));
     }
 
