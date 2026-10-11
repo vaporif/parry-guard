@@ -12,7 +12,9 @@ proptest! {
     fn decode_variants_is_bounded(text in any::<String>()) {
         let variants = decode_variants(&text);
         prop_assert!(!variants.is_empty());
-        prop_assert!(variants.len() <= 8);
+        // everything after the input is decoded output, capped by the byte budget
+        let decoded: usize = variants.iter().skip(1).map(String::len).sum();
+        prop_assert!(decoded <= (text.len() * 16).max(1024 * 1024) * 4);
     }
 
     #[test]

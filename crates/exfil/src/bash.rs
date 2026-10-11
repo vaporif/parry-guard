@@ -83,23 +83,26 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
     None
 }
 
-/// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
-/// checked as a script of its own.
+/// `echo '...' | sh` runs what echo prints, so that text, escapes and any
+/// `base64 -d` decoded, is checked as a script of its own.
 fn check_printed_into_shell(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
-    let stages: Vec<Node> = node.named_children(&mut cursor).collect();
-    stages.windows(2).find_map(|pair| {
-        let [printer, shell] = pair else {
-            return None;
-        };
-        let printer_name = get_command_name(*printer, source)?;
-        let output = shell::printed_output(printer_name, &arguments(*printer, source))?;
-        let mut words = vec![node_text(shell.child_by_field_name("name")?, source)];
-        words.extend(arguments(*shell, source));
-        let shell_name = shell::stdin_shell(&words)?;
-        let reason = crate::detect_in_script(&output)?;
+    let words: Vec<Vec<&str>> = node
+        .named_children(&mut cursor)
+        .map(|stage| {
+            let Some(name) = stage.child_by_field_name("name") else {
+                return Vec::new();
+            };
+            let mut words = vec![node_text(name, source)];
+            words.extend(arguments(stage, source));
+            words
+        })
+        .collect();
+    shell::piped_scripts(&words).into_iter().find_map(|piped| {
+        let reason = crate::detect_in_script(&piped.script)?;
         Some(format!(
-            "'{printer_name}' output piped to shell '{shell_name}' runs: {reason}"
+            "'{}' output piped to shell '{}' runs: {reason}",
+            piped.printer, piped.shell
         ))
     })
 }

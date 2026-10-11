@@ -62,16 +62,24 @@ pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
 }
 
 /// Like `detect_destructive`, for a script a shell reads from stdin. The shell
-/// runs it a line at a time, so lines before a syntax error still run, and a
-/// line that doesn't parse never does.
+/// runs each command once it's complete, so commands before a syntax error still
+/// run, and text that never completes never does.
 fn detect_in_script(script: &str, cwd: &str) -> Option<String> {
-    if parse_bash(script).is_ok() {
+    // a poisoned lock fails every parse, so fail closed instead of splitting
+    if parse_bash(script).is_ok() || PARSER_LOCK.is_poisoned() {
         return detect_destructive(script, cwd);
     }
-    script.lines().find_map(|line| match parse_bash(line) {
-        Ok(Some(tree)) => bash::check_node(tree.root_node(), line.as_bytes(), cwd),
-        Ok(None) | Err(_) => None,
-    })
+    let commands = parry_guard_core::shell::complete_commands(script, |c| {
+        matches!(parse_bash(c), Ok(Some(_)))
+    });
+    commands.map_or_else(
+        || detect_destructive(script, cwd),
+        |commands| {
+            commands
+                .into_iter()
+                .find_map(|command| detect_destructive(command, cwd))
+        },
+    )
 }
 
 /// Reason if `path` is protected; CWD and its subdirectories are exempt.
@@ -1014,6 +1022,15 @@ mod tests {
     #[case::nice_env_shell("echo 'rm -rf /etc' | nice -n 5 env FOO=1 bash")]
     #[case::shell_with_options("echo 'rm -rf /etc' | bash -e -o pipefail")]
     #[case::unparsable_trailing_line(r"printf 'rm -rf /etc\nif\n' | sh")]
+    #[case::multi_line_compound(r"printf 'if :\nthen rm -rf /etc\nfi\n(\n' | sh")]
+    #[case::printf_precision("printf '%.1s%.1s -rf /etc' rX mX | sh")]
+    #[case::printf_char("printf '%c%c -rf /etc' rx mx | sh")]
+    #[case::printf_star_width("printf '%*s -rf /etc' 1 rm | sh")]
+    #[case::bash_rcfile("echo 'rm -rf /etc' | bash --rcfile /dev/null")]
+    #[case::shell_dash("echo 'rm -rf /etc' | bash -")]
+    #[case::env_split_string("echo 'rm -rf /etc' | env -S bash")]
+    #[case::base64_decoded("echo cm0gLXJmIC9ldGM= | base64 -d | sh")]
+    #[case::hex_decoded("echo 726d202d7266202f657463 | xxd -r -p | bash")]
     fn printed_command_piped_to_shell_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1259,6 +1276,7 @@ mod tests {
     #[rstest]
     #[case::echo_into_xargs("echo /etc | xargs rm -rf")]
     #[case::echo_flags_into_xargs("echo -n /etc | xargs rm -rf")]
+    #[case::echo_concatenated_quotes_into_xargs("echo '/e''tc' | xargs rm -rf")]
     #[case::printf_into_xargs(r#"printf "/etc\n" | xargs rm -rf"#)]
     #[case::printf_format_into_xargs(r"printf '%s\n' /etc | xargs rm -rf")]
     #[case::xargs_replace_string("echo /etc | xargs -I{} rm -rf {}")]

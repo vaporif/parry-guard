@@ -175,25 +175,41 @@ fn printf_output(args: &[&str]) -> Option<String> {
 /// One pass of `format`; returns how many arguments it consumed.
 fn apply_format(format: &str, args: &mut impl Iterator<Item = String>, out: &mut String) -> usize {
     let mut consumed = 0;
+    let mut next_arg = || {
+        consumed += 1;
+        args.next().unwrap_or_default()
+    };
     let mut chars = format.chars().peekable();
     while let Some(c) = chars.next() {
         if c != '%' {
             out.push(c);
             continue;
         }
-        // flags, width and precision don't change which text is printed
-        while chars.next_if(|c| "-+ #0123456789.".contains(*c)).is_some() {}
-        match chars.next() {
-            Some('%') | None => out.push('%'),
-            Some(conversion) => {
-                consumed += 1;
-                let arg = args.next().unwrap_or_default();
-                if conversion == 'b' {
-                    out.push_str(&decode_echo_escapes(&arg));
-                } else {
-                    out.push_str(&arg);
-                }
+        while chars.next_if(|c| "-+ #0".contains(*c)).is_some() {}
+        // width only pads, but `*` takes it from an argument
+        if chars.next_if_eq(&'*').is_some() {
+            next_arg();
+        }
+        while chars.next_if(char::is_ascii_digit).is_some() {}
+        let precision = chars.next_if_eq(&'.').map(|_| {
+            if chars.next_if_eq(&'*').is_some() {
+                next_arg().parse().unwrap_or(0)
+            } else {
+                std::iter::from_fn(|| chars.next_if(char::is_ascii_digit))
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0)
             }
+        });
+        let text = match chars.next() {
+            Some('%') | None => "%".to_owned(),
+            Some('b') => decode_echo_escapes(&next_arg()),
+            Some('c') => next_arg().chars().take(1).collect(),
+            Some(_) => next_arg(),
+        };
+        match precision {
+            Some(n) => out.extend(text.chars().take(n)),
+            None => out.push_str(&text),
         }
     }
     consumed
@@ -211,14 +227,13 @@ pub fn stdin_shell(words: &[&str]) -> Option<String> {
         if SHELLS.contains(&name.as_str()) {
             return reads_script_from_stdin(words.get(1..)?).then_some(name);
         }
-        let rest = skip_wrapper(&name, words.get(1..)?)?;
-        words = words.split_off(words.len() - rest);
+        words = unwrap_command(&name, words.get(1..)?)?;
     }
 }
 
-/// How many words are left once `wrapper`'s own options and operands are skipped;
+/// The command `wrapper` runs, once its own options and operands are skipped;
 /// `None` if `wrapper` isn't one, or doesn't run a command from its arguments.
-fn skip_wrapper(wrapper: &str, args: &[String]) -> Option<usize> {
+fn unwrap_command(wrapper: &str, args: &[String]) -> Option<Vec<String>> {
     if wrapper == "xargs" {
         return None;
     }
@@ -233,10 +248,14 @@ fn skip_wrapper(wrapper: &str, args: &[String]) -> Option<usize> {
             break;
         }
         if arg.starts_with('-') {
-            if wrapper == "env" && matches!(arg.as_str(), "-S" | "--split-string") {
-                return None;
-            }
             args.next();
+            if wrapper == "env" && matches!(arg.as_str(), "-S" | "--split-string") {
+                // the value is split into words ahead of the rest
+                let mut words: Vec<String> =
+                    args.next()?.split_whitespace().map(str::to_owned).collect();
+                words.extend(args.cloned());
+                return Some(words);
+            }
             if value_options.contains(&arg.as_str()) {
                 args.next();
             }
@@ -249,14 +268,18 @@ fn skip_wrapper(wrapper: &str, args: &[String]) -> Option<usize> {
             break;
         }
     }
-    Some(args.len())
+    Some(args.cloned().collect())
 }
+
+/// Long shell options that take the next word as their value.
+const SHELL_VALUE_OPTIONS: &[&str] = &["--rcfile", "--init-file"];
 
 fn reads_script_from_stdin(args: &[String]) -> bool {
     let mut stdin_flag = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
-        if arg == "--" {
+        // a lone `-` ends the options like `--`
+        if arg == "--" || arg == "-" {
             return stdin_flag || args.next().is_none();
         }
         let Some(flags) = arg.strip_prefix(['-', '+']).filter(|f| !f.is_empty()) else {
@@ -264,6 +287,9 @@ fn reads_script_from_stdin(args: &[String]) -> bool {
             return stdin_flag;
         };
         if flags.starts_with('-') {
+            if SHELL_VALUE_OPTIONS.contains(&arg.as_str()) {
+                args.next();
+            }
             continue;
         }
         if flags.contains('c') {
@@ -275,6 +301,88 @@ fn reads_script_from_stdin(args: &[String]) -> bool {
         }
     }
     true
+}
+
+/// What a decoding filter writes for `input`: `base64 -d` and `xxd -r -p`, which
+/// hide a script from the stage that prints it. `None` for any other command.
+#[must_use]
+pub fn filter_output(words: &[&str], input: &str) -> Option<String> {
+    let words: Vec<String> = words.iter().map(|word| unquote(word)).collect();
+    let (name, args) = words.split_first()?;
+    let has = |flag: &str| args.iter().any(|arg| arg == flag);
+    let encoding = match name.rsplit('/').next()? {
+        "base64" if has("-d") || has("--decode") || has("-D") => &data_encoding::BASE64,
+        "xxd" if has("-r") && (has("-p") || has("-ps")) => &data_encoding::HEXLOWER_PERMISSIVE,
+        _ => return None,
+    };
+    let cleaned: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let decoded = encoding
+        .decode(cleaned.as_bytes())
+        .or_else(|_| data_encoding::BASE64_NOPAD.decode(cleaned.as_bytes()))
+        .ok()?;
+    String::from_utf8(decoded).ok()
+}
+
+/// A script a pipeline feeds a shell: printed by `printer`, maybe passed through
+/// decoding filters, then read from stdin by `shell`.
+pub struct PipedScript {
+    pub printer: String,
+    pub shell: String,
+    pub script: String,
+}
+
+/// Scripts a pipeline feeds into a shell, given each stage's raw words (name first).
+#[must_use]
+pub fn piped_scripts(stages: &[Vec<&str>]) -> Vec<PipedScript> {
+    let mut scripts = Vec::new();
+    for (i, printer) in stages.iter().enumerate() {
+        let Some((name, args)) = printer.split_first() else {
+            continue;
+        };
+        let name = unquote(name);
+        let Some(mut script) = printed_output(&name, args) else {
+            continue;
+        };
+        for stage in stages.iter().skip(i + 1) {
+            if let Some(shell) = stdin_shell(stage) {
+                scripts.push(PipedScript {
+                    printer: name,
+                    shell,
+                    script,
+                });
+                break;
+            }
+            match filter_output(stage, &script) {
+                Some(decoded) => script = decoded,
+                None => break,
+            }
+        }
+    }
+    scripts
+}
+
+/// Most lines a script is split into before it's checked as one unparsable blob.
+const MAX_SCRIPT_LINES: usize = 256;
+
+/// The commands a shell runs from `script`; `None` if it's too long to split.
+///
+/// `parses` says whether text is complete, valid shell. A shell reads a line at a
+/// time and runs each command once it's complete, so lines that never complete
+/// never run.
+pub fn complete_commands(script: &str, mut parses: impl FnMut(&str) -> bool) -> Option<Vec<&str>> {
+    if script.lines().count() > MAX_SCRIPT_LINES {
+        return None;
+    }
+    let mut commands = Vec::new();
+    let mut start = 0;
+    for (end, _) in script.match_indices('\n').chain([(script.len(), "")]) {
+        let chunk = script.get(start..end)?;
+        if !chunk.trim().is_empty() && parses(chunk) {
+            commands.push(chunk);
+            start = end;
+        }
+    }
+    Some(commands)
 }
 
 #[cfg(test)]
@@ -297,7 +405,7 @@ mod tests {
     #[rstest]
     #[case::plain(&[r"'rm -rf /etc\n'"], "rm -rf /etc\n")]
     #[case::substituted(&["'%s -rf /etc'", "rm"], "rm -rf /etc")]
-    #[case::reused_format(&[r"'%s\n'", "a", "b"], "a\nb\n")]
+    #[case::reused_format(&["'%s,'", "a", "b"], "a,b,")]
     #[case::missing_arg(&["'%s-%s'", "a"], "a-")]
     #[case::percent(&["'100%%'"], "100%")]
     #[case::width(&["'%-5s|'", "a"], "a|")]
@@ -306,6 +414,45 @@ mod tests {
     #[case::double_dash(&["--", "x"], "x")]
     fn printf(#[case] args: &[&str], #[case] expected: &str) {
         assert_eq!(printed_output("printf", args).as_deref(), Some(expected));
+    }
+
+    #[rstest]
+    #[case::precision(&["'%.1s%.1s'", "rX", "mX"], "rm")]
+    #[case::star_precision(&["'%.*s'", "1", "rX"], "r")]
+    #[case::star_width(&["'%*s'", "5", "rm"], "rm")]
+    #[case::char(&["'%c%c'", "rx", "mx"], "rm")]
+    fn printf_conversions(#[case] args: &[&str], #[case] expected: &str) {
+        assert_eq!(printed_output("printf", args).as_deref(), Some(expected));
+    }
+
+    #[rstest]
+    #[case::base64(&["base64", "-d"], "cm0gLXJm", Some("rm -rf"))]
+    #[case::base64_long(&["base64", "--decode"], "cm0gLXJm\n", Some("rm -rf"))]
+    #[case::xxd(&["xxd", "-r", "-p"], "726d", Some("rm"))]
+    #[case::encode_only(&["base64"], "rm", None)]
+    #[case::not_a_filter(&["cat"], "rm", None)]
+    fn filters(#[case] words: &[&str], #[case] input: &str, #[case] expected: Option<&str>) {
+        assert_eq!(filter_output(words, input).as_deref(), expected);
+    }
+
+    fn parses(text: &str) -> bool {
+        // stand-in for a parser: balanced if/fi, and no lone `(`
+        text.matches("if").count() == text.matches("fi").count() && !text.contains('(')
+    }
+
+    #[rstest]
+    #[case::lines("a\nb", &["a", "\nb"])]
+    #[case::compound("if x\nthen y\nfi", &["if x\nthen y\nfi"])]
+    #[case::never_completes("a\n(\nb", &["a"])]
+    #[case::blank_lines("\n\na", &["\n\na"])]
+    fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
+        assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
+    }
+
+    #[test]
+    fn complete_commands_gives_up_on_long_scripts() {
+        let script = "a\n".repeat(MAX_SCRIPT_LINES + 1);
+        assert_eq!(complete_commands(&script, parses), None);
     }
 
     #[test]
@@ -332,7 +479,10 @@ mod tests {
     #[case::script_file(&["bash", "x.sh"], None)]
     #[case::not_a_shell(&["grep", "x"], None)]
     #[case::xargs(&["xargs", "sh"], None)]
-    #[case::env_split_string(&["env", "-S", "sh -c cat"], None)]
+    #[case::env_split_string_c(&["env", "-S", "sh -c cat"], None)]
+    #[case::env_split_string(&["env", "-S", "sh -e"], Some("sh"))]
+    #[case::lone_dash(&["bash", "-"], Some("bash"))]
+    #[case::rcfile(&["bash", "--rcfile", "/dev/null"], Some("bash"))]
     fn stdin_shells(#[case] words: &[&str], #[case] expected: Option<&str>) {
         assert_eq!(stdin_shell(words).as_deref(), expected);
     }

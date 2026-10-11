@@ -1,6 +1,13 @@
 # Proposal: check decoded text as it is produced
 
-Status: proposed. Tracked by the known-gap test `gap_printable_decoys_starve_variant_budget` in `crates/core/src/decode.rs` and the TODO above `MAX_VARIANTS`.
+Status: implemented as `decode_until` in `crates/core/src/decode.rs`, covered by `printable_decoys_do_not_hide_payload`.
+
+What shipped, against the open questions below:
+
+- **Budget:** 16 × the input length, at least 1 MiB, so each decoy costs the attacker input bytes.
+- **Passes:** still two, one per check.
+- **Order:** breadth-first, so a whole layer is checked before anything nested in it. Within a layer the whole-text escape decoders (URL, HTML, rot13) run last, since each costs about the input's length.
+- **Timings** (release build, `scan_text_fast`, before → after): 1 MB of prose 0.65s → 0.29s, a 1.2 MB base64 blob 1.0s → 0.40s, 20k small blobs in 840 KB 0.26s → 0.41s, 50 six-layer nested blobs 42ms → 71ms. The corpus run was not repeated.
 
 ## Problem
 

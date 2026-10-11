@@ -38,32 +38,24 @@ fn check_pipeline(node: Node, source: &[u8], cwd: &str) -> Option<String> {
         check_wrapper("xargs", stage, source, cwd, &input)
     });
     reason
-        .or_else(|| {
-            stages
-                .iter()
-                .zip(stages.iter().skip(1))
-                .find_map(|(&printer, &shell)| {
-                    check_printed_into_shell(printer, shell, source, cwd)
-                })
-        })
+        .or_else(|| check_piped_scripts(&stages, source, cwd))
         .or_else(|| check_children(node, source, cwd))
 }
 
-/// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
-/// checked as a script of its own.
-fn check_printed_into_shell(
-    printer: Node,
-    shell: Node,
-    source: &[u8],
-    cwd: &str,
-) -> Option<String> {
-    let Some(CommandName::Static(printer_name)) = get_command_name(printer, source) else {
-        return None;
-    };
-    let output = shell::printed_output(&printer_name, &arguments(printer, source))?;
-    let shell_name = shell::stdin_shell(&command_words(shell, source)?)?;
-    crate::detect_in_script(&output, cwd).map(|reason| {
-        format!("'{printer_name}' output piped to shell '{shell_name}' runs: {reason}")
+/// `echo '...' | sh` runs what echo prints, so that text, escapes and any
+/// `base64 -d` decoded, is checked as a script of its own.
+fn check_piped_scripts(stages: &[Node], source: &[u8], cwd: &str) -> Option<String> {
+    let words: Vec<Vec<&str>> = stages
+        .iter()
+        .map(|&stage| command_words(stage, source).unwrap_or_default())
+        .collect();
+    shell::piped_scripts(&words).into_iter().find_map(|piped| {
+        crate::detect_in_script(&piped.script, cwd).map(|reason| {
+            format!(
+                "'{}' output piped to shell '{}' runs: {reason}",
+                piped.printer, piped.shell
+            )
+        })
     })
 }
 

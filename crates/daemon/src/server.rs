@@ -33,11 +33,15 @@ enum MlState<S = MlScanner> {
         attempt: u8,
         waits: u8,
         started: Instant,
+        abandoned: Vec<Receiver<Option<S>>>,
     },
     Loaded(S),
     Failed {
         attempts: u8,
         waits: u8,
+        /// Loads given up on for running too long. They may still finish, so they
+        /// are checked on every request and the first to succeed is used.
+        abandoned: Vec<Receiver<Option<S>>>,
     },
 }
 
@@ -52,14 +56,20 @@ impl<S> MlState<S> {
         start_load: impl FnOnce() -> Receiver<Option<S>>,
         timeout: Duration,
     ) -> Option<&mut S> {
-        let next = match *self {
-            Self::NotLoaded => Some((0, 0)),
-            Self::Failed { attempts, waits } if attempts < MAX_ML_RETRIES => {
-                Some((attempts, waits))
-            }
+        if let Some(scanner) = self.take_abandoned_result() {
+            info!(ml = "loaded", "ML model ready from an abandoned load");
+            *self = Self::Loaded(scanner);
+        }
+        let next = match self {
+            Self::NotLoaded => Some((0, 0, Vec::new())),
+            Self::Failed {
+                attempts,
+                waits,
+                abandoned,
+            } if *attempts < MAX_ML_RETRIES => Some((*attempts, *waits, std::mem::take(abandoned))),
             Self::Loading { .. } | Self::Loaded(_) | Self::Failed { .. } => None,
         };
-        if let Some((attempt, waits)) = next {
+        if let Some((attempt, waits, abandoned)) = next {
             info!(
                 attempt = attempt + 1,
                 max = MAX_ML_RETRIES,
@@ -70,6 +80,7 @@ impl<S> MlState<S> {
                 attempt,
                 waits,
                 started: Instant::now(),
+                abandoned,
             };
         }
         if let Self::Loading {
@@ -77,6 +88,7 @@ impl<S> MlState<S> {
             attempt,
             waits,
             started,
+            abandoned,
         } = self
         {
             let received = if *waits < MAX_ML_RETRIES {
@@ -101,6 +113,7 @@ impl<S> MlState<S> {
                     *self = Self::Failed {
                         attempts: *attempt + 1,
                         waits: *waits,
+                        abandoned: std::mem::take(abandoned),
                     };
                 }
                 Err(RecvTimeoutError::Timeout)
@@ -109,12 +122,22 @@ impl<S> MlState<S> {
                     warn!(
                         attempt = *attempt + 1,
                         max = MAX_ML_RETRIES,
-                        "ML model load hung, giving up on it"
+                        "ML model load hung, starting another"
                     );
-                    *self = Self::Failed {
-                        attempts: *attempt + 1,
-                        waits: *waits,
-                    };
+                    let (attempts, waits) = (*attempt + 1, *waits);
+                    if let Self::Loading {
+                        result,
+                        mut abandoned,
+                        ..
+                    } = std::mem::replace(self, Self::NotLoaded)
+                    {
+                        abandoned.push(result);
+                        *self = Self::Failed {
+                            attempts,
+                            waits,
+                            abandoned,
+                        };
+                    }
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     *waits = waits.saturating_add(1);
@@ -129,6 +152,23 @@ impl<S> MlState<S> {
             Self::Loaded(scanner) => Some(scanner),
             Self::NotLoaded | Self::Loading { .. } | Self::Failed { .. } => None,
         }
+    }
+
+    /// A scanner from an abandoned load that has since finished; failed ones are dropped.
+    fn take_abandoned_result(&mut self) -> Option<S> {
+        let (Self::Loading { abandoned, .. } | Self::Failed { abandoned, .. }) = self else {
+            return None;
+        };
+        let mut scanner = None;
+        abandoned.retain(|load| match load.try_recv() {
+            Ok(Some(loaded)) if scanner.is_none() => {
+                scanner = Some(loaded);
+                false
+            }
+            Err(TryRecvError::Empty) => true,
+            Ok(_) | Err(TryRecvError::Disconnected) => false,
+        });
+        scanner
     }
 }
 
@@ -485,6 +525,7 @@ mod tests {
             attempt: 0,
             waits: MAX_ML_RETRIES,
             started: Instant::now(),
+            abandoned: Vec::new(),
         };
         // past the wait budget only a non-blocking check runs, so this returns at once
         let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
@@ -502,6 +543,7 @@ mod tests {
         let mut state = MlState::<u8>::Failed {
             attempts: 1,
             waits: MAX_ML_RETRIES,
+            abandoned: Vec::new(),
         };
         let started = std::time::Instant::now();
         let scanner = state.get_or_load(|| loader.start(), Duration::from_secs(2));
@@ -521,6 +563,7 @@ mod tests {
             attempt: 0,
             waits: MAX_ML_RETRIES,
             started: Instant::now() - SHORT_WAIT * u32::from(ABANDON_AFTER_WAITS),
+            abandoned: Vec::new(),
         };
         assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
         assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
@@ -530,6 +573,30 @@ mod tests {
             scanner.copied(),
             Some(3),
             "a new attempt replaces the hung one"
+        );
+    }
+
+    #[test]
+    fn abandoned_load_that_finishes_late_is_used() {
+        let (tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::Loading {
+            result: loader.pending.take().unwrap(),
+            attempt: 0,
+            waits: MAX_ML_RETRIES,
+            started: Instant::now() - SHORT_WAIT * u32::from(ABANDON_AFTER_WAITS),
+            abandoned: Vec::new(),
+        };
+        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+
+        // the retry hangs too, and the first load finishes after all
+        let (_retry_tx, retry) = std::sync::mpsc::channel();
+        assert_eq!(state.get_or_load(|| retry, SHORT_WAIT), None);
+        tx.send(Some(7)).unwrap();
+        let scanner = state.get_or_load(|| loader.start(), SHORT_WAIT);
+        assert_eq!(
+            scanner.copied(),
+            Some(7),
+            "a slow load's result is not thrown away"
         );
     }
 
