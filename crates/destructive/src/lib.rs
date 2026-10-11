@@ -63,7 +63,7 @@ pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
 
 /// Like `detect_destructive`, for a script a shell reads from stdin. The shell
 /// runs each command once it's complete, so commands before a syntax error still
-/// run, and text that never completes never does.
+/// run; text that never completes fails closed.
 fn detect_in_script(script: &str, cwd: &str) -> Option<String> {
     // a poisoned lock fails every parse, so fail closed instead of splitting
     if parse_bash(script).is_ok() || PARSER_LOCK.is_poisoned() {
@@ -1026,6 +1026,7 @@ mod tests {
     #[case::printf_precision("printf '%.1s%.1s -rf /etc' rX mX | sh")]
     #[case::printf_char("printf '%c%c -rf /etc' rx mx | sh")]
     #[case::printf_star_width("printf '%*s -rf /etc' 1 rm | sh")]
+    #[case::printf_escaped_percent(r"printf 'x\x25;rm -rf /etc' | sh")]
     #[case::bash_rcfile("echo 'rm -rf /etc' | bash --rcfile /dev/null")]
     #[case::shell_dash("echo 'rm -rf /etc' | bash -")]
     #[case::env_split_string("echo 'rm -rf /etc' | env -S bash")]
@@ -1044,12 +1045,27 @@ mod tests {
     }
 
     #[rstest]
+    #[case::prose(r#"echo "don't" | sh"#)]
+    #[case::zsh_runs_past_syntax_error(r"printf ')\nrm -rf /etc\n' | zsh")]
+    #[case::shell_word_parser_rejects(r"printf 'x%%;rm -rf /etc' | sh")]
+    fn unparsable_text_piped_to_shell_blocked(#[case] command: &str) {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let reason = detect_destructive(command, cwd);
+        assert!(
+            reason
+                .as_deref()
+                .is_some_and(|r| r.contains("piped to shell")),
+            "{command}: {reason:?}"
+        );
+    }
+
+    #[rstest]
     #[case::echo_ls("echo ls | sh")]
     #[case::printf_build(r"printf 'cargo build\n' | bash")]
     #[case::echo_rm_in_cwd("echo 'rm -rf ./target' | bash")]
     #[case::echo_rm_into_grep("echo 'rm -rf /etc' | grep rm")]
     #[case::echo_color(r"echo -e '\x1b[31mred' | bash")]
-    #[case::unparsable_prose(r#"echo "don't" | sh"#)]
     #[case::combined_c_flag("echo 'rm -rf /etc' | bash -lc cat")]
     #[case::shell_runs_script_file("echo 'rm -rf /etc' | bash ./script.sh")]
     #[case::printf_assigns_variable("printf -v x 'rm -rf /etc' | sh")]

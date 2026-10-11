@@ -86,29 +86,31 @@ pub fn decode_escapes(chars: &mut Peekable<Chars>, end: Option<char>) -> String 
     while let Some(c) = chars.next() {
         match c {
             c if Some(c) == end => break,
-            '\\' => match chars.next() {
-                Some('x') => {
-                    let hex: String = std::iter::from_fn(|| chars.next_if(char::is_ascii_hexdigit))
-                        .take(2)
-                        .collect();
-                    out.extend(u8::from_str_radix(&hex, 16).ok().map(char::from));
-                }
-                Some(d @ '0'..='7') => {
-                    let mut octal = String::from(d);
-                    octal.extend(
-                        std::iter::from_fn(|| chars.next_if(|c| ('0'..='7').contains(c))).take(2),
-                    );
-                    out.extend(u8::from_str_radix(&octal, 8).ok().map(char::from));
-                }
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some(other) => out.push(other),
-                None => {}
-            },
+            '\\' => out.extend(decode_escape(chars)),
             _ => out.push(c),
         }
     }
     out
+}
+
+/// The character one backslash escape stands for, read after the backslash.
+fn decode_escape(chars: &mut Peekable<Chars>) -> Option<char> {
+    match chars.next()? {
+        'x' => {
+            let hex: String = std::iter::from_fn(|| chars.next_if(char::is_ascii_hexdigit))
+                .take(2)
+                .collect();
+            u8::from_str_radix(&hex, 16).ok().map(char::from)
+        }
+        d @ '0'..='7' => {
+            let mut octal = String::from(d);
+            octal.extend(std::iter::from_fn(|| chars.next_if(|c| ('0'..='7').contains(c))).take(2));
+            u8::from_str_radix(&octal, 8).ok().map(char::from)
+        }
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        other => Some(other),
+    }
 }
 
 fn decode_all(text: &str) -> String {
@@ -162,7 +164,6 @@ fn printf_output(args: &[&str]) -> Option<String> {
     if format == "-v" {
         return None;
     }
-    let format = decode_all(&format);
     let mut out = String::new();
     loop {
         let consumed = apply_format(&format, &mut args, &mut out);
@@ -172,7 +173,8 @@ fn printf_output(args: &[&str]) -> Option<String> {
     }
 }
 
-/// One pass of `format`; returns how many arguments it consumed.
+/// One pass of `format`; returns how many arguments it consumed. Escapes are
+/// decoded as they're printed, so one that decodes to `%` is a literal `%`.
 fn apply_format(format: &str, args: &mut impl Iterator<Item = String>, out: &mut String) -> usize {
     let mut consumed = 0;
     let mut next_arg = || {
@@ -181,9 +183,16 @@ fn apply_format(format: &str, args: &mut impl Iterator<Item = String>, out: &mut
     };
     let mut chars = format.chars().peekable();
     while let Some(c) = chars.next() {
-        if c != '%' {
-            out.push(c);
-            continue;
+        match c {
+            '%' => {}
+            '\\' => {
+                out.extend(decode_escape(&mut chars));
+                continue;
+            }
+            _ => {
+                out.push(c);
+                continue;
+            }
         }
         while chars.next_if(|c| "-+ #0".contains(*c)).is_some() {}
         // width only pads, but `*` takes it from an argument
@@ -367,20 +376,25 @@ const MAX_SCRIPT_LINES: usize = 256;
 /// The commands a shell runs from `script`; `None` if it's too long to split.
 ///
 /// `parses` says whether text is complete, valid shell. A shell reads a line at a
-/// time and runs each command once it's complete, so lines that never complete
-/// never run.
+/// time and runs each command once it's complete. Text that never completes is
+/// kept as the last entry: the parser can reject what a shell runs (`x%`), and
+/// zsh carries on past a syntax error, so checking it must fail closed.
 pub fn complete_commands(script: &str, mut parses: impl FnMut(&str) -> bool) -> Option<Vec<&str>> {
     if script.lines().count() > MAX_SCRIPT_LINES {
         return None;
     }
     let mut commands = Vec::new();
     let mut start = 0;
-    for (end, _) in script.match_indices('\n').chain([(script.len(), "")]) {
+    for (end, _) in script.match_indices('\n') {
         let chunk = script.get(start..end)?;
         if !chunk.trim().is_empty() && parses(chunk) {
             commands.push(chunk);
             start = end;
         }
+    }
+    let rest = script.get(start..)?;
+    if !rest.trim().is_empty() {
+        commands.push(rest);
     }
     Some(commands)
 }
@@ -412,6 +426,8 @@ mod tests {
     #[case::b_decodes(&["%b", r"'\x72m'"], "rm")]
     #[case::s_keeps_escapes(&["%s", r"'\x72m'"], r"\x72m")]
     #[case::double_dash(&["--", "x"], "x")]
+    #[case::escaped_percent_is_literal(&[r"'\x25s'", "rm"], "%s")]
+    #[case::escaped_percent_before_separator(&[r"'x\045;rm'"], "x%;rm")]
     fn printf(#[case] args: &[&str], #[case] expected: &str) {
         assert_eq!(printed_output("printf", args).as_deref(), Some(expected));
     }
@@ -456,7 +472,7 @@ mod tests {
     #[rstest]
     #[case::lines("a\nb", &["a", "\nb"])]
     #[case::compound(COMPOUND, &[COMPOUND])]
-    #[case::never_completes(NEVER_COMPLETES, &["a"])]
+    #[case::never_completes(NEVER_COMPLETES, &["a", "\n(\nb"])]
     #[case::blank_lines(BLANK_LINES, &[BLANK_LINES])]
     fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
         assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
