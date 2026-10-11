@@ -184,7 +184,7 @@ fn apply_format(format: &str, args: &mut impl Iterator<Item = String>, out: &mut
         // flags, width and precision don't change which text is printed
         while chars.next_if(|c| "-+ #0123456789.".contains(*c)).is_some() {}
         match chars.next() {
-            Some('%') => out.push('%'),
+            Some('%') | None => out.push('%'),
             Some(conversion) => {
                 consumed += 1;
                 let arg = args.next().unwrap_or_default();
@@ -194,15 +194,15 @@ fn apply_format(format: &str, args: &mut impl Iterator<Item = String>, out: &mut
                     out.push_str(&arg);
                 }
             }
-            None => out.push('%'),
         }
     }
     consumed
 }
 
-/// The shell a pipeline stage runs with stdin as its script, given the stage's
-/// raw words (name first). Wrappers such as `env` or `nice` are looked through;
-/// `-c` or a script operand without `-s` means stdin isn't the script.
+/// The shell a pipeline stage runs with stdin as its script, given its raw words.
+///
+/// Wrappers such as `env` or `nice` are looked through; `-c` or a script operand
+/// without `-s` means stdin isn't the script.
 #[must_use]
 pub fn stdin_shell(words: &[&str]) -> Option<String> {
     let mut words: Vec<String> = words.iter().map(|word| unquote(word)).collect();

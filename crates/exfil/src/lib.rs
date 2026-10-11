@@ -106,12 +106,11 @@ pub fn detect_exfiltration(command: &str) -> Result<Option<String>, String> {
 /// runs it a line at a time, so lines before a syntax error still run, and a
 /// line that doesn't parse never does.
 fn detect_in_script(script: &str) -> Option<String> {
-    match detect_exfiltration(script) {
-        Ok(reason) => reason,
-        Err(_) => script
+    detect_exfiltration(script).unwrap_or_else(|_| {
+        script
             .lines()
-            .find_map(|line| detect_exfiltration(line).ok().flatten()),
-    }
+            .find_map(|line| detect_exfiltration(line).ok().flatten())
+    })
 }
 
 #[cfg(test)]
