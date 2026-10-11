@@ -464,6 +464,10 @@ mod tests {
         a
         (
         b"};
+    const NEVER_COMPLETES_TAIL: &str = indoc::indoc! {"
+
+        (
+        b"};
     const BLANK_LINES: &str = indoc::indoc! {"
 
 
@@ -472,7 +476,7 @@ mod tests {
     #[rstest]
     #[case::lines("a\nb", &["a", "\nb"])]
     #[case::compound(COMPOUND, &[COMPOUND])]
-    #[case::never_completes(NEVER_COMPLETES, &["a", "\n(\nb"])]
+    #[case::never_completes(NEVER_COMPLETES, &["a", NEVER_COMPLETES_TAIL])]
     #[case::blank_lines(BLANK_LINES, &[BLANK_LINES])]
     fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
         assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
