@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+parry-guard-core.workspace = true
 dirs.workspace = true
 regex.workspace = true
 serde = { workspace = true, features = ["derive"] }

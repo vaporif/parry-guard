@@ -159,19 +159,6 @@ fn has_suspicious_context(command: &str, lower: &str) -> bool {
     patterns::has_exfil_domain(command)
 }
 
-/// Text as `echo -e` or `printf` prints it: `\xHH`, `\NNN` (`\0NNN` for echo)
-/// and `\n` decoded.
-pub(crate) fn decode_print_escapes(text: &str, echo: bool) -> String {
-    let text = text.replace("\\n", "\n");
-    let text = if echo {
-        text.replace("\\0", "\\")
-    } else {
-        text
-    };
-    let hex = try_decode_hex_escapes(&text).unwrap_or(text);
-    try_decode_octal_escapes(&hex).unwrap_or(hex)
-}
-
 /// Decodes `\xHH` escapes; `None` if nothing was decoded.
 fn try_decode_hex_escapes(text: &str) -> Option<String> {
     let mut result = String::with_capacity(text.len());

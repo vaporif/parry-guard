@@ -128,68 +128,11 @@ pub(crate) const NIX_DESTRUCTIVE: &[(&str, &[&str])] = &[
     ("nixos-rebuild", &["switch"]),
 ];
 
-/// Shells that run commands read from stdin.
-pub(crate) const SHELLS: &[&str] = &[
-    "sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "csh", "tcsh", "yash",
-];
-
 pub(crate) const PRIV_ESC: &[&str] = &["sudo", "su", "doas", "pkexec"];
 
 // Command wrappers
 
-/// Commands that run another command: (`wrapper`, `options_taking_a_value`, `operands_before_command`).
-pub(crate) const COMMAND_WRAPPERS: &[(&str, &[&str], usize)] = &[
-    ("builtin", &[], 0),
-    ("command", &[], 0),
-    ("exec", &["-a"], 0),
-    ("env", &["-u", "--unset", "-C", "--chdir"], 0),
-    ("nice", &["-n", "--adjustment"], 0),
-    ("nohup", &[], 0),
-    ("time", &[], 0),
-    ("timeout", &["-s", "--signal", "-k", "--kill-after"], 1),
-    (
-        "stdbuf",
-        &["-i", "-o", "-e", "--input", "--output", "--error"],
-        0,
-    ),
-    ("setsid", &[], 0),
-    (
-        "ionice",
-        &[
-            "-c",
-            "--class",
-            "-n",
-            "--classdata",
-            "-p",
-            "--pid",
-            "-P",
-            "--pgid",
-            "-u",
-            "--uid",
-        ],
-        0,
-    ),
-    (
-        "xargs",
-        &[
-            "-a",
-            "--arg-file",
-            "-d",
-            "--delimiter",
-            "-E",
-            "-I",
-            "-L",
-            "--max-lines",
-            "-n",
-            "--max-args",
-            "-P",
-            "--max-procs",
-            "-s",
-            "--max-chars",
-        ],
-        0,
-    ),
-];
+pub(crate) use parry_guard_core::shell::COMMAND_WRAPPERS;
 
 /// `find` actions that run a command per match, ended by `;` or `+`.
 pub(crate) const FIND_EXEC_ACTIONS: &[&str] = &["-exec", "-execdir", "-ok", "-okdir"];

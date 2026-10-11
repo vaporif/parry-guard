@@ -1,5 +1,6 @@
 //! Bash AST checks: pipelines, redirects, substitutions, function and alias backdoors.
 
+use parry_guard_core::shell;
 use tree_sitter::Node;
 
 use crate::interpreter::{check_interpreter_inline_code, check_shell_inline_code};
@@ -83,7 +84,7 @@ fn check_pipeline(node: Node, source: &[u8]) -> Option<String> {
 }
 
 /// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
-/// checked as a command of its own.
+/// checked as a script of its own.
 fn check_printed_into_shell(node: Node, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
     let stages: Vec<Node> = node.named_children(&mut cursor).collect();
@@ -92,25 +93,24 @@ fn check_printed_into_shell(node: Node, source: &[u8]) -> Option<String> {
             return None;
         };
         let printer_name = get_command_name(*printer, source)?;
-        let shell_name = get_command_name(*shell, source)?;
-        let echo = printer_name == "echo";
-        if !(echo || printer_name == "printf") || !is_shell_interpreter(shell_name) {
-            return None;
-        }
-        let mut cursor = printer.walk();
-        let args: Vec<&str> = printer
-            .children_by_field_name("argument", &mut cursor)
-            .map(|arg| strip_quotes(node_text(arg, source)))
-            .filter(|arg| !(echo && arg.starts_with('-')))
-            .collect();
-        // printf prints its format, then each argument in a `%s`; a line each is close enough
-        let output = args.join(if echo { " " } else { "\n" });
-        let decoded = crate::obfuscation::decode_print_escapes(&output, echo);
-        let reason = crate::detect_exfiltration(&decoded).ok()??;
+        let output = shell::printed_output(printer_name, &arguments(*printer, source))?;
+        let mut words = vec![node_text(shell.child_by_field_name("name")?, source)];
+        words.extend(arguments(*shell, source));
+        let shell_name = shell::stdin_shell(&words)?;
+        let reason = crate::detect_in_script(&output)?;
         Some(format!(
             "'{printer_name}' output piped to shell '{shell_name}' runs: {reason}"
         ))
     })
+}
+
+fn arguments<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
+    let mut cursor = node.walk();
+    let args = node
+        .children_by_field_name("argument", &mut cursor)
+        .map(|arg| node_text(arg, source))
+        .collect();
+    args
 }
 
 fn check_command(node: Node, source: &[u8]) -> Option<String> {

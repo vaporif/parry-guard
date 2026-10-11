@@ -17,36 +17,49 @@ use parry_guard_ml::MlScanner;
 const MAX_ML_RETRIES: u8 = 3;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const ML_LOAD_TIMEOUT: Duration = Duration::from_mins(2);
+/// A load still running this many waits after it started is given up on, so a
+/// hung one (a stuck download lock) can't keep the scanner unavailable for good.
+const ABANDON_AFTER_WAITS: u8 = 5;
 
 /// `S` is the scanner; tests use a stand-in so no model is needed.
+///
+/// `waits` counts the requests that blocked on a load and timed out, over the
+/// daemon's lifetime: each one stalls the accept loop, so retries share the budget.
 enum MlState<S = MlScanner> {
     NotLoaded,
     /// A load thread is running. Requests wait on its result instead of starting another.
     Loading {
         result: Receiver<Option<S>>,
         attempt: u8,
-        timeouts: u8,
+        waits: u8,
+        started: Instant,
     },
     Loaded(S),
-    Failed(u8),
+    Failed {
+        attempts: u8,
+        waits: u8,
+    },
 }
 
 impl<S> MlState<S> {
     /// Return the scanner, starting a load unless one is running or `MAX_ML_RETRIES` failed.
     ///
     /// A load still running after `timeout` keeps going. Later requests wait on it
-    /// again, `MAX_ML_RETRIES` times at most, then only check whether it has finished.
+    /// again until `MAX_ML_RETRIES` waits are spent, then only check whether it has
+    /// finished, and start over once it has run for `ABANDON_AFTER_WAITS` timeouts.
     fn get_or_load(
         &mut self,
         start_load: impl FnOnce() -> Receiver<Option<S>>,
         timeout: Duration,
     ) -> Option<&mut S> {
-        let attempt = match *self {
-            Self::NotLoaded => Some(0),
-            Self::Failed(n) if n < MAX_ML_RETRIES => Some(n),
-            Self::Loading { .. } | Self::Loaded(_) | Self::Failed(_) => None,
+        let next = match *self {
+            Self::NotLoaded => Some((0, 0)),
+            Self::Failed { attempts, waits } if attempts < MAX_ML_RETRIES => {
+                Some((attempts, waits))
+            }
+            Self::Loading { .. } | Self::Loaded(_) | Self::Failed { .. } => None,
         };
-        if let Some(attempt) = attempt {
+        if let Some((attempt, waits)) = next {
             info!(
                 attempt = attempt + 1,
                 max = MAX_ML_RETRIES,
@@ -55,16 +68,18 @@ impl<S> MlState<S> {
             *self = Self::Loading {
                 result: start_load(),
                 attempt,
-                timeouts: 0,
+                waits,
+                started: Instant::now(),
             };
         }
         if let Self::Loading {
             result,
             attempt,
-            timeouts,
+            waits,
+            started,
         } = self
         {
-            let received = if *timeouts < MAX_ML_RETRIES {
+            let received = if *waits < MAX_ML_RETRIES {
                 result.recv_timeout(timeout)
             } else {
                 result.try_recv().map_err(|e| match e {
@@ -83,10 +98,26 @@ impl<S> MlState<S> {
                         max = MAX_ML_RETRIES,
                         "ML model failed to load, scans will fail-close"
                     );
-                    *self = Self::Failed(*attempt + 1);
+                    *self = Self::Failed {
+                        attempts: *attempt + 1,
+                        waits: *waits,
+                    };
+                }
+                Err(RecvTimeoutError::Timeout)
+                    if started.elapsed() >= timeout * u32::from(ABANDON_AFTER_WAITS) =>
+                {
+                    warn!(
+                        attempt = *attempt + 1,
+                        max = MAX_ML_RETRIES,
+                        "ML model load hung, giving up on it"
+                    );
+                    *self = Self::Failed {
+                        attempts: *attempt + 1,
+                        waits: *waits,
+                    };
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    *timeouts = timeouts.saturating_add(1);
+                    *waits = waits.saturating_add(1);
                     warn!(
                         waited_secs = timeout.as_secs(),
                         "ML model still loading, scans will fail-close until it is ready"
@@ -96,7 +127,7 @@ impl<S> MlState<S> {
         }
         match self {
             Self::Loaded(scanner) => Some(scanner),
-            Self::NotLoaded | Self::Loading { .. } | Self::Failed(_) => None,
+            Self::NotLoaded | Self::Loading { .. } | Self::Failed { .. } => None,
         }
     }
 }
@@ -396,7 +427,13 @@ mod tests {
             assert!(scanner.is_none());
         }
         assert_eq!(loads, MAX_ML_RETRIES);
-        assert!(matches!(state, MlState::Failed(MAX_ML_RETRIES)));
+        assert!(matches!(
+            state,
+            MlState::Failed {
+                attempts: MAX_ML_RETRIES,
+                ..
+            }
+        ));
     }
 
     /// Hands out one pending load and counts how many loads were started.
@@ -446,7 +483,8 @@ mod tests {
         let mut state = MlState::<u8>::Loading {
             result: loader.pending.take().unwrap(),
             attempt: 0,
-            timeouts: MAX_ML_RETRIES,
+            waits: MAX_ML_RETRIES,
+            started: Instant::now(),
         };
         // past the wait budget only a non-blocking check runs, so this returns at once
         let scanner = state.get_or_load(|| loader.start(), Duration::from_hours(1));
@@ -459,6 +497,43 @@ mod tests {
     }
 
     #[test]
+    fn wait_budget_is_shared_across_attempts() {
+        let (_tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::Failed {
+            attempts: 1,
+            waits: MAX_ML_RETRIES,
+        };
+        let started = std::time::Instant::now();
+        let scanner = state.get_or_load(|| loader.start(), Duration::from_secs(2));
+        assert_eq!(scanner, None);
+        assert_eq!(loader.starts, 1, "a retry still starts");
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "a retry must not block again once the daemon spent its wait budget"
+        );
+    }
+
+    #[test]
+    fn hung_load_is_abandoned_for_a_new_attempt() {
+        let (_tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::Loading {
+            result: loader.pending.take().unwrap(),
+            attempt: 0,
+            waits: MAX_ML_RETRIES,
+            started: Instant::now() - SHORT_WAIT * u32::from(ABANDON_AFTER_WAITS),
+        };
+        assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
+        assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
+
+        let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);
+        assert_eq!(
+            scanner.copied(),
+            Some(3),
+            "a new attempt replaces the hung one"
+        );
+    }
+
+    #[test]
     fn failed_load_after_wait_allows_retry() {
         let (tx, mut loader) = FakeLoader::pending();
         let mut state = MlState::<u8>::NotLoaded;
@@ -466,7 +541,7 @@ mod tests {
 
         tx.send(None).unwrap();
         assert_eq!(state.get_or_load(|| loader.start(), SHORT_WAIT), None);
-        assert!(matches!(state, MlState::Failed(1)));
+        assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
         assert_eq!(loader.starts, 1);
 
         let scanner = state.get_or_load(|| finished_load(Some(3)), SHORT_WAIT);

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use parry_guard_core::shell::{self, decode_escapes, unquote};
 use tree_sitter::Node;
 
 use crate::commands::CONFIG;
@@ -49,7 +50,7 @@ fn check_pipeline(node: Node, source: &[u8], cwd: &str) -> Option<String> {
 }
 
 /// `echo '...' | sh` runs what echo prints, so that text, escapes decoded, is
-/// checked as a command line of its own.
+/// checked as a script of its own.
 fn check_printed_into_shell(
     printer: Node,
     shell: Node,
@@ -59,43 +60,11 @@ fn check_printed_into_shell(
     let Some(CommandName::Static(printer_name)) = get_command_name(printer, source) else {
         return None;
     };
-    let Some(CommandName::Static(shell_name)) = get_command_name(shell, source) else {
-        return None;
-    };
-    let echo = printer_name == "echo";
-    let reads_stdin = !arguments(shell, source).contains(&"-c");
-    if !(echo || printer_name == "printf")
-        || !consts::SHELLS.contains(&shell_name.as_str())
-        || !reads_stdin
-    {
-        return None;
-    }
-    let args: Vec<String> = arguments(printer, source)
-        .into_iter()
-        .filter(|arg| !(echo && arg.starts_with('-')))
-        .map(strip_outer_quotes)
-        .collect();
-    // printf prints its format, then each argument in a `%s`; a line each is close enough
-    let output = args.join(if echo { " " } else { "\n" });
-    // echo -e writes octal as `\0NNN`
-    let output = if echo {
-        output.replace("\\0", "\\")
-    } else {
-        output
-    };
-    let decoded = decode_escapes(&mut output.chars().peekable(), None);
-    crate::detect_destructive(&decoded, cwd).map(|reason| {
+    let output = shell::printed_output(&printer_name, &arguments(printer, source))?;
+    let shell_name = shell::stdin_shell(&command_words(shell, source)?)?;
+    crate::detect_in_script(&output, cwd).map(|reason| {
         format!("'{printer_name}' output piped to shell '{shell_name}' runs: {reason}")
     })
-}
-
-/// A quoted word's contents with escapes left for `decode_escapes`; bare words
-/// get bash quote removal.
-fn strip_outer_quotes(word: &str) -> String {
-    ['\'', '"']
-        .iter()
-        .find_map(|&q| word.strip_prefix(q).and_then(|w| w.strip_suffix(q)))
-        .map_or_else(|| unquote(word), str::to_owned)
 }
 
 /// Words a pipeline stage prints, when they can be known without running it.
@@ -103,29 +72,11 @@ fn stage_output(node: Node, source: &[u8], cwd: &str) -> Option<Vec<String>> {
     let Some(CommandName::Static(name)) = get_command_name(node, source) else {
         return None;
     };
-    let args = arguments(node, source);
-    match name.as_str() {
-        "echo" => Some(
-            args.iter()
-                .filter(|arg| !arg.starts_with('-'))
-                .map(|arg| unquote(arg))
-                .collect(),
-        ),
-        // keep `\n` as a separator instead of letting unquote turn it into `n`
-        "printf" => Some(
-            args.iter()
-                .flat_map(|arg| {
-                    arg.trim_matches(['"', '\''])
-                        .replace("\\n", " ")
-                        .split_whitespace()
-                        .map(str::to_owned)
-                        .collect::<Vec<_>>()
-                })
-                .collect(),
-        ),
-        "find" => Some(find_targets(&parse_find(node, source), cwd)),
-        _ => None,
+    if name == "find" {
+        return Some(find_targets(&parse_find(node, source), cwd));
     }
+    let output = shell::printed_output(&name, &arguments(node, source))?;
+    Some(output.split_whitespace().map(str::to_owned).collect())
 }
 
 /// What a `find` command searches and what it does with each match.
@@ -467,20 +418,6 @@ fn has_expansion(node: Node) -> bool {
     found
 }
 
-/// Approximate bash quote removal so `".."/` and `\/` match the paths bash would use.
-fn unquote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\'' | '"' => {}
-            '\\' => out.extend(chars.next()),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
 fn arguments<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
     let mut cursor = node.walk();
     let args = node
@@ -488,6 +425,14 @@ fn arguments<'a>(node: Node, source: &'a [u8]) -> Vec<&'a str> {
         .map(|arg| node_text(arg, source))
         .collect();
     args
+}
+
+/// The command's name and arguments as written.
+fn command_words<'a>(node: Node, source: &'a [u8]) -> Option<Vec<&'a str>> {
+    let name = node.child_by_field_name("name")?;
+    let mut words = vec![node_text(name, source)];
+    words.extend(arguments(node, source));
+    Some(words)
 }
 
 fn node_text<'a>(node: Node, source: &'a [u8]) -> &'a str {
@@ -703,38 +648,6 @@ fn known_var_value(chars: &mut std::iter::Peekable<std::str::Chars>, cwd: &str) 
         chars.next();
     }
     Some(value)
-}
-
-/// Backslash escapes (`\xHH`, `\NNN`, `\n`, `\t`) decoded up to `end`, which is
-/// consumed: the closing quote of `$'...'`, or `None` for the whole text.
-fn decode_escapes(chars: &mut std::iter::Peekable<std::str::Chars>, end: Option<char>) -> String {
-    let mut out = String::new();
-    while let Some(c) = chars.next() {
-        match c {
-            c if Some(c) == end => break,
-            '\\' => match chars.next() {
-                Some('x') => {
-                    let hex: String = std::iter::from_fn(|| chars.next_if(char::is_ascii_hexdigit))
-                        .take(2)
-                        .collect();
-                    out.extend(u8::from_str_radix(&hex, 16).ok().map(char::from));
-                }
-                Some(d @ '0'..='7') => {
-                    let mut octal = String::from(d);
-                    octal.extend(
-                        std::iter::from_fn(|| chars.next_if(|c| ('0'..='7').contains(c))).take(2),
-                    );
-                    out.extend(u8::from_str_radix(&octal, 8).ok().map(char::from));
-                }
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some(other) => out.push(other),
-                None => {}
-            },
-            _ => out.push(c),
-        }
-    }
-    out
 }
 
 /// Escape `value` so `unquote` gives it back unchanged.

@@ -61,6 +61,19 @@ pub fn detect_destructive(command: &str, cwd: &str) -> Option<String> {
     result
 }
 
+/// Like `detect_destructive`, for a script a shell reads from stdin. The shell
+/// runs it a line at a time, so lines before a syntax error still run, and a
+/// line that doesn't parse never does.
+fn detect_in_script(script: &str, cwd: &str) -> Option<String> {
+    if parse_bash(script).is_ok() {
+        return detect_destructive(script, cwd);
+    }
+    script.lines().find_map(|line| match parse_bash(line) {
+        Ok(Some(tree)) => bash::check_node(tree.root_node(), line.as_bytes(), cwd),
+        Ok(None) | Err(_) => None,
+    })
+}
+
 /// Reason if `path` is protected; CWD and its subdirectories are exempt.
 #[must_use]
 pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
@@ -990,6 +1003,17 @@ mod tests {
     #[case::printf_octal(r"printf '\162\155 -rf /etc' | sh")]
     #[case::echo_zero_octal(r"echo -e '\0162\0155 -rf /etc' | bash")]
     #[case::shell_with_stdin_flag("echo 'kubectl delete ns prod' | bash -s")]
+    #[case::echo_unquoted_flags("echo git push --force | sh")]
+    #[case::echo_unquoted_double_dash_flag("echo git reset --hard | bash")]
+    #[case::echo_option_then_flags("echo -n git push --force | sh")]
+    #[case::printf_split_name(r"printf '%s -rf /etc' rm | sh")]
+    #[case::printf_split_args("printf '%s %s' git 'push --force' | bash")]
+    #[case::printf_reused_format(r"printf '%s\n' ls 'rm -rf /etc' | sh")]
+    #[case::env_shell("echo 'rm -rf /etc' | env sh")]
+    #[case::exec_shell("echo 'rm -rf /etc' | exec bash")]
+    #[case::nice_env_shell("echo 'rm -rf /etc' | nice -n 5 env FOO=1 bash")]
+    #[case::shell_with_options("echo 'rm -rf /etc' | bash -e -o pipefail")]
+    #[case::unparsable_trailing_line(r"printf 'rm -rf /etc\nif\n' | sh")]
     fn printed_command_piped_to_shell_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1008,6 +1032,10 @@ mod tests {
     #[case::echo_rm_in_cwd("echo 'rm -rf ./target' | bash")]
     #[case::echo_rm_into_grep("echo 'rm -rf /etc' | grep rm")]
     #[case::echo_color(r"echo -e '\x1b[31mred' | bash")]
+    #[case::unparsable_prose(r#"echo "don't" | sh"#)]
+    #[case::combined_c_flag("echo 'rm -rf /etc' | bash -lc cat")]
+    #[case::shell_runs_script_file("echo 'rm -rf /etc' | bash ./script.sh")]
+    #[case::printf_assigns_variable("printf -v x 'rm -rf /etc' | sh")]
     fn printed_command_piped_to_shell_allowed(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1058,6 +1086,8 @@ mod tests {
     #[case::name_and_subcommand("$(echo git push) --force")]
     #[case::full_path("$(echo /usr/bin/git) clean -fd")]
     #[case::quoted_word(r#"$(echo "docker") system prune"#)]
+    #[case::name_and_flags("$(echo git reset --hard)")]
+    #[case::printf_format_name("$(printf '%s' git) push --force")]
     fn echoed_command_name_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();

@@ -6,6 +6,7 @@ pub mod error;
 pub mod hf_token;
 pub mod repo_db;
 pub mod secrets;
+pub mod shell;
 pub mod substring;
 pub mod unicode;
 
