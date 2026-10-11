@@ -4,7 +4,7 @@ use std::cell::OnceCell;
 use std::path::PathBuf;
 
 use eyre::WrapErr;
-use hf_hub::{HFClient, HFClientSync, HFError, HFRepositorySync, RepoTypeModel};
+use hf_hub::{HFClient, HFClientSync};
 use parry_guard_core::config::Config;
 use parry_guard_core::{ExposeSecret, Result, SecretString};
 use tracing::{debug, warn};
@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 /// Used when `HF_ENDPOINT` is unset or blank; hf-hub would otherwise reread the raw variable.
 const DEFAULT_ENDPOINT: &str = "https://huggingface.co";
 
-/// Hub access for one model load: clients are built once, the token at most once.
+/// Hub access for one model load: the client is built and the token resolved at most once.
 ///
 /// A failing token command isn't fatal: downloads go ahead without it (hf-hub may
 /// still use `HF_TOKEN` or its own `$HF_HOME/token`), and a gated model that then
@@ -22,9 +22,8 @@ pub struct Hub<'a> {
     cache_dir: PathBuf,
     endpoint: String,
     token: OnceCell<std::result::Result<Option<SecretString>, String>>,
-    // building a client loads TLS roots and spawns a runtime thread, so reuse them
-    offline: OnceCell<HFClientSync>,
-    online: OnceCell<HFClientSync>,
+    // building it loads TLS roots and spawns a runtime thread
+    client: OnceCell<HFClientSync>,
 }
 
 impl<'a> Hub<'a> {
@@ -44,8 +43,7 @@ impl<'a> Hub<'a> {
             cache_dir,
             endpoint: endpoint.unwrap_or_else(|| DEFAULT_ENDPOINT.to_string()),
             token: OnceCell::new(),
-            offline: OnceCell::new(),
-            online: OnceCell::new(),
+            client: OnceCell::new(),
         }
     }
 
@@ -70,14 +68,12 @@ impl<'a> Hub<'a> {
             .map_err(String::as_str)
     }
 
-    fn offline_client(&self) -> Result<&HFClientSync> {
-        get_or_build(&self.offline, || self.build_client(None))
-    }
-
-    fn online_client(&self) -> Result<&HFClientSync> {
-        get_or_build(&self.online, || {
-            self.build_client(self.token().ok().flatten())
-        })
+    fn client(&self) -> Result<&HFClientSync> {
+        if let Some(client) = self.client.get() {
+            return Ok(client);
+        }
+        let client = self.build_client(self.token().ok().flatten())?;
+        Ok(self.client.get_or_init(|| client))
     }
 
     fn build_client(&self, token: Option<&SecretString>) -> Result<HFClientSync> {
@@ -97,14 +93,6 @@ impl<'a> Hub<'a> {
     }
 }
 
-fn get_or_build<T>(cell: &OnceCell<T>, build: impl FnOnce() -> Result<T>) -> Result<&T> {
-    if let Some(value) = cell.get() {
-        return Ok(value);
-    }
-    let value = build()?;
-    Ok(cell.get_or_init(|| value))
-}
-
 /// Files of one `HuggingFace` repo.
 pub struct ModelFiles<'a> {
     hub: &'a Hub<'a>,
@@ -118,36 +106,41 @@ impl ModelFiles<'_> {
     /// # Errors
     /// Fails if the file isn't cached and can't be downloaded.
     pub fn get(&self, filename: &str) -> Result<PathBuf> {
-        let cached = self
-            .handle(self.hub.offline_client()?)
-            .download_file()
-            .filename(filename)
-            .local_files_only(true)
-            .send();
-        match cached {
-            Ok(path) => {
-                debug!(repo = %self.repo, filename, "cache hit");
-                return Ok(path);
-            }
-            Err(HFError::LocalEntryNotFound { .. }) => {}
-            Err(e) => debug!(repo = %self.repo, filename, %e, "cache lookup failed"),
+        if let Some(path) = self.cached(filename) {
+            debug!(repo = %self.repo, filename, "cache hit");
+            return Ok(path);
         }
-        self.handle(self.hub.online_client()?)
-            .download_file()
-            .filename(filename)
-            .send()
-            .map_err(|e| {
-                if let Err(token_err) = self.hub.token() {
-                    eyre::eyre!("{e} ({token_err})")
-                } else {
-                    eyre::eyre!("{e}")
-                }
-            })
+        self.download(filename).map_err(|e| match self.hub.token() {
+            Err(token_err) => eyre::eyre!("{e:#} ({token_err})"),
+            Ok(_) => e,
+        })
     }
 
-    fn handle(&self, client: &HFClientSync) -> HFRepositorySync<RepoTypeModel> {
+    /// Reads the hf-hub cache layout directly, so loading a cached model needs no
+    /// HTTP client and therefore no system CA store.
+    fn cached(&self, filename: &str) -> Option<PathBuf> {
+        let repo_dir = self
+            .hub
+            .cache_dir
+            .join(format!("models--{}", self.repo.replace('/', "--")));
+        let commit = std::fs::read_to_string(repo_dir.join("refs").join("main")).ok()?;
+        let path = repo_dir
+            .join("snapshots")
+            .join(commit.trim())
+            .join(filename);
+        path.is_file().then_some(path)
+    }
+
+    fn download(&self, filename: &str) -> Result<PathBuf> {
         let (owner, name) = hf_hub::split_id(&self.repo);
-        client.model(owner, name)
+        let path = self
+            .hub
+            .client()?
+            .model(owner, name)
+            .download_file()
+            .filename(filename)
+            .send()?;
+        Ok(path)
     }
 }
 
@@ -183,9 +176,9 @@ mod tests {
         let repo_dir = cache_dir.join("models--org--model");
         std::fs::create_dir_all(repo_dir.join("refs")).unwrap();
         std::fs::write(repo_dir.join("refs/main"), "abc123").unwrap();
-        let snapshot = repo_dir.join("snapshots/abc123");
-        std::fs::create_dir_all(&snapshot).unwrap();
-        std::fs::write(snapshot.join(filename), "{}").unwrap();
+        let file = repo_dir.join("snapshots/abc123").join(filename);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, "{}").unwrap();
     }
 
     #[test]
@@ -201,6 +194,19 @@ mod tests {
 
         assert!(path.ends_with("tokenizer.json"), "got {}", path.display());
         assert!(!marker.exists(), "token command ran for a cached file");
+    }
+
+    #[test]
+    fn cache_hit_builds_no_client() {
+        let dir = tempfile::tempdir().unwrap();
+        cache_file(dir.path(), "onnx/model.onnx");
+        let config = Config::default();
+        // building a client would fail on this endpoint (and without a CA store)
+        let hub = Hub::new(&config, dir.path().into(), Some("not a url".into()));
+
+        let path = hub.repo(REPO).get("onnx/model.onnx").unwrap();
+
+        assert!(path.ends_with("onnx/model.onnx"), "got {}", path.display());
     }
 
     #[test]
@@ -252,14 +258,16 @@ mod tests {
         );
     }
 
-    /// Accepts one HTTP request, answers 404, and returns the request head.
+    /// Accepts one HTTP request, answers 404, and sends back the request head.
     #[expect(clippy::unwrap_used, reason = "test helper")]
-    fn capture_one_request() -> (String, std::thread::JoinHandle<String>) {
+    fn capture_one_request() -> (String, std::sync::mpsc::Receiver<String>) {
         use std::io::{BufRead, BufReader, Write};
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
-        let handle = std::thread::spawn(move || {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // detached: if no request ever arrives the test times out instead of hanging
+        std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut head = String::new();
@@ -275,9 +283,9 @@ mod tests {
             ]
             .join("\r\n");
             stream.write_all(response.as_bytes()).unwrap();
-            head
+            let _ = tx.send(head);
         });
-        (endpoint, handle)
+        (endpoint, rx)
     }
 
     #[test]
@@ -288,9 +296,12 @@ mod tests {
         let hub = Hub::new(&config, dir.path().into(), Some(endpoint));
         let files = hub.repo(REPO);
 
-        let _ = files.get("tokenizer.json").unwrap_err();
+        let err = files.get("tokenizer.json").unwrap_err();
 
-        let head = server.join().unwrap().to_ascii_lowercase();
+        let head = server
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("no request reached the server: {err:#}"))
+            .to_ascii_lowercase();
         assert!(
             head.contains("authorization: bearer tok123"),
             "token missing from request: {head}"

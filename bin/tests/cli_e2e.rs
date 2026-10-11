@@ -182,6 +182,8 @@ fn git_repo() -> tempfile::TempDir {
         &["init"][..],
         &["config", "user.email", "test@test.com"],
         &["config", "user.name", "Test"],
+        // a global signing setup would otherwise make commits depend on the user's agent
+        &["config", "commit.gpgsign", "false"],
     ] {
         Command::new("git")
             .args(*args)

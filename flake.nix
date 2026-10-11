@@ -51,6 +51,8 @@
         pname = "parry-guard";
         strictDeps = true;
         nativeCheckInputs = [pkgs.git];
+        # The sandbox has no system CA store, and reqwest refuses to build a client without one.
+        SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
           pkgs.pkg-config
           pkgs.openssl
