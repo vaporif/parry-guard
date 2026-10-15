@@ -1,7 +1,10 @@
 //! AST-based detection of destructive bash commands and protected file paths.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use std::sync::Mutex;
 
+use parry_guard_core::shell::tree_sitter_safe;
 use tracing::{debug, instrument, trace};
 use tree_sitter::Parser;
 
@@ -27,7 +30,7 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
         {
             return Ok(None);
         }
-        match parser.parse(command, None) {
+        match parser.parse(tree_sitter_safe(command).as_ref(), None) {
             Some(t) => t,
             None => return Ok(None),
         }
@@ -89,6 +92,7 @@ pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 
@@ -103,6 +107,14 @@ mod tests {
         let dir = make_cwd();
         let cwd = dir.path().to_str().unwrap();
         assert!(detect_destructive("rm /tmp/important", cwd).is_some());
+    }
+
+    #[test]
+    fn wide_codepoint_after_brace_parses() {
+        let dir = make_cwd();
+        let cwd = dir.path().to_str().unwrap();
+        assert_eq!(detect_destructive("echo {\u{10FFFF}", cwd), None);
+        assert!(detect_destructive("rm -rf /{1..\u{10FFFF}}", cwd).is_some());
     }
 
     #[test]

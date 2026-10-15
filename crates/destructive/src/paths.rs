@@ -211,6 +211,7 @@ pub(crate) fn is_outside_cwd(path: &str, cwd: &str) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

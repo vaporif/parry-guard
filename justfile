@@ -35,13 +35,15 @@ test:
 
 alias t := test
 
-# Generate coverage (lcov)
-coverage:
-    cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+cov_ignore := "test_util"
 
-# Generate coverage (html)
+# Generate coverage (lcov); run in `nix develop .#coverage` so test code is excluded
+coverage:
+    cargo llvm-cov nextest --workspace --ignore-filename-regex '{{cov_ignore}}' --lcov --output-path lcov.info
+
+# Generate coverage (html); run in `nix develop .#coverage` so test code is excluded
 coverage-html:
-    cargo llvm-cov nextest --workspace --html
+    cargo llvm-cov nextest --workspace --ignore-filename-regex '{{cov_ignore}}' --html
 
 # Check Rust formatting
 check-fmt:
@@ -88,6 +90,10 @@ mutants-diff:
     #!/usr/bin/env bash
     set -euo pipefail
     cargo mutants --in-diff <(git diff main...)
+
+# Fuzz a bolero target under libFuzzer + ASan (`nix develop .#fuzz`), e.g. `just fuzz exfil exfiltration`
+fuzz crate target time="60s":
+    cargo bolero test -p parry-guard-{{crate}} {{target}} --sanitizer address -T {{time}}
 
 # Run ML e2e tests (requires HF_TOKEN); `full` mode only runs with candle
 e2e feature="candle":

@@ -110,6 +110,7 @@ pub fn has_security_substring(text: &str) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

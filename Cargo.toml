@@ -102,6 +102,7 @@ tempfile = "3"
 indoc = "2"
 criterion = { version = "0.8", default-features = false }
 proptest = "1"
+bolero = "0.13"
 rstest = "0.27"
 
 [workspace.lints.clippy]
@@ -130,3 +131,12 @@ unused_qualifications = "deny"
 redundant_lifetimes = "deny"
 unit_bindings = "deny"
 unreachable_pub = "deny"
+# Set by cargo-llvm-cov on nightly to enable `coverage(off)`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
+
+# Used by `cargo bolero test`
+[profile.fuzz]
+inherits = "dev"
+opt-level = 3
+incremental = false
+codegen-units = 1

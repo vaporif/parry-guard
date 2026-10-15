@@ -424,6 +424,7 @@ const fn scan_result_to_response(result: ScanResult) -> ScanResponse {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use std::path::Path;
 

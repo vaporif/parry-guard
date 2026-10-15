@@ -135,6 +135,7 @@ pub fn strip_invisible(text: &str) -> String {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

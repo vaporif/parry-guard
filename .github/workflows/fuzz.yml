@@ -1,0 +1,59 @@
+name: Fuzz
+
+on:
+  pull_request:
+    paths:
+      - "crates/core/**"
+      - "crates/exfil/**"
+      - "crates/destructive/**"
+      - "Cargo.lock"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      time:
+        description: Run time per target (e.g. 10min)
+        default: 10min
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.crate }}/${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: core, target: scan_text }
+          - { crate: core, target: decode }
+          - { crate: core, target: shell_unquote }
+          - { crate: exfil, target: exfiltration }
+          - { crate: destructive, target: destructive }
+          - { crate: destructive, target: protected_path }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Restore corpus
+        uses: actions/cache@v4
+        with:
+          path: crates/${{ matrix.crate }}/tests/__fuzz__/${{ matrix.target }}/corpus
+          key: fuzz-corpus-${{ matrix.crate }}-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.crate }}-${{ matrix.target }}-
+
+      - name: Fuzz
+        run: nix develop .#fuzz --command just fuzz ${{ matrix.crate }} ${{ matrix.target }} ${{ inputs.time || (github.event_name == 'pull_request' && '1min' || '10min') }}
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: crashes-${{ matrix.crate }}-${{ matrix.target }}
+          path: crates/${{ matrix.crate }}/tests/__fuzz__/${{ matrix.target }}/crashes

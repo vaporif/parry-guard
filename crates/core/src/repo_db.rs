@@ -316,6 +316,7 @@ pub fn git_remote_url(path: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

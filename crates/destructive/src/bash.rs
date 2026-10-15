@@ -1097,6 +1097,7 @@ fn check_nix(cmd_name: &str, node: Node, source: &[u8]) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

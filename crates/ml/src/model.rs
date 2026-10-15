@@ -153,6 +153,7 @@ fn normalize_endpoint(endpoint: Option<String>) -> Option<String> {
 }
 
 #[cfg(all(test, unix))]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use std::path::Path;
 

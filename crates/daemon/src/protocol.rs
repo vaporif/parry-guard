@@ -153,6 +153,7 @@ pub fn read_response<R: Read>(r: &mut R) -> io::Result<ScanResponse> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

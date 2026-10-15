@@ -226,6 +226,7 @@ fn is_suspicious_decoded(decoded: &str) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

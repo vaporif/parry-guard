@@ -80,6 +80,7 @@ fn warning_for_result(result: parry_guard_core::ScanResult) -> Option<HookOutput
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
