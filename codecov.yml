@@ -10,3 +10,4 @@ coverage:
 
 ignore:
   - "bin/**"
+  - "**/test_util.rs"

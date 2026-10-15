@@ -1,5 +1,7 @@
 //! ML-based injection detection using `DeBERTa` v3.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 #[cfg(not(any(feature = "onnx", feature = "onnx-fetch", feature = "candle")))]
 compile_error!(
     "At least one ML backend must be enabled: 'onnx', 'onnx-fetch' (default), or 'candle'"
@@ -156,6 +158,7 @@ pub(crate) fn softmax_injection_prob(logits: &[f32]) -> f32 {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

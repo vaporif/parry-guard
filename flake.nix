@@ -245,6 +245,37 @@
           ];
       };
 
+      # Nightly toolchain for coverage: `#[coverage(off)]` on test code needs `feature(coverage_attribute)`
+      devShells.coverage = pkgs.mkShell {
+        packages =
+          [
+            (fenixPkgs.latest.withComponents [
+              "cargo"
+              "rustc"
+              "rust-std"
+              "llvm-tools-preview"
+            ])
+            pkgs.cargo-llvm-cov
+            pkgs.cargo-nextest
+            pkgs.just
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.pkg-config
+            pkgs.openssl
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.apple-sdk_15
+          ];
+
+        env =
+          pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.stdenv.cc.cc.lib];
+          }
+          // pkgs.lib.optionalAttrs onnxSupported {
+            ORT_DYLIB_PATH = onnxArgs.ORT_DYLIB_PATH;
+          };
+      };
+
       devShells.default = pkgs.mkShell {
         packages =
           [

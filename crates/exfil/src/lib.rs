@@ -1,5 +1,7 @@
 //! AST-based code exfiltration detection using tree-sitter.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use std::sync::{LazyLock, Mutex};
 
 use regex::Regex;
@@ -125,6 +127,7 @@ fn detect_in_script(script: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

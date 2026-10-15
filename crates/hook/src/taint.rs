@@ -81,6 +81,7 @@ pub fn read_context(runtime_dir: Option<&Path>) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

@@ -400,6 +400,7 @@ fn check_hooks(state: &AuditState, warnings: &mut Vec<AuditWarning>) {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::test_util::{test_config_with_dir, test_db, CwdGuard};

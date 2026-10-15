@@ -195,6 +195,7 @@ fn kill_tree(child: &mut Child) -> std::io::Result<std::process::ExitStatus> {
 }
 
 #[cfg(all(test, unix))]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

@@ -138,6 +138,7 @@ fn hash_content(content: &str) -> u64 {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::test_util::{

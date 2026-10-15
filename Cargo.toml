@@ -131,6 +131,8 @@ unused_qualifications = "deny"
 redundant_lifetimes = "deny"
 unit_bindings = "deny"
 unreachable_pub = "deny"
+# Set by cargo-llvm-cov on nightly to enable `coverage(off)`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
 
 # Used by `cargo bolero test`
 [profile.fuzz]

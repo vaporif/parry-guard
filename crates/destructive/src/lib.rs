@@ -1,5 +1,7 @@
 //! AST-based detection of destructive bash commands and protected file paths.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use std::sync::Mutex;
 
 use tracing::{debug, instrument, trace};
@@ -89,6 +91,7 @@ pub fn is_protected_path(path: &str, cwd: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 
