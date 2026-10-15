@@ -243,6 +243,11 @@
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15
           ];
+
+        # libFuzzer is C++ and links libstdc++ dynamically
+        env = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.stdenv.cc.cc.lib];
+        };
       };
 
       # Nightly toolchain for coverage: `#[coverage(off)]` on test code needs `feature(coverage_attribute)`

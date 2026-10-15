@@ -1,6 +1,7 @@
 //! Shell text helpers shared by the bash checks: quote removal, what `echo` and
 //! `printf` print, and whether a pipeline stage runs a script read from stdin.
 
+use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -399,6 +400,28 @@ pub fn complete_commands(script: &str, mut parses: impl FnMut(&str) -> bool) -> 
     Some(commands)
 }
 
+/// `command` made safe to hand to tree-sitter-bash, with byte offsets unchanged.
+///
+/// The bash scanner passes the codepoint after `{`, a digit or `.` to `isdigit`,
+/// which glibc implements as an unchecked table lookup: past U+00FF it reads out
+/// of bounds and can segfault. Such codepoints become `_` (one per UTF-8 byte),
+/// which tree-sitter treats as the same kind of word character.
+#[must_use]
+pub fn tree_sitter_safe(command: &str) -> Cow<'_, str> {
+    let mut out = Cow::Borrowed(command);
+    let mut prev = None;
+    for (i, c) in command.char_indices() {
+        let after_digit_context =
+            prev.is_some_and(|p: char| p == '{' || p == '.' || p.is_ascii_digit());
+        if after_digit_context && u32::from(c) > 0xFF {
+            let len = c.len_utf8();
+            out.to_mut().replace_range(i..i + len, &"_".repeat(len));
+        }
+        prev = Some(c);
+    }
+    out
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -487,6 +510,19 @@ mod tests {
     fn complete_commands_gives_up_on_long_scripts() {
         let script = "a\n".repeat(MAX_SCRIPT_LINES + 1);
         assert_eq!(complete_commands(&script, parses), None);
+    }
+
+    #[rstest]
+    #[case::ascii("echo {1..3}", "echo {1..3}")]
+    #[case::latin1_kept("{é", "{é")]
+    #[case::after_brace("{\u{10FFFF}}", "{____}")]
+    #[case::after_digit("{1€", "{1___")]
+    #[case::after_dot("{1..€", "{1..___")]
+    #[case::elsewhere_kept("echo €{", "echo €{")]
+    fn tree_sitter_safe_replaces(#[case] input: &str, #[case] expected: &str) {
+        let safe = tree_sitter_safe(input);
+        assert_eq!(safe, expected);
+        assert_eq!(safe.len(), input.len());
     }
 
     #[test]

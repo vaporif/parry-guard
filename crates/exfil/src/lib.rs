@@ -4,6 +4,7 @@
 
 use std::sync::{LazyLock, Mutex};
 
+use parry_guard_core::shell::tree_sitter_safe;
 use regex::Regex;
 use tracing::{debug, instrument, trace};
 use tree_sitter::Parser;
@@ -63,7 +64,7 @@ fn parse_bash(command: &str) -> Result<Option<tree_sitter::Tree>, String> {
                 "exfiltration detection unavailable (parser language init failed)".to_string(),
             );
         }
-        match parser.parse(command, None) {
+        match parser.parse(tree_sitter_safe(command).as_ref(), None) {
             Some(t) => t,
             None => return Ok(None),
         }
@@ -130,6 +131,11 @@ fn detect_in_script(script: &str) -> Option<String> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wide_codepoint_after_brace_parses() {
+        assert_eq!(detect_exfiltration("echo {\u{10FFFF}"), Ok(None));
+    }
 
     #[test]
     fn pipe_env_to_curl() {
