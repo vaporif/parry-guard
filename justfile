@@ -89,6 +89,10 @@ mutants-diff:
     set -euo pipefail
     cargo mutants --in-diff <(git diff main...)
 
+# Fuzz a bolero target under libFuzzer + ASan (`nix develop .#fuzz`), e.g. `just fuzz exfil exfiltration`
+fuzz crate target time="60s":
+    cargo bolero test -p parry-guard-{{crate}} {{target}} --sanitizer address -T {{time}}
+
 # Run ML e2e tests (requires HF_TOKEN); `full` mode only runs with candle
 e2e feature="candle":
     cargo nextest run -p parry-guard-daemon --no-default-features --features {{feature}} --test e2e --run-ignored all --success-output immediate

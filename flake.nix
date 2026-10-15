@@ -228,6 +228,23 @@
             });
         };
 
+      # Nightly toolchain for `cargo bolero` (libFuzzer + sanitizers need -Z flags)
+      devShells.fuzz = pkgs.mkShell {
+        packages =
+          [
+            fenixPkgs.latest.toolchain
+            pkgs.cargo-bolero
+            pkgs.just
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.pkg-config
+            pkgs.openssl
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.apple-sdk_15
+          ];
+      };
+
       devShells.default = pkgs.mkShell {
         packages =
           [

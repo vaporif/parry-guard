@@ -40,6 +40,7 @@ all-features = true
 indoc.workspace = true
 tempfile.workspace = true
 proptest.workspace = true
+bolero.workspace = true
 rstest.workspace = true
 
 [lints]

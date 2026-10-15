@@ -57,19 +57,11 @@ pub fn pid_file_path(runtime_dir: Option<&Path>) -> io::Result<PathBuf> {
 
 #[cfg(unix)]
 fn is_process_alive(pid: u32) -> bool {
-    extern "C" {
-        fn kill(pid: i32, sig: i32) -> i32;
-    }
-    let Ok(pid) = i32::try_from(pid) else {
-        return false;
-    };
-    if pid == 0 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks existence, nothing is delivered.
-    #[expect(unsafe_code, reason = "FFI call to kill(2)")]
-    let alive = unsafe { kill(pid, 0) == 0 };
-    alive
+    use rustix::process::{test_kill_process, Pid};
+    i32::try_from(pid)
+        .ok()
+        .and_then(Pid::from_raw)
+        .is_some_and(|pid| test_kill_process(pid).is_ok())
 }
 
 #[cfg(not(unix))]
