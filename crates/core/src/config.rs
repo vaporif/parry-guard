@@ -163,6 +163,7 @@ impl Default for Config {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
     use secrecy::ExposeSecret;

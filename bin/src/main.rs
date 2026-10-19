@@ -1,5 +1,7 @@
 //! Parry CLI - prompt injection scanner.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 mod cli;
 
 use clap::{CommandFactory, Parser};
@@ -640,6 +642,7 @@ fn run_serve(config: &Config, idle_timeout: u64) -> ExitCode {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

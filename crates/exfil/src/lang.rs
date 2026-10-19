@@ -133,6 +133,7 @@ pub fn detect_exfil_in_code<L: LangExfilDetector + ?Sized>(
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

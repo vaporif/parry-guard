@@ -21,6 +21,7 @@ tree-sitter-bash.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+bolero.workspace = true
 indoc.workspace = true
 rstest.workspace = true
 tempfile.workspace = true

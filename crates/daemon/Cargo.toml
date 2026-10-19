@@ -22,6 +22,9 @@ tracing.workspace = true
 redb.workspace = true
 blake3.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
 [features]
 default = ["onnx-fetch"]
 onnx = ["parry-guard-ml/onnx"]

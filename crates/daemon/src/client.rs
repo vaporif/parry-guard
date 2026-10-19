@@ -198,6 +198,7 @@ const fn response_to_scan_result(resp: ScanResponse) -> Result<ScanResult, ScanE
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

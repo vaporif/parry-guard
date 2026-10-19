@@ -110,6 +110,7 @@ pub(crate) const fn is_private_ipv6(ip: std::net::Ipv6Addr) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use rstest::rstest;
 

@@ -28,3 +28,6 @@ target
 #.idea/
 
 result
+
+# bolero fuzz corpus (crashes/ is kept: `cargo test` replays it as regressions)
+**/tests/__fuzz__/*/corpus/

@@ -94,6 +94,7 @@ impl CompiledDestructive {
 pub static CONFIG: LazyLock<CompiledDestructive> = LazyLock::new(CompiledDestructive::load);
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 

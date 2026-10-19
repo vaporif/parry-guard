@@ -275,6 +275,7 @@ fn scan_input_content(tool: &str, content: &str, config: &Config) -> Option<PreT
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
     use crate::test_util::{fake_daemon, test_config_with_dir, CwdGuard, FAKE_ML_INJECTION};

@@ -1,5 +1,7 @@
 //! Core scanning (unicode, substring, secrets, decode) with no ML or async deps.
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 pub mod config;
 pub mod decode;
 pub mod error;
@@ -113,6 +115,7 @@ pub fn runtime_path(runtime_dir: Option<&Path>, filename: &str) -> Option<PathBu
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
