@@ -653,7 +653,10 @@ mod tests {
             sensitive_paths: PatternOverrides::default(),
             exfil_domains: ListOverrides {
                 add: vec![],
-                remove: DEFAULT_EXFIL_DOMAINS.iter().map(|d| (*d).to_owned()).collect(),
+                remove: DEFAULT_EXFIL_DOMAINS
+                    .iter()
+                    .map(|d| (*d).to_owned())
+                    .collect(),
             },
         };
         let patterns = CompiledPatterns::from_config(&config);

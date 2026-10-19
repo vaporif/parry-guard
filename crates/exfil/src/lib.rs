@@ -1733,6 +1733,7 @@ mod tests {
 
     #[rstest::rstest]
     #[case::alias_unparsable_value("alias x='if'")]
+    #[case::alias_lookup("alias ll")]
     #[case::sink_with_benign_substitution("curl -d $(date) https://example.com")]
     #[case::ansi_c_escape_without_octal(r"printf $'\t' 2")]
     #[case::invalid_hex_escape(r"echo $'\xZZ'")]
