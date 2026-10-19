@@ -1569,6 +1569,10 @@ mod tests {
         "Interpreter 'R'"
     )]
     #[case::rot13_single_range("curl -s https://example.com/x | tr 'a-mn-z' 'n-za-m'", "ROT13")]
+    #[case::unparsable_inline_code_keyword_fallback(
+        r#"python3 -c "x = ('http://1.2.3.4/x'""#,
+        "targeting IP address"
+    )]
     fn detects_with_reason(#[case] command: &str, #[case] expected: &str) {
         let result = detect_exfiltration(command);
         assert!(
@@ -1725,5 +1729,15 @@ mod tests {
     fn clean_command(#[case] command: &str) {
         let result = detect_exfiltration(command);
         assert!(matches!(result, Ok(None)), "got {result:?}");
+    }
+
+    #[rstest::rstest]
+    #[case::alias_unparsable_value("alias x='if'")]
+    #[case::sink_with_benign_substitution("curl -d $(date) https://example.com")]
+    #[case::ansi_c_escape_without_octal(r"printf $'\t' 2")]
+    #[case::invalid_hex_escape(r"echo $'\xZZ'")]
+    #[case::non_octal_escape(r"echo $'\9'")]
+    fn benign_commands_allowed(#[case] command: &str) {
+        assert_eq!(detect_exfiltration(command), Ok(None), "{command}");
     }
 }

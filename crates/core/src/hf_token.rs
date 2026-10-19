@@ -335,6 +335,21 @@ mod tests {
     }
 
     #[test]
+    fn non_utf8_stdout_is_rejected() {
+        let err = run_token_command(r"printf 'hf_\377'")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("isn't UTF-8"), "got: {err}");
+    }
+
+    #[test]
+    fn uncaptured_pipe_reports_error() {
+        let rx = read_in_background(None::<std::io::Empty>);
+        let err = rx.recv().unwrap().unwrap_err();
+        assert_eq!(err.to_string(), "pipe not captured");
+    }
+
+    #[test]
     fn large_output_does_not_deadlock() {
         // 1 MiB exceeds the pipe buffer
         let token = run_token_command("head -c 1048576 /dev/zero | tr '\\0' a").unwrap();

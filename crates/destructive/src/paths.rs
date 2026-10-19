@@ -344,6 +344,8 @@ mod tests {
     #[case::home_project("~/projects/app")]
     #[case::wsl_users_dir("/mnt/c/Users/bob")]
     #[case::wsl_other_dir("/mnt/c/code/app")]
+    // `rm` rejects `/` on its own; no prefix is a subtree of it
+    #[case::root_itself("/")]
     fn unprotected_paths_pass(#[case] path: &str) {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_str().unwrap();

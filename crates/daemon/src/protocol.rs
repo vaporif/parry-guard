@@ -307,4 +307,15 @@ mod tests {
         let decoded = DaemonCodec.decode(&mut buf).unwrap().unwrap();
         assert_eq!(decoded, req);
     }
+
+    #[test]
+    fn codec_rejects_invalid_utf8_text() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0x00);
+        buf.put_f32_le(0.5);
+        buf.put_u32_le(2);
+        buf.put_slice(&[0xC3, 0x28]);
+        let err = DaemonCodec.decode(&mut buf).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
+    }
 }

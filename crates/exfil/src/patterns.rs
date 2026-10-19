@@ -607,4 +607,58 @@ mod tests {
         assert_eq!(config.exfil_domains.add, ["evil-custom.com"]);
         Ok(())
     }
+
+    #[test]
+    fn load_from_path_falls_back_to_default() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let invalid = dir.path().join("invalid.toml");
+        std::fs::write(&invalid, "not = [valid")?;
+
+        for path in [
+            None,
+            Some(dir.path().join("missing.toml")),
+            Some(invalid),
+            Some(dir.path().to_path_buf()),
+        ] {
+            let config = PatternConfig::load_from_path(path);
+            assert!(config.sensitive_paths.add.is_empty());
+            assert!(config.sensitive_paths.remove.is_empty());
+            assert!(config.exfil_domains.add.is_empty());
+            assert!(config.exfil_domains.remove.is_empty());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn config_add_builtin_domain_is_not_duplicated() {
+        let config = PatternConfig {
+            sensitive_paths: PatternOverrides::default(),
+            exfil_domains: ListOverrides {
+                add: vec!["pastebin.com".into()],
+                remove: vec![],
+            },
+        };
+        let patterns = CompiledPatterns::from_config(&config);
+        let count = patterns
+            .exfil_domains
+            .iter()
+            .filter(|d| *d == "pastebin.com")
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn config_remove_all_domains_matches_nothing() {
+        let config = PatternConfig {
+            sensitive_paths: PatternOverrides::default(),
+            exfil_domains: ListOverrides {
+                add: vec![],
+                remove: DEFAULT_EXFIL_DOMAINS.iter().map(|d| (*d).to_owned()).collect(),
+            },
+        };
+        let patterns = CompiledPatterns::from_config(&config);
+        assert!(patterns.exfil_domains.is_empty());
+        assert!(!patterns.has_exfil_domain("https://webhook.site/abc"));
+        assert!(!patterns.has_exfil_domain("https://pastebin.com/abc"));
+    }
 }

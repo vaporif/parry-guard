@@ -654,6 +654,223 @@ mod tests {
         assert!(sock.exists(), "must not delete another daemon's socket");
     }
 
+    /// Enables every log level so `debug!`/`warn!` fields are evaluated.
+    fn verbose_logs() -> tracing::subscriber::DefaultGuard {
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .finish();
+        tracing::subscriber::set_default(subscriber)
+    }
+
+    #[test]
+    fn dead_load_past_wait_budget_counts_as_failure() {
+        let (tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::Loading {
+            result: loader.pending.take().unwrap(),
+            attempt: 0,
+            waits: MAX_ML_RETRIES,
+            started: Instant::now(),
+            abandoned: Vec::new(),
+        };
+        drop(tx);
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON),
+            None
+        );
+        assert!(matches!(state, MlState::Failed { attempts: 1, .. }));
+    }
+
+    #[test]
+    fn timed_out_wait_spends_wait_budget() {
+        let _logs = verbose_logs();
+        let (_tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::NotLoaded;
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, NEVER_ABANDON),
+            None
+        );
+        assert!(matches!(state, MlState::Loading { waits: 1, .. }));
+    }
+
+    #[test]
+    fn hung_load_abandonment_is_logged() {
+        let _logs = verbose_logs();
+        let (_tx, mut loader) = FakeLoader::pending();
+        let mut state = MlState::<u8>::Loading {
+            result: loader.pending.take().unwrap(),
+            attempt: 1,
+            waits: MAX_ML_RETRIES,
+            started: Instant::now(),
+            abandoned: Vec::new(),
+        };
+        assert_eq!(
+            state.get_or_load(|| loader.start(), SHORT_WAIT, ABANDON_NOW),
+            None
+        );
+        assert!(
+            matches!(&state, MlState::Failed { attempts: 2, abandoned, .. } if abandoned.len() == 1)
+        );
+    }
+
+    #[test]
+    fn failed_or_dead_abandoned_loads_are_dropped() {
+        let (dead_tx, dead) = std::sync::mpsc::channel();
+        drop(dead_tx);
+        let (_pending_tx, pending) = std::sync::mpsc::channel();
+        let mut state = MlState::<u8>::Failed {
+            attempts: MAX_ML_RETRIES,
+            waits: MAX_ML_RETRIES,
+            abandoned: vec![finished_load(None), dead, pending],
+        };
+        assert_eq!(state.take_abandoned_result(), None);
+        assert!(
+            matches!(&state, MlState::Failed { abandoned, .. } if abandoned.len() == 1),
+            "only the still-running load is kept"
+        );
+    }
+
+    const NO_MODELS: [u8; 32] = [0u8; 32];
+
+    fn full_request(text: &str) -> ScanRequest {
+        ScanRequest {
+            scan_type: ScanType::Full,
+            threshold: 0.5,
+            text: text.to_string(),
+        }
+    }
+
+    fn cache_in(dir: &Path) -> ScanCache {
+        ScanCache::open(Some(dir)).unwrap()
+    }
+
+    #[test]
+    fn clean_text_without_model_fails_closed() {
+        let _logs = verbose_logs();
+        let resp = handle_request(&full_request("hello world"), None, None, &NO_MODELS);
+        assert_eq!(resp, ScanResponse::Error);
+    }
+
+    #[test]
+    fn cache_hit_skips_scan() {
+        let _logs = verbose_logs();
+        let dir = tempfile::tempdir().unwrap();
+        let cache = cache_in(dir.path());
+        let req = full_request("hello world");
+        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold, &NO_MODELS);
+        cache.put(&hash, ScanResult::Clean);
+
+        // without a model the scan itself would fail-close, so Clean proves the cache answered
+        let resp = handle_request(&req, None, Some(&cache), &NO_MODELS);
+        assert_eq!(resp, ScanResponse::Clean);
+    }
+
+    #[test]
+    fn scan_errors_are_not_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = cache_in(dir.path());
+        let req = full_request("hello world");
+
+        let resp = handle_request(&req, None, Some(&cache), &NO_MODELS);
+        assert_eq!(resp, ScanResponse::Error);
+        let hash = scan_cache::hash_content_with_threshold(&req.text, req.threshold, &NO_MODELS);
+        assert_eq!(cache.get(&hash), None);
+    }
+
+    #[test]
+    fn response_result_mapping_roundtrips() {
+        for result in [ScanResult::Clean, ScanResult::Injection, ScanResult::Secret] {
+            assert_eq!(
+                response_to_result(scan_result_to_response(result)),
+                Some(result)
+            );
+        }
+        assert_eq!(
+            response_to_result(ScanResponse::Pong),
+            Some(ScanResult::Clean)
+        );
+        assert_eq!(response_to_result(ScanResponse::Error), None);
+    }
+
+    /// Lets `client` act on a fresh connection, then serves it with a model-less daemon.
+    /// The client may keep its end to read the reply, or drop it to hang up.
+    fn serve_one(
+        client: impl FnOnce(transport::Stream) -> Option<transport::Stream>,
+    ) -> Option<transport::Stream> {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let listener = transport::bind_async(Some(dir.path())).unwrap();
+            let stream =
+                transport::Stream::connect(Duration::from_secs(1), Some(dir.path())).unwrap();
+            let stream = client(stream);
+            let conn = listener.accept().await.unwrap();
+            let mut state = MlState::NotLoaded;
+            handle_connection(conn, &mut state, &Config::default(), None, &NO_MODELS).await;
+            assert!(
+                matches!(state, MlState::NotLoaded),
+                "only full scans load the model"
+            );
+            stream
+        })
+    }
+
+    fn ping() -> ScanRequest {
+        ScanRequest {
+            scan_type: ScanType::Ping,
+            threshold: 0.0,
+            text: String::new(),
+        }
+    }
+
+    #[test]
+    fn handle_connection_answers_ping() {
+        let mut stream = serve_one(|mut s| {
+            crate::protocol::write_request(&mut s, &ping()).unwrap();
+            Some(s)
+        })
+        .unwrap();
+        assert_eq!(
+            crate::protocol::read_response(&mut stream).unwrap(),
+            ScanResponse::Pong
+        );
+    }
+
+    #[test]
+    fn handle_connection_drops_malformed_request() {
+        let _logs = verbose_logs();
+        let mut stream = serve_one(|mut s| {
+            std::io::Write::write_all(&mut s, &[0xFF; 9]).unwrap();
+            Some(s)
+        })
+        .unwrap();
+        let err = crate::protocol::read_response(&mut stream).unwrap_err();
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::UnexpectedEof,
+            "no reply to a malformed request: {err}"
+        );
+    }
+
+    #[test]
+    fn handle_connection_tolerates_client_hanging_up_before_request() {
+        let _logs = verbose_logs();
+        assert!(serve_one(|_| None).is_none());
+    }
+
+    #[test]
+    fn handle_connection_tolerates_client_hanging_up_before_reply() {
+        let _logs = verbose_logs();
+        let hung_up = serve_one(|mut s| {
+            crate::protocol::write_request(&mut s, &ping()).unwrap();
+            None
+        });
+        assert!(hung_up.is_none());
+    }
+
     #[test]
     fn run_refuses_to_replace_busy_daemon() {
         let dir = tempfile::tempdir().unwrap();

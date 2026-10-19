@@ -436,6 +436,8 @@ mod tests {
     #[case::echo_quoted_option(&["'-n'", "x"], "x")]
     #[case::echo_not_an_option(&["-x", "y"], "-x y")]
     #[case::echo_octal(&[r"'\0162m'"], "rm")]
+    #[case::echo_tab(&[r"'a\tb'"], "a\tb")]
+    #[case::echo_unknown_escape_keeps_char(&[r"'\q'"], "q")]
     fn echo(#[case] args: &[&str], #[case] expected: &str) {
         assert_eq!(printed_output("echo", args).as_deref(), Some(expected));
     }
@@ -471,6 +473,8 @@ mod tests {
     #[case::xxd(&["xxd", "-r", "-p"], "726d", Some("rm"))]
     #[case::encode_only(&["base64"], "rm", None)]
     #[case::not_a_filter(&["cat"], "rm", None)]
+    #[case::base64_unpadded(&["base64", "-d"], "cm0", Some("rm"))]
+    #[case::invalid_input(&["base64", "-d"], "!!!", None)]
     fn filters(#[case] words: &[&str], #[case] input: &str, #[case] expected: Option<&str>) {
         assert_eq!(filter_output(words, input).as_deref(), expected);
     }
@@ -502,6 +506,7 @@ mod tests {
     #[case::compound(COMPOUND, &[COMPOUND])]
     #[case::never_completes(NEVER_COMPLETES, &["a", NEVER_COMPLETES_TAIL])]
     #[case::blank_lines(BLANK_LINES, &[BLANK_LINES])]
+    #[case::trailing_newline("a\nb\n", &["a", "\nb"])]
     fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
         assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
     }
@@ -553,6 +558,8 @@ mod tests {
     #[case::env_split_string(&["env", "-S", "sh -e"], Some("sh"))]
     #[case::lone_dash(&["bash", "-"], Some("bash"))]
     #[case::rcfile(&["bash", "--rcfile", "/dev/null"], Some("bash"))]
+    #[case::wrapper_double_dash(&["env", "--", "sh"], Some("sh"))]
+    #[case::wrapper_flag_without_value(&["env", "-i", "bash"], Some("bash"))]
     fn stdin_shells(#[case] words: &[&str], #[case] expected: Option<&str>) {
         assert_eq!(stdin_shell(words).as_deref(), expected);
     }

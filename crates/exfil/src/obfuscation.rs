@@ -236,6 +236,7 @@ mod tests {
     #[case::escapes(r"$'\x63\x75\x72\x6c'", Some("$'curl'"))]
     #[case::x_without_backslash("box12", None)]
     #[case::plain("plain", None)]
+    #[case::invalid_hex_dropped(r"\xZZ!", Some("!"))]
     fn hex_escapes(#[case] input: &str, #[case] expected: Option<&str>) {
         assert_eq!(try_decode_hex_escapes(input).as_deref(), expected);
     }
@@ -246,6 +247,7 @@ mod tests {
     #[case::plain("abc", None)]
     #[case::short_escape_keeps_next_char(r"\61x", Some("1x"))]
     #[case::space_then_word(r"\143url\40http", Some("curl http"))]
+    #[case::non_octal_digit_dropped(r"\9x", Some("x"))]
     fn octal_escapes(#[case] input: &str, #[case] expected: Option<&str>) {
         assert_eq!(try_decode_octal_escapes(input).as_deref(), expected);
     }

@@ -405,6 +405,47 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_claude_md_asks() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join("CLAUDE.md"), [0xff, 0xfe, 0xfd]).unwrap();
+        let config = test_config_with_dir(dir.path());
+
+        let result = check(&config, None, None, dir.path().to_str());
+        assert!(
+            matches!(result, CheckResult::Ask(ref r) if r.starts_with("Cannot read")),
+            "non-UTF-8 CLAUDE.md must fail closed"
+        );
+    }
+
+    #[test]
+    fn cached_hash_skips_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+        let md = dir.path().join("CLAUDE.md");
+        let content = "# Project\nNormal content.";
+        std::fs::write(&md, content).unwrap();
+        let config = test_config_with_dir(dir.path());
+        let db = test_db(dir.path());
+        let rp = dir.path().to_str().unwrap();
+        db.mark_guard_scanned(rp, &md.to_string_lossy(), hash_content(content));
+
+        // no daemon: only a cache hit can return Clean
+        assert!(check(&config, Some(&db), Some(rp), Some(rp)).is_clean());
+    }
+
+    #[test]
+    fn ml_clean_without_db_is_clean() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join("CLAUDE.md"), "# Project\nNormal content.").unwrap();
+        fake_daemon(dir.path());
+        let config = test_config_with_dir(dir.path());
+
+        assert!(check(&config, None, None, dir.path().to_str()).is_clean());
+    }
+
+    #[test]
     fn hash_content_distinguishes_inputs() {
         assert_ne!(hash_content("a"), hash_content("b"));
         assert_eq!(hash_content("a"), hash_content("a"));

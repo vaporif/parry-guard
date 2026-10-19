@@ -936,6 +936,8 @@ mod tests {
     #[case::kafka_topics_sh_delete("kafka-topics.sh --delete --topic t")]
     #[case::docker_volume_prune("docker volume prune")]
     #[case::docker_rmi_force("docker rmi -f img")]
+    #[case::nix_store_gc_flag("nix-store --gc")]
+    #[case::nix_env_erase_flag("nix-env -e hello")]
     fn destructive_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -970,6 +972,13 @@ mod tests {
     #[case::rsync_delete("rsync --delete src/ dst/")]
     #[case::docker_volume_ls("docker volume ls")]
     #[case::docker_rmi_plain("docker rmi img")]
+    #[case::docker_system_df("docker system df")]
+    #[case::git_clean_dry_run("git clean -n")]
+    #[case::git_branch_safe_delete("git branch -d feature")]
+    #[case::git_tag_create("git tag v1.0")]
+    #[case::git_remote_add_without_url("git remote add origin")]
+    #[case::iptables_list("iptables -L")]
+    #[case::nft_list("nft list ruleset")]
     fn safe_allowed(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1133,6 +1142,7 @@ mod tests {
     #[case::quoted_word(r#"$(echo "docker") system prune"#)]
     #[case::name_and_flags("$(echo git reset --hard)")]
     #[case::printf_format_name("$(printf '%s' git) push --force")]
+    #[case::split_substitutions("$(echo r)$(echo m) -rf /etc")]
     fn echoed_command_name_blocked(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1147,6 +1157,7 @@ mod tests {
     #[case::cargo_build("$(echo cargo) build")]
     #[case::kubectl_get("`echo kubectl` get pods")]
     #[case::which_lookup("$(which git) push --force-with-lease")]
+    #[case::first_line_is_the_command("$(echo a; echo git) push --force")]
     fn echoed_command_name_allowed(#[case] command: &str) {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
@@ -1185,6 +1196,19 @@ mod tests {
         let cwd = d.path().to_str().unwrap();
         std::fs::create_dir(d.path().join("target")).unwrap();
         assert_eq!(detect_destructive(command, cwd), None, "{command}");
+    }
+
+    #[test]
+    fn rm_known_variable_keeps_quotes_in_value() {
+        let d = tempfile::Builder::new()
+            .prefix(r#"it's"q\"#)
+            .tempdir()
+            .unwrap();
+        let cwd = d.path().to_str().unwrap();
+        std::fs::create_dir(d.path().join("target")).unwrap();
+        assert_eq!(detect_destructive("rm -rf $PWD/target", cwd), None);
+        assert_eq!(detect_destructive(r"rm -rf $'it\'s'", cwd), None);
+        assert!(detect_destructive("rm -rf $PWD/..", cwd).is_some());
     }
 
     #[test]
@@ -1381,5 +1405,14 @@ mod tests {
         let d = make_cwd();
         let cwd = d.path().to_str().unwrap();
         assert_eq!(detect_destructive(command, cwd), None);
+    }
+
+    #[test]
+    fn long_unparsable_script_fails_closed() {
+        let d = make_cwd();
+        let cwd = d.path().to_str().unwrap();
+        let script = format!("{}if\n", "ls\n".repeat(300));
+        let reason = detect_in_script(&script, cwd).unwrap();
+        assert!(reason.contains("unparsable"), "{reason}");
     }
 }

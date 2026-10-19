@@ -231,6 +231,44 @@ mod tests {
         assert_eq!(out.reason(), "nope");
     }
 
+    fn input_with_response(response: Option<serde_json::Value>) -> HookInput {
+        HookInput {
+            tool_name: Some("Read".to_string()),
+            tool_input: serde_json::Value::Null,
+            tool_response: response,
+            session_id: None,
+            hook_event_name: None,
+            cwd: None,
+        }
+    }
+
+    #[test]
+    fn response_text_absent_null_or_empty_is_none() {
+        for response in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!("")),
+        ] {
+            assert_eq!(
+                input_with_response(response.clone()).response_text(),
+                None,
+                "{response:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn response_text_serializes_non_string_values() {
+        assert_eq!(
+            input_with_response(Some(serde_json::json!("plain"))).response_text(),
+            Some("plain".to_string())
+        );
+        assert_eq!(
+            input_with_response(Some(serde_json::json!({"k": [1, true]}))).response_text(),
+            Some(r#"{"k":[1,true]}"#.to_string())
+        );
+    }
+
     #[test]
     fn pre_tool_use_output_ask_predicates() {
         let out = PreToolUseOutput::ask("are you sure?");

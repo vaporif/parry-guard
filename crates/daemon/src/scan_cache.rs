@@ -402,4 +402,54 @@ mod tests {
         assert!(!contains(&cache, &hash));
         task.abort();
     }
+
+    #[test]
+    fn unknown_result_code_is_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = make_cache(dir.path());
+        let hash = hash_content("written by a newer version");
+        let txn = cache.db.begin_write().unwrap();
+        txn.open_table(TABLE)
+            .unwrap()
+            .insert(&hash, (9u8, now_secs()))
+            .unwrap();
+        txn.commit().unwrap();
+
+        assert_eq!(cache.get(&hash), None);
+    }
+
+    #[test]
+    fn open_without_runtime_dir_disables_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(ScanCache::open(Some(&dir.path().join("missing"))).is_none());
+    }
+
+    /// A DB still holding the legacy table that `open` would have migrated.
+    fn legacy_cache(dir: &std::path::Path) -> ScanCache {
+        let cache = make_cache(dir);
+        let txn = cache.db.begin_write().unwrap();
+        txn.open_table(OLD_TABLE)
+            .unwrap()
+            .insert(1, (1, 1))
+            .unwrap();
+        txn.commit().unwrap();
+        cache
+    }
+
+    #[test]
+    fn put_and_prune_skip_mismatched_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = legacy_cache(dir.path());
+        let hash = hash_content("not stored");
+
+        cache.put(&hash, ScanResult::Injection);
+        cache.prune_expired();
+
+        assert_eq!(cache.get(&hash), None);
+        let txn = cache.db.begin_read().unwrap();
+        assert!(
+            txn.open_table(OLD_TABLE).unwrap().get(1).unwrap().is_some(),
+            "legacy entries are left alone, even expired ones"
+        );
+    }
 }
