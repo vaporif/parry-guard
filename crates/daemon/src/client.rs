@@ -437,6 +437,20 @@ mod tests {
     }
 
     #[test]
+    fn token_command_spawns_without_stale_token_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            hf_token: Some(HfToken::Command("echo tok".to_string())),
+            runtime_dir: Some(dir.path().to_path_buf()),
+            ..Config::default()
+        };
+
+        // spawns the test binary, which rejects the daemon args and exits
+        spawn_daemon(&config).unwrap();
+        assert!(!dir.path().join(".hf-token").exists());
+    }
+
+    #[test]
     fn token_command_spawns_even_if_stale_token_is_unremovable() {
         let dir = tempfile::tempdir().unwrap();
         let token_path = dir.path().join(".hf-token");

@@ -622,9 +622,9 @@ mod tests {
         ] {
             let config = PatternConfig::load_from_path(path);
             assert!(config.sensitive_paths.add.is_empty());
-            assert!(config.sensitive_paths.remove.is_empty());
-            assert!(config.exfil_domains.add.is_empty());
-            assert!(config.exfil_domains.remove.is_empty());
+            assert_eq!(config.sensitive_paths.remove, Vec::<String>::new());
+            assert_eq!(config.exfil_domains.add, Vec::<String>::new());
+            assert_eq!(config.exfil_domains.remove, Vec::<String>::new());
         }
         Ok(())
     }
@@ -660,7 +660,7 @@ mod tests {
             },
         };
         let patterns = CompiledPatterns::from_config(&config);
-        assert!(patterns.exfil_domains.is_empty());
+        assert_eq!(patterns.exfil_domains, Vec::<String>::new());
         assert!(!patterns.has_exfil_domain("https://webhook.site/abc"));
         assert!(!patterns.has_exfil_domain("https://pastebin.com/abc"));
     }

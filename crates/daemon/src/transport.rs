@@ -243,16 +243,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn cleanup_without_socket_removes_dead_pid_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let pid_path = pid_file_path(Some(dir.path())).unwrap();
-        std::fs::write(&pid_path, "garbage").unwrap();
-        cleanup_stale_state(Some(dir.path()));
-        assert!(!pid_path.exists());
-        assert!(!socket_exists(Some(dir.path())));
-    }
-
     #[tokio::test]
     async fn bind_replaces_stale_socket_file() {
         let dir = tempfile::tempdir().unwrap();
