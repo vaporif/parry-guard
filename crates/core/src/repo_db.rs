@@ -588,4 +588,93 @@ mod tests {
     fn canonicalize_repo_path_missing_dir() {
         assert!(canonicalize_repo_path(Some(Path::new("/nonexistent/parry/repo"))).is_none());
     }
+
+    #[test]
+    fn open_fails_when_runtime_dir_is_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not-a-dir");
+        std::fs::write(&file, b"").unwrap();
+        let err = RepoDb::open(Some(&file)).err().unwrap();
+        assert!(matches!(err, RepoDbError::Io(_)), "{err}");
+    }
+
+    #[test]
+    fn open_fails_when_db_path_is_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(DB_FILE)).unwrap();
+        let err = RepoDb::open(Some(dir.path())).err().unwrap();
+        assert!(matches!(err, RepoDbError::Db(_)), "{err}");
+    }
+
+    #[test]
+    fn reopen_keeps_state() {
+        let dir = tempfile::tempdir().unwrap();
+        RepoDb::open(Some(dir.path()))
+            .unwrap()
+            .set_repo_state("/repo", RepoState::Ignored, None)
+            .unwrap();
+        let db = RepoDb::open(Some(dir.path())).unwrap();
+        assert_eq!(db.get_repo_state("/repo"), (RepoState::Ignored, None));
+    }
+
+    /// Creates every table under its name but with the wrong value type.
+    fn db_with_mismatched_tables() -> (tempfile::TempDir, RepoDb) {
+        const WRONG: [TableDefinition<&str, &str>; 3] = [
+            TableDefinition::new("repo_state"),
+            TableDefinition::new("guard_cache"),
+            TableDefinition::new("audit_cache"),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let db = RepoDb::open(Some(dir.path())).unwrap();
+        let txn = db.db.begin_write().unwrap();
+        for table in WRONG {
+            txn.open_table(table).unwrap().insert("/repo", "x").unwrap();
+        }
+        txn.commit().unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn mismatched_tables_fail_writes_and_miss_reads() {
+        let (_dir, db) = db_with_mismatched_tables();
+
+        let err = db
+            .set_repo_state("/repo", RepoState::Monitored, None)
+            .unwrap_err();
+        assert!(matches!(err, RepoDbError::Db(_)), "{err}");
+
+        db.mark_guard_scanned("/repo", "/repo/CLAUDE.md", 1);
+        db.mark_audit_scanned("/repo", 1);
+        db.reset_repo("/repo");
+
+        assert_eq!(db.get_repo_state("/repo"), (RepoState::Unknown, None));
+        assert!(db.list_repos().is_empty());
+        assert!(!db.is_guard_cached("/repo", "/repo/CLAUDE.md", 1));
+        assert!(!db.is_audit_cached("/repo", 1));
+    }
+
+    #[test]
+    fn reset_repo_keeps_other_repos_guard_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RepoDb::open(Some(dir.path())).unwrap();
+        db.mark_guard_scanned("/repo", "/repo/CLAUDE.md", 1);
+        db.mark_guard_scanned("/repo-other", "/repo-other/CLAUDE.md", 2);
+
+        db.reset_repo("/repo");
+
+        assert!(!db.is_guard_cached("/repo", "/repo/CLAUDE.md", 1));
+        assert!(db.is_guard_cached("/repo-other", "/repo-other/CLAUDE.md", 2));
+    }
+
+    #[test]
+    fn cleanup_old_db_warns_when_removal_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join(".parry-guard.redb");
+        std::fs::create_dir(&old_path).unwrap();
+
+        let ((), levels) = crate::tests::capture_levels(|| RepoDb::cleanup_old_db(dir.path()));
+
+        assert!(old_path.exists());
+        assert_eq!(levels, [tracing::Level::WARN]);
+    }
 }

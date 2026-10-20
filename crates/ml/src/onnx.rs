@@ -12,7 +12,8 @@ impl OnnxBackend {
     /// # Errors
     /// Fails if the ONNX session can't be loaded.
     pub fn load(model_path: &str) -> Result<Self> {
-        let mut builder = Session::builder()?;
+        let env = ort::init().build()?;
+        let mut builder = Session::builder(&env)?;
 
         #[cfg(feature = "onnx-coreml")]
         {

@@ -404,4 +404,69 @@ mod tests {
         assert_eq!(config.secrets.add, ["CUSTOM_[0-9]{4}"]);
         assert_eq!(config.secrets.remove, ["AKIA[0-9A-Z]{16}"]);
     }
+
+    #[test]
+    fn invalid_added_pattern_falls_back_to_defaults() {
+        let config = SecretConfig {
+            add: vec!["(unclosed".into()],
+            remove: vec![r"AKIA[0-9A-Z]{16}".into()],
+        };
+        let (secrets, levels) =
+            crate::tests::capture_levels(|| CompiledSecrets::from_config(&config));
+        assert_eq!(levels, [tracing::Level::WARN]);
+        assert!(
+            secrets.has_secret("AKIAIOSFODNN7EXAMPLE"),
+            "removals are dropped along with the bad addition"
+        );
+        assert!(!secrets.has_secret("(unclosed"));
+    }
+
+    fn assert_no_overrides(config: &PatternConfig) {
+        assert_eq!(config.secrets.add, Vec::<String>::new());
+        assert_eq!(config.secrets.remove, Vec::<String>::new());
+    }
+
+    #[test]
+    fn pattern_config_without_config_dir_is_default() {
+        let config = PatternConfig::load_from(None);
+        assert_no_overrides(&config);
+    }
+
+    #[test]
+    fn pattern_config_missing_file_is_default() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let (config, levels) =
+            crate::tests::capture_levels(|| PatternConfig::load_from(Some(config_dir.path())));
+        assert_no_overrides(&config);
+        assert!(
+            levels.is_empty(),
+            "a missing file is not an error: {levels:?}"
+        );
+    }
+
+    fn patterns_path(config_dir: &std::path::Path) -> std::path::PathBuf {
+        let dir = config_dir.join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("patterns.toml")
+    }
+
+    #[test]
+    fn pattern_config_malformed_toml_warns_and_defaults() {
+        let config_dir = tempfile::tempdir().unwrap();
+        std::fs::write(patterns_path(config_dir.path()), "[secrets\nadd = 1").unwrap();
+        let (config, levels) =
+            crate::tests::capture_levels(|| PatternConfig::load_from(Some(config_dir.path())));
+        assert_no_overrides(&config);
+        assert_eq!(levels, [tracing::Level::WARN]);
+    }
+
+    #[test]
+    fn pattern_config_unreadable_file_warns_and_defaults() {
+        let config_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(patterns_path(config_dir.path())).unwrap();
+        let (config, levels) =
+            crate::tests::capture_levels(|| PatternConfig::load_from(Some(config_dir.path())));
+        assert_no_overrides(&config);
+        assert_eq!(levels, [tracing::Level::WARN]);
+    }
 }

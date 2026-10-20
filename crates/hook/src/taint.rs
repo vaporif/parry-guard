@@ -218,6 +218,38 @@ mod tests {
     }
 
     #[test]
+    fn mark_returns_true_on_success() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(mark(&simple_ctx("Read", None), Some(dir.path())));
+    }
+
+    #[test]
+    fn mark_returns_false_when_write_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let rd = Some(dir.path());
+        std::fs::create_dir(dir.path().join(TAINT_FILE)).unwrap();
+        assert!(!mark(&simple_ctx("Read", None), rd));
+        assert_eq!(read_context(rd), None);
+    }
+
+    #[test]
+    fn mark_returns_false_when_runtime_dir_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        assert!(!mark(&simple_ctx("Read", None), Some(&missing)));
+        assert!(!is_tainted(Some(&missing)));
+    }
+
+    #[test]
+    fn empty_taint_file_is_tainted_without_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let rd = Some(dir.path());
+        std::fs::write(dir.path().join(TAINT_FILE), "").unwrap();
+        assert!(is_tainted(rd));
+        assert_eq!(read_context(rd), None);
+    }
+
+    #[test]
     fn context_timestamp_is_numeric() {
         let dir = tempfile::tempdir().unwrap();
         let rd = Some(dir.path());

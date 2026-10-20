@@ -263,6 +263,26 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::malformed("[[models]\nrepo = ", "failed to parse")]
+    #[case::wrong_type("models = 1", "failed to parse")]
+    #[case::empty_list("models = []", "at least one [[models]] entry")]
+    fn resolve_models_custom_invalid(#[case] content: &str, #[case] expected: &str) {
+        let config_dir = tempfile::tempdir().unwrap();
+        let dir = config_dir.path().join("parry-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("models.toml"), content).unwrap();
+
+        let config = Config {
+            scan_mode: ScanMode::Custom,
+            ..Config::default()
+        };
+        let err = config
+            .resolve_models_in(Some(config_dir.path()))
+            .unwrap_err();
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+
     #[test]
     fn default_claude_md_threshold() {
         let config = Config::default();

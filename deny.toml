@@ -5,6 +5,9 @@ all-features = true
 [advisories]
 ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste unmaintained — transitive dep from tokenizers" },
+  { id = "RUSTSEC-2026-0367", reason = "zip 8.x pinned by candle-core 0.11; advisory only affects extract(), which candle never calls" },
+  { id = "RUSTSEC-2026-0368", reason = "zip 8.x pinned by candle-core 0.11; advisory only affects extract(), which candle never calls" },
+  { id = "RUSTSEC-2026-0369", reason = "zip 8.x pinned by candle-core 0.11; advisory only affects extract(), which candle never calls" },
 ]
 
 [licenses]

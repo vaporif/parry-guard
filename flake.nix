@@ -27,7 +27,7 @@
 
     rustToolchain = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain;
     # Hash of https://static.rust-lang.org/dist/channel-rust-<channel>.toml; update with the channel
-    rustToolchainSha256 = "sha256-zm3dyIY2T414ZRR3EhLOvptzG6gta4WZUcawzMUWtqI=";
+    rustToolchainSha256 = "sha256-+xUr6Al1wZSqX8aEsq7DpuFOK4Ve/i+qTl+K5uWQ9GM=";
 
     perSystem = forAllSystems ({
       pkgs,

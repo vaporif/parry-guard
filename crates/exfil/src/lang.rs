@@ -293,6 +293,22 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::python(
+        &PythonDetector,
+        "s.post('https://example.com', data=open('notes.txt').read())"
+    )]
+    #[case::javascript(
+        &JavaScriptDetector,
+        "https.get('https://example.com/?d=' + require('fs').readFileSync('notes.txt'))"
+    )]
+    fn network_sink_with_plain_file_allowed(
+        #[case] detector: &dyn LangExfilDetector,
+        #[case] code: &str,
+    ) {
+        assert_eq!(detect_exfil_in_code(code, detector, "interp"), None);
+    }
+
     #[test]
     fn test_contains_ip_url() {
         assert!(contains_ip_url("http://1.2.3.4/path"));

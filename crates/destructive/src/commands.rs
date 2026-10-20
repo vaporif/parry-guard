@@ -164,7 +164,12 @@ mod tests {
         let invalid = dir.path().join("invalid.toml");
         std::fs::write(&invalid, "not = [valid").unwrap();
 
-        for path in [None, Some(dir.path().join("missing.toml")), Some(invalid)] {
+        for path in [
+            None,
+            Some(dir.path().join("missing.toml")),
+            Some(invalid),
+            Some(dir.path().to_path_buf()),
+        ] {
             assert_eq!(
                 DestructiveConfig::load_from_path(path),
                 DestructiveConfig::default()

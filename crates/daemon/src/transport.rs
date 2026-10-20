@@ -242,4 +242,26 @@ mod tests {
         let result = Stream::connect(Duration::from_millis(50), Some(dir.path()));
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn bind_replaces_stale_socket_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(socket_path(Some(dir.path())).unwrap(), "stale").unwrap();
+        let _listener = bind_async(Some(dir.path())).unwrap();
+        Stream::connect(Duration::from_millis(50), Some(dir.path())).unwrap();
+    }
+
+    #[tokio::test]
+    async fn bind_creates_missing_runtime_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a/b");
+        let _listener = bind_async(Some(&nested)).unwrap();
+        assert!(socket_exists(Some(&nested)));
+    }
+
+    #[test]
+    fn connect_rejects_unrepresentable_socket_path() {
+        let result = Stream::connect(Duration::from_millis(50), Some(Path::new("bad\0dir")));
+        assert!(result.is_err());
+    }
 }

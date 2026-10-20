@@ -117,7 +117,42 @@ pub fn runtime_path(runtime_dir: Option<&Path>, filename: &str) -> Option<PathBu
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use tracing::{span, Event, Level, Metadata, Subscriber};
+
     use super::*;
+
+    /// Records the level of every event, with all levels enabled.
+    struct LevelRecorder(Arc<Mutex<Vec<Level>>>);
+
+    impl Subscriber for LevelRecorder {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &span::Attributes<'_>) -> span::Id {
+            span::Id::from_u64(1)
+        }
+        fn record(&self, _: &span::Id, _: &span::Record<'_>) {}
+        fn record_follows_from(&self, _: &span::Id, _: &span::Id) {}
+        fn event(&self, event: &Event<'_>) {
+            self.0.lock().unwrap().push(*event.metadata().level());
+        }
+        fn enter(&self, _: &span::Id) {}
+        fn exit(&self, _: &span::Id) {}
+    }
+
+    /// Runs `f` with every tracing level enabled; returns its result and the levels logged.
+    pub(crate) fn capture_levels<R>(f: impl FnOnce() -> R) -> (R, Vec<Level>) {
+        let levels = Arc::new(Mutex::new(Vec::new()));
+        let result = tracing::subscriber::with_default(LevelRecorder(Arc::clone(&levels)), || {
+            // A parallel test may have cached the callsite as `never` while no subscriber was set
+            tracing::callsite::rebuild_interest_cache();
+            f()
+        });
+        let levels = levels.lock().unwrap().clone();
+        (result, levels)
+    }
 
     #[test]
     fn detects_injection_substring() {
@@ -165,6 +200,20 @@ mod tests {
     fn runtime_path_falls_back_to_cwd() {
         let cwd = std::env::current_dir().unwrap();
         assert_eq!(runtime_path(None, "taint"), Some(cwd.join("taint")));
+    }
+
+    #[test]
+    fn runtime_path_cwd_fallback_logs_debug() {
+        let cwd = std::env::current_dir().unwrap();
+        let (path, levels) = capture_levels(|| runtime_path(None, "taint"));
+        assert_eq!(path, Some(cwd.join("taint")));
+        assert_eq!(levels, [Level::DEBUG]);
+    }
+
+    #[test]
+    fn runtime_path_with_runtime_dir_logs_nothing() {
+        let (_, levels) = capture_levels(|| runtime_path(Some(Path::new("/run/parry")), "taint"));
+        assert!(levels.is_empty(), "{levels:?}");
     }
 
     #[test]
