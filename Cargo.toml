@@ -29,7 +29,7 @@ unicode-normalization = "0.1"
 unicode_skeleton = "0.1"
 data-encoding = "2"
 percent-encoding = "2"
-html-escape = "0.2"
+html-escape = "0.3"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -68,7 +68,7 @@ hf-hub = { version = "1", default-features = false, features = [
 
 # ONNX backend (optional)
 # Exact pin: ort release candidates break API between versions
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.14", default-features = false, features = [
   "std",
   "ndarray",
 ] }
