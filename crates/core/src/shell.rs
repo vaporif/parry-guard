@@ -500,13 +500,17 @@ mod tests {
 
 
         a"};
+    const TRAILING_NEWLINE: &str = indoc::indoc! {"
+        a
+        b
+    "};
 
     #[rstest]
     #[case::lines("a\nb", &["a", "\nb"])]
     #[case::compound(COMPOUND, &[COMPOUND])]
     #[case::never_completes(NEVER_COMPLETES, &["a", NEVER_COMPLETES_TAIL])]
     #[case::blank_lines(BLANK_LINES, &[BLANK_LINES])]
-    #[case::trailing_newline("a\nb\n", &["a", "\nb"])]
+    #[case::trailing_newline(TRAILING_NEWLINE, &["a", "\nb"])]
     fn complete_commands_split(#[case] script: &str, #[case] expected: &[&str]) {
         assert_eq!(complete_commands(script, parses).as_deref(), Some(expected));
     }
