@@ -145,7 +145,11 @@ mod tests {
     /// Runs `f` with every tracing level enabled; returns its result and the levels logged.
     pub(crate) fn capture_levels<R>(f: impl FnOnce() -> R) -> (R, Vec<Level>) {
         let levels = Arc::new(Mutex::new(Vec::new()));
-        let result = tracing::subscriber::with_default(LevelRecorder(Arc::clone(&levels)), f);
+        let result = tracing::subscriber::with_default(LevelRecorder(Arc::clone(&levels)), || {
+            // A parallel test may have cached the callsite as `never` while no subscriber was set
+            tracing::callsite::rebuild_interest_cache();
+            f()
+        });
         let levels = levels.lock().unwrap().clone();
         (result, levels)
     }
