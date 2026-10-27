@@ -36,13 +36,13 @@ jobs:
           - { crate: destructive, target: destructive }
           - { crate: destructive, target: protected_path }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Restore corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: crates/${{ matrix.crate }}/tests/__fuzz__/${{ matrix.target }}/corpus
           key: fuzz-corpus-${{ matrix.crate }}-${{ matrix.target }}-${{ github.run_id }}
